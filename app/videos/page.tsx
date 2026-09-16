@@ -1,0 +1,329 @@
+'use client';
+
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { ChevronLeft, ChevronRight, Heart, MessageCircle, Send, Users } from 'lucide-react';
+import { supabase } from '@/lib/supabase/client';
+import { Post } from '@/types/social';
+import Avatar from '@/components/social/Avatar';
+import SharePostPicker from '@/components/community/SharePostPicker';
+
+export default function VideosPage() {
+  const router = useRouter();
+  const [videos, setVideos] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [meId, setMeId] = useState<string | null>(null);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [sharingPost, setSharingPost] = useState<Post | null>(null);
+
+  /* Only the active video plays; others show their first frame */
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        router.replace('/auth/sign-in');
+        return;
+      }
+      setMeId(user.id);
+
+      const { data } = await supabase
+        .from('posts')
+        .select(
+          `id, author_id, journal_id, page_id, content, media_url, media_type, created_at,
+           author:profiles!posts_author_id_fkey(id, full_text_name, username, avatar_url)`,
+        )
+        .eq('media_type', 'video')
+        .not('media_url', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      const rows = (data || []) as unknown as Post[];
+      setVideos(rows);
+
+      /* Which did I like? */
+      if (rows.length) {
+        const { data: likes } = await supabase
+          .from('post_likes')
+          .select('post_id')
+          .eq('user_id', user.id)
+          .in('post_id', rows.map((r) => r.id));
+        setLikedIds(new Set((likes || []).map((l: any) => l.post_id)));
+      }
+
+      setLoading(false);
+    })();
+  }, [router]);
+
+  /* Mark the video in view as active using scroll position */
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || videos.length === 0) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
+            const index = Number((entry.target as HTMLElement).dataset.index);
+            if (!Number.isNaN(index)) {
+              setActiveIndex(index);
+            }
+          }
+        });
+      },
+      { root: container, threshold: [0.6] },
+    );
+
+    const items = container.querySelectorAll('[data-index]');
+    items.forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  }, [videos]);
+
+  /* Play / pause based on active index */
+  useEffect(() => {
+    videoRefs.current.forEach((video, i) => {
+      if (!video) return;
+      if (i === activeIndex) {
+        video.play().catch(() => {
+          /* autoplay blocked until first interaction — that's fine */
+        });
+      } else {
+        video.pause();
+        video.currentTime = 0;
+      }
+    });
+  }, [activeIndex]);
+
+  const toggleLike = useCallback(
+    async (postId: string) => {
+      if (!meId) return;
+      const isLiked = likedIds.has(postId);
+
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        if (isLiked) {
+          next.delete(postId);
+        } else {
+          next.add(postId);
+        }
+        return next;
+      });
+
+      if (isLiked) {
+        await supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', meId);
+      } else {
+        /* ignoreDuplicates: a double-tap raced the first insert and hit the
+           (post_id, user_id) PK → 400. Upsert-with-ignore is idempotent. */
+        const { error } = await supabase
+          .from('post_likes')
+          .upsert(
+            { post_id: postId, user_id: meId },
+            { onConflict: 'post_id,user_id', ignoreDuplicates: true }
+          );
+        if (error) {
+          setLikedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(postId);
+            return next;
+          });
+        }
+      }
+    },
+    [meId, likedIds],
+  );
+
+  const scrollBy = (direction: 1 | -1) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const target = activeIndex + direction;
+    const clamped = Math.max(0, Math.min(videos.length - 1, target));
+    const item = container.querySelector(`[data-index="${clamped}"]`);
+    item?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  return (
+    <main className="min-h-[100dvh] bg-black text-white">
+      {/* Header — wraps instead of clipping: on ≤360px the two buttons drop
+          to a second row while the title stays visible (they kept their names
+          because they are the page's only affordances). */}
+      <header className="fixed inset-x-0 top-0 z-40 flex flex-wrap items-center justify-between gap-2 bg-gradient-to-b from-black/80 to-transparent px-4 py-3">
+        <h1 className="text-lg font-bold">Videos</h1>
+        <div className="flex shrink-0 gap-2">
+          <Link
+            href="/studio/video"
+            className="rounded-full bg-[#E5798F] px-4 py-1.5 text-xs font-semibold backdrop-blur transition hover:opacity-90"
+          >
+            + Create video
+          </Link>
+          <Link
+            href="/feed"
+            className="rounded-full bg-white/15 px-4 py-1.5 text-xs font-semibold backdrop-blur transition hover:bg-white/25"
+          >
+            Back to feed
+          </Link>
+        </div>
+      </header>
+
+      {/* Desktop arrows */}
+      <button
+        onClick={() => scrollBy(-1)}
+        aria-label="Previous video"
+        className="fixed left-5 top-1/2 z-40 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 lg:flex"
+      >
+        <ChevronLeft className="h-6 w-6" />
+      </button>
+      <button
+        onClick={() => scrollBy(1)}
+        aria-label="Next video"
+        className="fixed right-5 top-1/2 z-40 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 lg:flex"
+      >
+        <ChevronRight className="h-6 w-6" />
+      </button>
+
+      {loading ? (
+        <div className="flex h-[100dvh] items-center justify-center">
+          <p className="text-sm text-white/60">Loading videos…</p>
+        </div>
+      ) : videos.length === 0 ? (
+        <div className="flex h-[100dvh] flex-col items-center justify-center px-8 text-center">
+          <div className="text-5xl">🎬</div>
+          <h2 className="mt-4 text-xl font-bold">No videos yet</h2>
+          <p className="mt-2 max-w-xs text-sm text-white/60">
+            Be the first — share a video from the feed composer and it will play right here.
+          </p>
+          <Link
+            href="/feed?compose=1"
+            className="mt-6 rounded-xl bg-white px-6 py-3 text-sm font-bold text-black"
+          >
+            Share a video
+          </Link>
+        </div>
+      ) : (
+        <div
+          ref={containerRef}
+          className="h-[100dvh] snap-y snap-mandatory overflow-y-scroll no-scrollbar"
+        >
+          {videos.map((post, i) => {
+            const liked = likedIds.has(post.id);
+            const authorName = post.author?.full_text_name || post.author?.username || 'Writer';
+            const isActive = i === activeIndex;
+            return (
+              <section
+                key={post.id}
+                data-index={i}
+                className="relative flex h-[100dvh] snap-start items-center justify-center"
+              >
+                <video
+                  ref={(el) => {
+                    videoRefs.current[i] = el;
+                  }}
+                  src={post.media_url || ''}
+                  loop
+                  muted={false}
+                  playsInline
+                  preload={isActive ? 'auto' : 'metadata'}
+                  onEnded={() => scrollBy(1)}
+                  onClick={(e) => {
+                    const v = e.currentTarget;
+                    if (v.paused) v.play();
+                    else v.pause();
+                  }}
+                  className="h-full w-full object-contain sm:w-auto sm:max-w-[min(100dvh*0.5625,100vw)]"
+                />
+
+                {/* Gradient overlays */}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/80 to-transparent" />
+                <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/60 to-transparent" />
+
+                {/* Right rail */}
+                <div className="absolute bottom-24 right-3 flex flex-col items-center gap-5">
+                  <button
+                    onClick={() => toggleLike(post.id)}
+                    className="flex flex-col items-center gap-1"
+                    aria-label={liked ? 'Unlike' : 'Like'}
+                  >
+                    <span
+                      className={`flex h-12 w-12 items-center justify-center rounded-full backdrop-blur transition ${
+                        liked ? 'bg-[#E5798F] text-white' : 'bg-white/15 text-white hover:bg-white/25'
+                      }`}
+                    >
+                      <Heart className={`h-6 w-6 ${liked ? 'fill-current' : ''}`} />
+                    </span>
+                  </button>
+
+                  <Link
+                    href={post.author?.username ? `/u/${post.author.username}` : '#'}
+                    className="flex flex-col items-center gap-1"
+                  >
+                    <Avatar src={post.author?.avatar_url} name={authorName} size={44} />
+                  </Link>
+
+                  <button
+                    onClick={() => {
+                      const url = `${window.location.origin}/posts/${post.id}`;
+                      if (navigator.share) {
+                        navigator.share({ title: 'A video on enotes', text: post.content.slice(0, 100), url }).catch(() => undefined);
+                      } else {
+                        navigator.clipboard.writeText(url).catch(() => undefined);
+                      }
+                    }}
+                    className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur transition hover:bg-white/25"
+                    aria-label="Share this video"
+                  >
+                    <Send className="h-5 w-5" />
+                  </button>
+
+                  <button
+                    onClick={() => setSharingPost(post)}
+                    className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur transition hover:bg-white/25"
+                    aria-label="Share to a community"
+                  >
+                    <Users className="h-5 w-5" />
+                  </button>
+
+                  <Link
+                    href={`/posts/${post.id}`}
+                    className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur transition hover:bg-white/25"
+                    aria-label="Comments"
+                  >
+                    <MessageCircle className="h-5 w-5" />
+                  </Link>
+                </div>
+
+                {/* Caption */}
+                <div className="absolute bottom-6 left-4 right-20">
+                  <Link
+                    href={post.author?.username ? `/u/${post.author.username}` : '#'}
+                    className="text-sm font-bold"
+                  >
+                    @{post.author?.username || authorName}
+                  </Link>
+                  {post.content && (
+                    <p className="mt-1 line-clamp-2 text-sm text-white/85">{post.content}</p>
+                  )}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      {sharingPost && (
+        <SharePostPicker
+          postId={sharingPost.id}
+          postLabel={sharingPost.content ? `"${sharingPost.content.slice(0, 30)}…"` : 'this video'}
+          onClose={() => setSharingPost(null)}
+        />
+      )}
+
+    </main>
+  );
+}
