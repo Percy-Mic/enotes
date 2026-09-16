@@ -1,0 +1,30 @@
+# dependencies
+node_modules/
+
+# next.js build output
+.next/
+out/
+
+# environment & secrets â€” never commit
+.env
+.env.*
+*.local
+!.env.example
+
+# vercel
+.vercel/
+
+# logs & temp
+*.log
+*.err
+npm-debug.log*
+
+# typescript build info
+*.tsbuildinfo
+
+# tool state
+.freebuff/
+
+# os
+.DS_Store
+Thumbs.db
