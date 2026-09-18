@@ -11,26 +11,37 @@ import React, {
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import {
-  ArrowLeft,
-  Bold as BoldIcon,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  Archive,
+  Bold,
   Check,
-  CheckSquare,
+  ChevronDown,
+  Code2,
   Copy,
-  Heart,
-  Italic as ItalicIcon,
+  FileText,
+  Highlighter,
+  Italic,
+  Link2,
   List,
   ListOrdered,
-  Loader2,
   Lock,
   Pin,
+  Quote,
   Redo2,
+  Save,
   Share2,
+  Strikethrough,
   Trash2,
-  Underline as UnderlineIcon,
+  Underline,
   Undo2,
-  X,
+  Unlock,
+  Palette,
+  Type,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+
+import { createClient } from '@/lib/supabase/client';
 import type { NoteRow } from '@/app/notes/page';
 
 const CATEGORIES = [
@@ -41,574 +52,1591 @@ const CATEGORIES = [
   'reading',
 ] as const;
 
-const MAX_TITLE_LENGTH = 300;
-const MAX_CATEGORY_LENGTH = 40;
-const AUTOSAVE_DELAY = 800;
-const MAX_HISTORY = 100;
+type SaveState = 'saved' | 'saving' | 'error';
 
-type SaveState =
-  | 'idle'
-  | 'saving'
-  | 'saved'
-  | 'error';
-
-type Notice = {
-  type: 'error' | 'success' | 'info';
-  title: string;
-  message: string;
-};
-
-type FormatKind =
-  | 'bold'
-  | 'italic'
-  | 'underline'
-  | 'ol'
-  | 'ul'
-  | 'check';
-
-interface EditorNote extends NoteRow {}
-
-interface HistorySnapshot {
+type DraftSnapshot = {
   title: string;
   content: string;
   category: string;
-}
+  is_pinned: boolean;
+  is_favorite: boolean;
+  is_archived: boolean;
+};
 
-function formatTimestamp(iso: string): string {
-  const date = new Date(iso);
-
-  if (Number.isNaN(date.getTime())) {
-    return '';
-  }
-
-  const formattedDate =
-    date.toLocaleDateString(undefined, {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-
-  const formattedTime =
-    date.toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-  return `${formattedDate.toLowerCase()} ${formattedTime}`;
+interface EditorNote extends NoteRow {
+  title: string;
+  content: string;
+  category: string;
+  is_pinned: boolean;
+  is_favorite: boolean;
+  is_archived: boolean;
 }
 
 function normalizeCategory(value: string): string {
   return value
     .trim()
-    .toLowerCase()
     .replace(/\s+/g, ' ')
-    .replace(/[^a-z0-9 -]/g, '')
-    .slice(0, MAX_CATEGORY_LENGTH);
+    .replace(/[^a-zA-Z0-9 _-]/g, '')
+    .slice(0, 40);
 }
 
-function clampPosition(
-  value: string,
-  position: number,
-): number {
-  return Math.max(
-    0,
-    Math.min(position, value.length),
-  );
-}
-
-function wrapSelection(
-  text: string,
-  selectionStart: number,
-  selectionEnd: number,
-  marker: string,
-) {
-  const selected = text.slice(
-    selectionStart,
-    selectionEnd,
-  );
-
-  const before = text.slice(
-    0,
-    selectionStart,
-  );
-
-  const after = text.slice(
-    selectionEnd,
-  );
-
-  if (
-    selected &&
-    before.endsWith(marker) &&
-    after.startsWith(marker)
-  ) {
-    const nextText =
-      before.slice(0, -marker.length) +
-      selected +
-      after.slice(marker.length);
-
-    return {
-      text: nextText,
-      selectionStart:
-        selectionStart - marker.length,
-      selectionEnd:
-        selectionEnd - marker.length,
-    };
-  }
-
-  if (!selected) {
-    const placeholder = 'text';
-
-    const inserted =
-      marker +
-      placeholder +
-      marker;
-
-    return {
-      text:
-        before +
-        inserted +
-        after,
-      selectionStart:
-        selectionStart +
-        marker.length,
-      selectionEnd:
-        selectionStart +
-        marker.length +
-        placeholder.length,
-    };
-  }
-
-  const inserted =
-    marker +
-    selected +
-    marker;
-
-  return {
-    text:
-      before +
-      inserted +
-      after,
-    selectionStart:
-      selectionStart +
-      marker.length,
-    selectionEnd:
-      selectionStart +
-      marker.length +
-      selected.length,
-  };
-}
-
-function toggleBlockPrefix(
-  text: string,
-  selectionStart: number,
-  selectionEnd: number,
-  prefix: string,
-) {
-  const start =
-    text.lastIndexOf(
-      '\n',
-      Math.max(
-        0,
-        selectionStart - 1,
-      ),
-    ) + 1;
-
-  let end = text.indexOf(
-    '\n',
-    selectionEnd,
-  );
-
-  if (end === -1) {
-    end = text.length;
-  }
-
-  const block = text.slice(
-    start,
-    end,
-  );
-
-  const lines = block.split('\n');
-
-  const allPrefixed = lines.every(
-    (line) =>
-      !line.trim() ||
-      line.startsWith(prefix),
-  );
-
-  const nextLines = lines.map(
-    (line) => {
-      if (!line.trim()) {
-        return line;
-      }
-
-      if (
-        allPrefixed &&
-        line.startsWith(prefix)
-      ) {
-        return line.slice(
-          prefix.length,
-        );
-      }
-
-      return prefix + line;
-    },
-  );
-
-  const nextBlock =
-    nextLines.join('\n');
-
-  const nextText =
-    text.slice(0, start) +
-    nextBlock +
-    text.slice(end);
-
-  const difference =
-    nextBlock.length -
-    block.length;
-
-  let nextStart =
-    selectionStart;
-
-  let nextEnd =
-    selectionEnd;
-
-  if (allPrefixed) {
-    nextStart += difference;
-  }
-
-  nextEnd += difference;
-
-  return {
-    text: nextText,
-    selectionStart: clampPosition(
-      nextText,
-      nextStart,
-    ),
-    selectionEnd: clampPosition(
-      nextText,
-      nextEnd,
-    ),
-  };
-}
-
-function createSnapshot(
-  note: EditorNote | null,
-): HistorySnapshot | null {
-  if (!note) {
-    return null;
-  }
-
-  return {
-    title: note.title,
-    content: note.content,
-    category: note.category,
-  };
-}
-
-function snapshotsEqual(
-  a: HistorySnapshot | null,
-  b: HistorySnapshot | null,
-): boolean {
-  if (!a || !b) {
-    return false;
-  }
-
-  return (
-    a.title === b.title &&
-    a.content === b.content &&
-    a.category === b.category
-  );
-}
-
-function getLockStorageKey(
-  id: string,
+function formatTimestamp(
+  iso: string | null | undefined,
 ): string {
-  return `enotes:note-lock:${id}`;
+  if (!iso) return 'not saved yet';
+
+  const date = new Date(iso);
+
+  if (Number.isNaN(date.getTime())) {
+    return 'not saved yet';
+  }
+
+  return date.toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
-function readLocalStorage(
-  key: string,
-): string | null {
-  if (
-    typeof window === 'undefined'
-  ) {
-    return null;
-  }
-
-  try {
-    return window.localStorage.getItem(
-      key,
-    );
-  } catch {
-    return null;
-  }
+function createEmptyNote(): EditorNote {
+  return {
+    id: 'new',
+    title: '',
+    content: '',
+    category: 'general',
+    is_pinned: false,
+    is_favorite: false,
+    is_archived: false,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  } as EditorNote;
 }
 
-function writeLocalStorage(
-  key: string,
-  value: string,
-): void {
-  if (
-    typeof window === 'undefined'
-  ) {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(
-      key,
-      value,
-    );
-  } catch {
-    // Ignore storage errors.
-  }
+function snapshotNote(
+  note: EditorNote,
+): DraftSnapshot {
+  return {
+    title: note.title ?? '',
+    content: note.content ?? '',
+    category: note.category ?? 'general',
+    is_pinned: Boolean(note.is_pinned),
+    is_favorite: Boolean(note.is_favorite),
+    is_archived: Boolean(note.is_archived),
+  };
 }
 
-function removeLocalStorage(
-  key: string,
-): void {
-  if (
-    typeof window === 'undefined'
-  ) {
-    return;
-  }
+function countWords(html: string): number {
+  if (!html) return 0;
 
-  try {
-    window.localStorage.removeItem(
-      key,
-    );
-  } catch {
-    // Ignore storage errors.
-  }
+  const temporary = document.createElement('div');
+  temporary.innerHTML = html;
+
+  const text =
+    temporary.textContent ||
+    temporary.innerText ||
+    '';
+
+  const cleaned = text.trim();
+
+  if (!cleaned) return 0;
+
+  return cleaned.split(/\s+/).length;
 }
 
-export default function NoteEditorPage() {
+function countCharacters(html: string): number {
+  if (!html) return 0;
+
+  const temporary = document.createElement('div');
+  temporary.innerHTML = html;
+
   return (
-    <Suspense
-      fallback={
-        <main className="flex min-h-[100dvh] items-center justify-center bg-[#FFF7F8]">
-          <div className="flex items-center gap-2 text-sm text-[#8B8B8B]">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading note…
-          </div>
-        </main>
-      }
+    temporary.textContent ||
+    temporary.innerText ||
+    ''
+  ).length;
+}
+
+function ToolbarButton({
+  label,
+  onMouseDown,
+  disabled = false,
+  active = false,
+  children,
+}: {
+  label: string;
+  onMouseDown: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onMouseDown={(event) => {
+        event.preventDefault();
+
+        if (!disabled) {
+          onMouseDown();
+        }
+      }}
+      className={[
+        'inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-lg',
+        'border px-2 transition-all duration-150',
+        disabled
+          ? 'cursor-not-allowed border-transparent text-black/20'
+          : active
+            ? 'border-[#E5798F]/30 bg-[#E5798F]/10 text-[#C95F76]'
+            : 'border-transparent text-black/65 hover:border-black/10 hover:bg-black/5 hover:text-black',
+      ].join(' ')}
     >
-      <NoteEditor />
-    </Suspense>
+      {children}
+    </button>
+  );
+}
+
+function ToolbarDivider() {
+  return (
+    <div className="mx-1 h-6 w-px shrink-0 bg-black/8" />
   );
 }
 
 function NoteEditor() {
-  const params =
-    useParams<{ id: string }>();
-
+  const params = useParams();
   const router = useRouter();
 
-  const routeIdRef =
-    useRef<string>(
-      typeof params?.id === 'string'
-        ? params.id
-        : 'new',
-    );
+  const supabase = useMemo(
+    () => createClient(),
+    [],
+  );
 
   const routeId =
-    routeIdRef.current;
+    typeof params?.id === 'string'
+      ? params.id
+      : 'new';
+
+  const initialRouteIdRef =
+    useRef(routeId);
 
   const isNew =
-    routeId === 'new';
+    initialRouteIdRef.current === 'new';
+
+  const initialNote = useMemo(
+    () => (isNew ? createEmptyNote() : null),
+    [isNew],
+  );
 
   const [note, setNote] =
     useState<EditorNote | null>(
-      null,
+      initialNote,
     );
 
   const [loading, setLoading] =
-    useState(true);
-
-  const [notFound, setNotFound] =
-    useState(false);
+    useState(!isNew);
 
   const [saveState, setSaveState] =
-    useState<SaveState>('idle');
+    useState<SaveState>(
+      isNew ? 'saved' : 'saving',
+    );
+
+  const [notice, setNotice] =
+    useState<string | null>(null);
 
   const [locked, setLocked] =
     useState(false);
-
-  const [
-    unlockPrompt,
-    setUnlockPrompt,
-  ] = useState(false);
-
-  const [deletePrompt, setDeletePrompt] =
-    useState(false);
-
-  const [deleting, setDeleting] =
-    useState(false);
-
-  const [copied, setCopied] =
-    useState(false);
-
-  const [notice, setNotice] =
-    useState<Notice | null>(null);
-
-  const [
-    showNewCategory,
-    setShowNewCategory,
-  ] = useState(false);
 
   const [newCategory, setNewCategory] =
     useState('');
 
   const [
-    historyVersion,
-    setHistoryVersion,
-  ] = useState(0);
+    showCategoryMenu,
+    setShowCategoryMenu,
+  ] = useState(false);
+
+  const [deleting, setDeleting] =
+    useState(false);
+
+  const [undoCount, setUndoCount] =
+    useState(0);
+
+  const [redoCount, setRedoCount] =
+    useState(0);
+
+  const [heading, setHeading] =
+    useState('p');
+
+  const [fontSize, setFontSize] =
+    useState('3');
+
+  const [editorFocused, setEditorFocused] =
+    useState(false);
 
   const titleRef =
-    useRef<HTMLTextAreaElement>(null);
+    useRef<HTMLTextAreaElement | null>(
+      null,
+    );
 
-  const bodyRef =
-    useRef<HTMLTextAreaElement>(null);
+  const editorRef =
+    useRef<HTMLDivElement | null>(
+      null,
+    );
 
   const noteRef =
-    useRef<EditorNote | null>(null);
+    useRef<EditorNote | null>(
+      initialNote,
+    );
 
-  const saveTimer =
-    useRef<ReturnType<
-      typeof setTimeout
-    > | null>(null);
-
-  const noticeTimer =
-    useRef<ReturnType<
-      typeof setTimeout
-    > | null>(null);
-
-  const copiedTimer =
-    useRef<ReturnType<
-      typeof setTimeout
-    > | null>(null);
+  const saveTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(
+      null,
+    );
 
   const dirtyRef =
     useRef(false);
 
-  const mountedRef =
-    useRef(true);
+  const saveVersionRef =
+    useRef(0);
+
+  const saveInFlightRef =
+    useRef<Promise<boolean> | null>(
+      null,
+    );
 
   const creatingRef =
-    useRef<Promise<
-      string | null
-    > | null>(null);
+    useRef<Promise<string | null> | null>(
+      null,
+    );
 
   const realNoteIdRef =
     useRef<string | null>(
       isNew ? null : routeId,
     );
 
-  const saveVersionRef =
-    useRef(0);
-
-  const saveInFlightRef =
-    useRef<Promise<void> | null>(
-      null,
-    );
-
   const undoStackRef =
-    useRef<HistorySnapshot[]>([]);
+    useRef<DraftSnapshot[]>([]);
 
   const redoStackRef =
-    useRef<HistorySnapshot[]>([]);
+    useRef<DraftSnapshot[]>([]);
 
-  noteRef.current = note;
+  const lastHistoryTimeRef =
+    useRef(0);
 
-  /* --------------------------------------------------
-     Mounted state
-  -------------------------------------------------- */
+  const showNotice = useCallback(
+    (message: string) => {
+      setNotice(message);
 
-  useEffect(() => {
-    mountedRef.current = true;
+      window.setTimeout(() => {
+        setNotice((current) =>
+          current === message
+            ? null
+            : current,
+        );
+      }, 2800);
+    },
+    [],
+  );
 
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
+  const pushHistory = useCallback(
+    (current: EditorNote) => {
+      const now = Date.now();
 
-  /* --------------------------------------------------
-     Load
-  -------------------------------------------------- */
+      if (
+        now - lastHistoryTimeRef.current >
+        500
+      ) {
+        undoStackRef.current.push(
+          snapshotNote(current),
+        );
 
-  useEffect(() => {
-    let cancelled = false;
+        if (
+          undoStackRef.current.length >
+          100
+        ) {
+          undoStackRef.current.shift();
+        }
 
-    async function loadNote() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (cancelled) {
-        return;
+        setUndoCount(
+          undoStackRef.current.length,
+        );
       }
 
-      if (!user) {
-        const redirect = isNew
-          ? '/auth/sign-in?redirect=%2Fnotes%2Fnew'
-          : `/auth/sign-in?redirect=%2Fnotes%2F${encodeURIComponent(
-              routeId,
-            )}`;
+      lastHistoryTimeRef.current =
+        now;
 
-        router.replace(
-          redirect,
+      redoStackRef.current = [];
+      setRedoCount(0);
+    },
+    [],
+  );
+
+  const markDirty = useCallback(() => {
+    dirtyRef.current = true;
+
+    saveVersionRef.current += 1;
+
+    setSaveState('saving');
+
+    if (saveTimerRef.current) {
+      clearTimeout(
+        saveTimerRef.current,
+      );
+    }
+
+    saveTimerRef.current =
+      setTimeout(() => {
+        void saveNow();
+      }, 800);
+  }, []);
+
+  const commitNote = useCallback(
+    (
+      updater: (
+        current: EditorNote,
+      ) => EditorNote,
+      options: {
+        history?: boolean;
+        autosave?: boolean;
+      } = {},
+    ) => {
+      const current =
+        noteRef.current;
+
+      if (!current) return;
+
+      const next = updater(current);
+
+      if (options.history !== false) {
+        pushHistory(current);
+      }
+
+      noteRef.current = next;
+      setNote(next);
+
+      if (options.autosave !== false) {
+        markDirty();
+      }
+    },
+    [markDirty, pushHistory],
+  );
+
+  const ensureRow = useCallback(
+    async (): Promise<string | null> => {
+      if (realNoteIdRef.current) {
+        return realNoteIdRef.current;
+      }
+
+      if (creatingRef.current) {
+        return creatingRef.current;
+      }
+
+      const creation =
+        (async () => {
+          const current =
+            noteRef.current;
+
+          if (!current) return null;
+
+          const {
+            data: {
+              user,
+            },
+          } =
+            await supabase.auth.getUser();
+
+          if (!user) {
+            showNotice(
+              'Your session has expired. Please sign in again.',
+            );
+
+            return null;
+          }
+
+          const title =
+            current.title.trim();
+
+          const category =
+            normalizeCategory(
+              current.category,
+            ) || 'general';
+
+          const {
+            data,
+            error,
+          } = await supabase
+            .from('notes')
+            .insert({
+              user_id: user.id,
+              title,
+              content:
+                current.content,
+              category,
+              is_pinned:
+                current.is_pinned,
+              is_favorite:
+                current.is_favorite,
+              is_archived:
+                current.is_archived,
+            })
+            .select('*')
+            .single();
+
+          if (
+            error ||
+            !data
+          ) {
+            console.error(
+              'Create note error:',
+              error,
+            );
+
+            setSaveState('error');
+
+            showNotice(
+              error?.message ||
+                'Unable to create the note.',
+            );
+
+            return null;
+          }
+
+          const created =
+            data as EditorNote;
+
+          realNoteIdRef.current =
+            created.id;
+
+          const latest =
+            noteRef.current;
+
+          if (latest) {
+            const merged: EditorNote =
+              {
+                ...latest,
+                ...created,
+                title:
+                  latest.title,
+                content:
+                  latest.content,
+                category:
+                  latest.category,
+                is_pinned:
+                  latest.is_pinned,
+                is_favorite:
+                  latest.is_favorite,
+                is_archived:
+                  latest.is_archived,
+              };
+
+            noteRef.current =
+              merged;
+
+            setNote(merged);
+          }
+
+          router.replace(
+            `/notes/${created.id}`,
+          );
+
+          return created.id;
+        })();
+
+      creatingRef.current =
+        creation;
+
+      void creation.then(
+        () => {
+          creatingRef.current =
+            null;
+        },
+        () => {
+          creatingRef.current =
+            null;
+        },
+      );
+
+      return creation;
+    },
+    [
+      router,
+      showNotice,
+      supabase,
+    ],
+  );
+
+  const saveNow = useCallback(
+    async (): Promise<boolean> => {
+      if (
+        saveInFlightRef.current
+      ) {
+        return saveInFlightRef.current;
+      }
+
+      const savePromise =
+        (async () => {
+          try {
+            while (dirtyRef.current) {
+              const current =
+                noteRef.current;
+
+              if (!current) {
+                dirtyRef.current =
+                  false;
+
+                setSaveState(
+                  'saved',
+                );
+
+                return true;
+              }
+
+              const versionAtStart =
+                saveVersionRef.current;
+
+              let id =
+                realNoteIdRef.current;
+
+              if (!id) {
+                id =
+                  await ensureRow();
+
+                if (!id) {
+                  return false;
+                }
+              }
+
+              const latest =
+                noteRef.current;
+
+              if (!latest) {
+                return false;
+              }
+
+              setSaveState(
+                'saving',
+              );
+
+              const title =
+                latest.title.trim();
+
+              const category =
+                normalizeCategory(
+                  latest.category,
+                ) || 'general';
+
+              const {
+                error,
+              } =
+                await supabase
+                  .from('notes')
+                  .update({
+                    title,
+                    content:
+                      latest.content,
+                    category,
+                    is_pinned:
+                      latest.is_pinned,
+                    is_favorite:
+                      latest.is_favorite,
+                    is_archived:
+                      latest.is_archived,
+                    updated_at:
+                      new Date().toISOString(),
+                  })
+                  .eq(
+                    'id',
+                    id,
+                  );
+
+              if (error) {
+                console.error(
+                  'Save note error:',
+                  error,
+                );
+
+                setSaveState(
+                  'error',
+                );
+
+                showNotice(
+                  error.message ||
+                    'Unable to save your changes.',
+                );
+
+                return false;
+              }
+
+              if (
+                versionAtStart ===
+                saveVersionRef.current
+              ) {
+                dirtyRef.current =
+                  false;
+
+                setSaveState(
+                  'saved',
+                );
+
+                return true;
+              }
+            }
+
+            setSaveState(
+              'saved',
+            );
+
+            return true;
+          } catch (error) {
+            console.error(
+              'Unexpected save error:',
+              error,
+            );
+
+            setSaveState(
+              'error',
+            );
+
+            showNotice(
+              'Something went wrong while saving.',
+            );
+
+            return false;
+          }
+        })();
+
+      saveInFlightRef.current =
+        savePromise;
+
+      try {
+        return await savePromise;
+      } finally {
+        saveInFlightRef.current =
+          null;
+      }
+    },
+    [
+      ensureRow,
+      showNotice,
+      supabase,
+    ],
+  );
+
+  const executeCommand =
+    useCallback(
+      (
+        command: string,
+        value?: string,
+      ) => {
+        if (locked) return;
+
+        const editor =
+          editorRef.current;
+
+        if (!editor) return;
+
+        editor.focus();
+
+        try {
+          document.execCommand(
+            command,
+            false,
+            value,
+          );
+        } catch (error) {
+          console.error(
+            `Editor command failed: ${command}`,
+            error,
+          );
+        }
+
+        const html =
+          editor.innerHTML;
+
+        commitNote((current) => ({
+          ...current,
+          content: html,
+        }));
+      },
+      [commitNote, locked],
+    );
+
+  const applyHeading =
+    useCallback(
+      (value: string) => {
+        setHeading(value);
+
+        executeCommand(
+          'formatBlock',
+          value,
+        );
+      },
+      [executeCommand],
+    );
+
+  const applyFontSize =
+    useCallback(
+      (value: string) => {
+        setFontSize(value);
+
+        executeCommand(
+          'fontSize',
+          value,
+        );
+      },
+      [executeCommand],
+    );
+
+  const insertLink =
+    useCallback(() => {
+      if (locked) return;
+
+      const editor =
+        editorRef.current;
+
+      if (!editor) return;
+
+      editor.focus();
+
+      const selection =
+        window.getSelection();
+
+      const selectedText =
+        selection?.toString() || '';
+
+      const url =
+        window.prompt(
+          'Enter the URL',
+          'https://',
+        );
+
+      if (!url) return;
+
+      let safeUrl =
+        url.trim();
+
+      if (
+        !/^https?:\/\//i.test(
+          safeUrl,
+        ) &&
+        !/^mailto:/i.test(
+          safeUrl,
+        )
+      ) {
+        safeUrl =
+          `https://${safeUrl}`;
+      }
+
+      if (selectedText) {
+        document.execCommand(
+          'createLink',
+          false,
+          safeUrl,
+        );
+      } else {
+        const label =
+          window.prompt(
+            'Link text',
+            safeUrl,
+          );
+
+        if (!label) return;
+
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<a href="${safeUrl.replace(
+            /"/g,
+            '&quot;',
+          )}" target="_blank" rel="noopener noreferrer">${label}</a>`,
+        );
+      }
+
+      commitNote((current) => ({
+        ...current,
+        content:
+          editor.innerHTML,
+      }));
+    },
+    [commitNote, locked],
+  );
+
+  const insertChecklist =
+    useCallback(() => {
+      if (locked) return;
+
+      const editor =
+        editorRef.current;
+
+      if (!editor) return;
+
+      editor.focus();
+
+      document.execCommand(
+        'insertHTML',
+        false,
+        '<div data-enotes-checklist="true" class="enotes-checklist"><span contenteditable="false" class="enotes-checkbox">☐</span>&nbsp;</div>',
+      );
+
+      commitNote((current) => ({
+        ...current,
+        content:
+          editor.innerHTML,
+      }));
+    }, [commitNote, locked]);
+
+  const insertHorizontalRule =
+    useCallback(() => {
+      executeCommand(
+        'insertHorizontalRule',
+      );
+    }, [executeCommand]);
+
+  const changeTextColor =
+    useCallback(() => {
+      if (locked) return;
+
+      const color =
+        window.prompt(
+          'Enter a color',
+          '#E5798F',
+        );
+
+      if (!color) return;
+
+      executeCommand(
+        'foreColor',
+        color.trim(),
+      );
+    }, [executeCommand, locked]);
+
+  const changeHighlight =
+    useCallback(() => {
+      if (locked) return;
+
+      const color =
+        window.prompt(
+          'Enter highlight color',
+          '#FFF2A8',
+        );
+
+      if (!color) return;
+
+      executeCommand(
+        'hiliteColor',
+        color.trim(),
+      );
+    }, [executeCommand, locked]);
+
+  const toggleCode =
+    useCallback(() => {
+      if (locked) return;
+
+      const editor =
+        editorRef.current;
+
+      if (!editor) return;
+
+      editor.focus();
+
+      const selection =
+        window.getSelection();
+
+      if (
+        selection &&
+        selection.rangeCount > 0 &&
+        selection.toString()
+      ) {
+        const selected =
+          selection.toString();
+
+        document.execCommand(
+          'insertHTML',
+          false,
+          `<code>${selected
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')}</code>`,
+        );
+      } else {
+        document.execCommand(
+          'formatBlock',
+          false,
+          'pre',
+        );
+      }
+
+      commitNote((current) => ({
+        ...current,
+        content:
+          editor.innerHTML,
+      }));
+    }, [commitNote, locked]);
+
+  const undo = useCallback(() => {
+    const current =
+      noteRef.current;
+
+    if (
+      !current ||
+      undoStackRef.current
+        .length === 0
+    ) {
+      return;
+    }
+
+    const previous =
+      undoStackRef.current.pop();
+
+    if (!previous) return;
+
+    redoStackRef.current.push(
+      snapshotNote(current),
+    );
+
+    const next: EditorNote = {
+      ...current,
+      ...previous,
+    };
+
+    noteRef.current =
+      next;
+
+    setNote(next);
+
+    setUndoCount(
+      undoStackRef.current.length,
+    );
+
+    setRedoCount(
+      redoStackRef.current.length,
+    );
+
+    lastHistoryTimeRef.current =
+      Date.now();
+
+    markDirty();
+
+    requestAnimationFrame(() => {
+      if (
+        editorRef.current
+      ) {
+        editorRef.current.innerHTML =
+          next.content || '';
+
+        editorRef.current.focus();
+      }
+    });
+  }, [markDirty]);
+
+  const redo = useCallback(() => {
+    const current =
+      noteRef.current;
+
+    if (
+      !current ||
+      redoStackRef.current
+        .length === 0
+    ) {
+      return;
+    }
+
+    const nextSnapshot =
+      redoStackRef.current.pop();
+
+    if (!nextSnapshot) return;
+
+    undoStackRef.current.push(
+      snapshotNote(current),
+    );
+
+    const next: EditorNote = {
+      ...current,
+      ...nextSnapshot,
+    };
+
+    noteRef.current =
+      next;
+
+    setNote(next);
+
+    setUndoCount(
+      undoStackRef.current.length,
+    );
+
+    setRedoCount(
+      redoStackRef.current.length,
+    );
+
+    lastHistoryTimeRef.current =
+      Date.now();
+
+    markDirty();
+
+    requestAnimationFrame(() => {
+      if (
+        editorRef.current
+      ) {
+        editorRef.current.innerHTML =
+          next.content || '';
+
+        editorRef.current.focus();
+      }
+    });
+  }, [markDirty]);
+
+  const handleEditorInput =
+    useCallback(() => {
+      const editor =
+        editorRef.current;
+
+      if (!editor) return;
+
+      const html =
+        editor.innerHTML;
+
+      const plainText =
+        editor.textContent?.trim() ||
+        '';
+
+      const normalizedHtml =
+        plainText ||
+        editor.querySelector(
+          'img, hr, table',
+        )
+          ? html
+          : '';
+
+      commitNote((current) => ({
+        ...current,
+        content:
+          normalizedHtml,
+      }));
+    }, [commitNote]);
+
+  const handleEditorKeyDown =
+    useCallback(
+      (
+        event: React.KeyboardEvent<HTMLDivElement>,
+      ) => {
+        const modifier =
+          event.ctrlKey ||
+          event.metaKey;
+
+        const key =
+          event.key.toLowerCase();
+
+        if (
+          modifier &&
+          key === 'b'
+        ) {
+          event.preventDefault();
+          executeCommand('bold');
+          return;
+        }
+
+        if (
+          modifier &&
+          key === 'i'
+        ) {
+          event.preventDefault();
+          executeCommand('italic');
+          return;
+        }
+
+        if (
+          modifier &&
+          key === 'u'
+        ) {
+          event.preventDefault();
+          executeCommand('underline');
+          return;
+        }
+
+        if (
+          modifier &&
+          key === 's'
+        ) {
+          event.preventDefault();
+
+          if (
+            saveTimerRef.current
+          ) {
+            clearTimeout(
+              saveTimerRef.current,
+            );
+
+            saveTimerRef.current =
+              null;
+          }
+
+          void saveNow();
+          return;
+        }
+
+        if (
+          modifier &&
+          key === 'z' &&
+          !event.shiftKey
+        ) {
+          event.preventDefault();
+          undo();
+          return;
+        }
+
+        if (
+          modifier &&
+          (
+            key === 'y' ||
+            (
+              key === 'z' &&
+              event.shiftKey
+            )
+          )
+        ) {
+          event.preventDefault();
+          redo();
+          return;
+        }
+
+        if (
+          event.key === 'Tab'
+        ) {
+          event.preventDefault();
+
+          executeCommand(
+            'insertText',
+            '    ',
+          );
+        }
+      },
+      [
+        executeCommand,
+        redo,
+        saveNow,
+        undo,
+      ],
+    );
+
+  const toggleFlag =
+    useCallback(
+      (
+        field:
+          | 'is_pinned'
+          | 'is_favorite'
+          | 'is_archived',
+      ) => {
+        commitNote((current) => ({
+          ...current,
+          [field]:
+            !current[field],
+        }));
+      },
+      [commitNote],
+    );
+
+  const selectCategory =
+    useCallback(
+      (category: string) => {
+        const normalized =
+          normalizeCategory(
+            category,
+          ) || 'general';
+
+        commitNote((current) => ({
+          ...current,
+          category:
+            normalized,
+        }));
+
+        setShowCategoryMenu(
+          false,
+        );
+      },
+      [commitNote],
+    );
+
+  const addCategory =
+    useCallback(() => {
+      const category =
+        normalizeCategory(
+          newCategory,
+        );
+
+      if (!category) {
+        showNotice(
+          'Enter a category name.',
         );
 
         return;
       }
 
-      if (isNew) {
-        const now =
-          new Date().toISOString();
+      selectCategory(category);
 
-        const draft: EditorNote = {
-          id: 'new',
-          title: '',
-          content: '',
-          category: 'general',
-          pinned: false,
-          favorite: false,
-          archived: false,
-          created_at: now,
-          updated_at: now,
-        };
+      setNewCategory('');
+    }, [
+      newCategory,
+      selectCategory,
+      showNotice,
+    ]);
 
-        if (cancelled) {
+  const toggleLocalLock =
+    useCallback(() => {
+      const next =
+        !locked;
+
+      setLocked(next);
+
+      const id =
+        realNoteIdRef.current;
+
+      if (id) {
+        try {
+          if (next) {
+            window.localStorage.setItem(
+              `enotes:note-lock:${id}`,
+              '1',
+            );
+          } else {
+            window.localStorage.removeItem(
+              `enotes:note-lock:${id}`,
+            );
+          }
+        } catch {
+          // Ignore local storage errors.
+        }
+      }
+
+      showNotice(
+        next
+          ? 'Note locked on this device.'
+          : 'Note unlocked.',
+      );
+    }, [
+      locked,
+      showNotice,
+    ]);
+
+  const copyText =
+    useCallback(
+      async (
+        value: string,
+      ) => {
+        try {
+          if (
+            navigator.clipboard &&
+            window.isSecureContext
+          ) {
+            await navigator.clipboard.writeText(
+              value,
+            );
+
+            return true;
+          }
+
+          const textarea =
+            document.createElement(
+              'textarea',
+            );
+
+          textarea.value =
+            value;
+
+          textarea.style.position =
+            'fixed';
+
+          textarea.style.opacity =
+            '0';
+
+          document.body.appendChild(
+            textarea,
+          );
+
+          textarea.focus();
+          textarea.select();
+
+          const copied =
+            document.execCommand(
+              'copy',
+            );
+
+          textarea.remove();
+
+          return copied;
+        } catch {
+          return false;
+        }
+      },
+      [],
+    );
+
+  const onShare =
+    useCallback(async () => {
+      if (locked) {
+        showNotice(
+          'Unlock the note before sharing.',
+        );
+
+        return;
+      }
+
+      if (
+        saveTimerRef.current
+      ) {
+        clearTimeout(
+          saveTimerRef.current,
+        );
+
+        saveTimerRef.current =
+          null;
+      }
+
+      const saved =
+        await saveNow();
+
+      if (!saved) {
+        showNotice(
+          'Save failed. Please try again.',
+        );
+
+        return;
+      }
+
+      const id =
+        await ensureRow();
+
+      if (!id) {
+        showNotice(
+          'Unable to prepare the share link.',
+        );
+
+        return;
+      }
+
+      const latest =
+        noteRef.current;
+
+      const url =
+        `${window.location.origin}/notes/${id}`;
+
+      const title =
+        latest?.title?.trim() ||
+        'My note';
+
+      const text =
+        latest?.content
+          ? (() => {
+              const element =
+                document.createElement(
+                  'div',
+                );
+
+              element.innerHTML =
+                latest.content;
+
+              return (
+                element.textContent ||
+                title
+              ).slice(0, 500);
+            })()
+          : title;
+
+      try {
+        if (
+          navigator.share
+        ) {
+          await navigator.share({
+            title,
+            text,
+            url,
+          });
+
           return;
         }
+      } catch (error) {
+        if (
+          error instanceof
+            DOMException &&
+          error.name ===
+            'AbortError'
+        ) {
+          return;
+        }
+      }
+
+      const copied =
+        await copyText(url);
+
+      if (copied) {
+        showNotice(
+          'Note link copied.',
+        );
+      } else {
+        showNotice(
+          'Unable to copy the share link.',
+        );
+      }
+    }, [
+      copyText,
+      ensureRow,
+      locked,
+      saveNow,
+      showNotice,
+    ]);
+
+  const onDelete =
+    useCallback(async () => {
+      if (deleting) return;
+
+      const current =
+        noteRef.current;
+
+      if (!current) return;
+
+      const confirmed =
+        window.confirm(
+          'Delete this note permanently? This action cannot be undone.',
+        );
+
+      if (!confirmed) return;
+
+      setDeleting(true);
+
+      try {
+        if (dirtyRef.current) {
+          const saved =
+            await saveNow();
+
+          if (!saved) {
+            showNotice(
+              'The note could not be saved before deletion.',
+            );
+
+            return;
+          }
+        }
+
+        const id =
+          realNoteIdRef.current;
+
+        if (!id) {
+          router.replace('/notes');
+          return;
+        }
+
+        const { error } =
+          await supabase
+            .from('notes')
+            .delete()
+            .eq(
+              'id',
+              id,
+            );
+
+        if (error) {
+          console.error(
+            'Delete note error:',
+            error,
+          );
+
+          showNotice(
+            error.message ||
+              'Unable to delete the note.',
+          );
+
+          return;
+        }
+
+        try {
+          window.localStorage.removeItem(
+            `enotes:note-lock:${id}`,
+          );
+        } catch {
+          // Ignore storage errors.
+        }
+
+        router.replace('/notes');
+      } finally {
+        setDeleting(false);
+      }
+    }, [
+      deleting,
+      router,
+      saveNow,
+      showNotice,
+      supabase,
+    ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      if (isNew) {
+        const draft =
+          createEmptyNote();
 
         noteRef.current =
           draft;
 
         setNote(draft);
+
         setLoading(false);
 
+        return;
+      }
+
+      setLoading(true);
+
+      const {
+        data: {
+          user,
+        },
+      } =
+        await supabase.auth.getUser();
+
+      if (!user) {
+        router.replace('/signin');
         return;
       }
 
       const {
         data,
         error,
-      } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('id', routeId)
-        .eq('user_id', user.id)
-        .maybeSingle();
+      } =
+        await supabase
+          .from('notes')
+          .select('*')
+          .eq(
+            'id',
+            routeId,
+          )
+          .eq(
+            'user_id',
+            user.id,
+          )
+          .maybeSingle();
 
-      if (cancelled) {
+      if (cancelled) return;
+
+      if (error) {
+        console.error(
+          'Load note error:',
+          error,
+        );
+
+        showNotice(
+          'Unable to load this note.',
+        );
+
+        setLoading(false);
+
         return;
       }
 
-      if (error || !data) {
-        setNotFound(true);
-        setLoading(false);
+      if (!data) {
+        router.replace('/notes');
         return;
       }
 
@@ -619,23 +1647,41 @@ function NoteEditor() {
         loaded;
 
       setNote(loaded);
-      setLoading(false);
 
-      const lockKey =
-        getLockStorageKey(
-          loaded.id,
+      realNoteIdRef.current =
+        loaded.id;
+
+      dirtyRef.current =
+        false;
+
+      setSaveState('saved');
+
+      undoStackRef.current =
+        [];
+
+      redoStackRef.current =
+        [];
+
+      setUndoCount(0);
+      setRedoCount(0);
+
+      try {
+        const localLock =
+          window.localStorage.getItem(
+            `enotes:note-lock:${loaded.id}`,
+          ) === '1';
+
+        setLocked(
+          localLock,
         );
-
-      if (
-        readLocalStorage(
-          lockKey,
-        ) === '1'
-      ) {
-        setLocked(true);
+      } catch {
+        // Ignore storage errors.
       }
+
+      setLoading(false);
     }
 
-    void loadNote();
+    void load();
 
     return () => {
       cancelled = true;
@@ -644,803 +1690,76 @@ function NoteEditor() {
     isNew,
     routeId,
     router,
+    showNotice,
+    supabase,
   ]);
 
-  /* --------------------------------------------------
-     Resize title
-  -------------------------------------------------- */
-
-  const resizeTitle =
-    useCallback(() => {
-      const element =
-        titleRef.current;
-
-      if (!element) {
-        return;
-      }
-
-      element.style.height =
-        'auto';
-
-      element.style.height =
-        `${element.scrollHeight}px`;
-    }, []);
-
   useEffect(() => {
-    if (!loading && note) {
-      requestAnimationFrame(
-        resizeTitle,
-      );
+    const editor =
+      editorRef.current;
+
+    if (
+      !editor ||
+      !note
+    ) {
+      return;
     }
-  }, [
-    loading,
-    note?.title,
-    resizeTitle,
-  ]);
 
-  /* --------------------------------------------------
-     Notice
-  -------------------------------------------------- */
-
-  const showNotice =
-    useCallback(
-      (next: Notice) => {
-        if (noticeTimer.current) {
-          clearTimeout(
-            noticeTimer.current,
-          );
-        }
-
-        setNotice(next);
-
-        noticeTimer.current =
-          setTimeout(() => {
-            if (
-              mountedRef.current
-            ) {
-              setNotice(null);
-            }
-          }, 5000);
-      },
-      [],
-    );
-
-  /* --------------------------------------------------
-     Payload
-  -------------------------------------------------- */
-
-  const toPayload =
-    useCallback(
-      (current: EditorNote) => ({
-        title: current.title.slice(
-          0,
-          MAX_TITLE_LENGTH,
-        ),
-        content:
-          current.content,
-        category:
-          current.category.slice(
-            0,
-            MAX_CATEGORY_LENGTH,
-          ),
-        pinned:
-          Boolean(current.pinned),
-        favorite:
-          Boolean(current.favorite),
-        archived:
-          Boolean(current.archived),
-      }),
-      [],
-    );
-
-  /* --------------------------------------------------
-     Save row creation
-  -------------------------------------------------- */
-
-  const ensureRow =
-    useCallback(
-      async (): Promise<
-        string | null
-      > => {
-        if (
-          realNoteIdRef.current
-        ) {
-          return realNoteIdRef.current;
-        }
-
-        if (creatingRef.current) {
-          return creatingRef.current;
-        }
-
-        const current =
-          noteRef.current;
-
-        if (!current) {
-          return null;
-        }
-
-        if (
-          current.id !== 'new'
-        ) {
-          realNoteIdRef.current =
-            current.id;
-
-          return current.id;
-        }
-
-        const payload =
-          toPayload(current);
-
-        const creation =
-          (async () => {
-            const {
-              data: {
-                user,
-              },
-            } =
-              await supabase.auth.getUser();
-
-            if (!user) {
-              setSaveState(
-                'error',
-              );
-
-              showNotice({
-                type: 'error',
-                title:
-                  'Sign-in required',
-                message:
-                  'Your session has ended. Sign in again to save this note.',
-              });
-
-              return null;
-            }
-
-            const {
-              data,
-              error,
-            } =
-              await supabase
-                .from('notes')
-                .insert({
-                  ...payload,
-                  user_id:
-                    user.id,
-                })
-                .select(
-                  'id, created_at, updated_at',
-                )
-                .single();
-
-            if (
-              error ||
-              !data
-            ) {
-              setSaveState(
-                'error',
-              );
-
-              showNotice({
-                type: 'error',
-                title:
-                  'Could not create note',
-                message:
-                  error?.message ||
-                  'The note could not be created.',
-              });
-
-              return null;
-            }
-
-            const realId =
-              (
-                data as {
-                  id: string;
-                }
-              ).id;
-
-            /*
-             * Set this BEFORE changing React state.
-             * This prevents duplicate inserts.
-             */
-            realNoteIdRef.current =
-              realId;
-
-            const latest =
-              noteRef.current;
-
-            if (latest) {
-              const updated: EditorNote =
-                {
-                  ...latest,
-                  id: realId,
-                  created_at:
-                    (
-                      data as {
-                        created_at?: string;
-                      }
-                    ).created_at ||
-                    latest.created_at,
-                  updated_at:
-                    (
-                      data as {
-                        updated_at?: string;
-                      }
-                    ).updated_at ||
-                    latest.updated_at,
-                };
-
-              noteRef.current =
-                updated;
-
-              if (
-                mountedRef.current
-              ) {
-                setNote(
-                  updated,
-                );
-              }
-            }
-
-            if (
-              mountedRef.current
-            ) {
-              router.replace(
-                `/notes/${realId}`,
-              );
-            }
-
-            return realId;
-          })();
-
-        creatingRef.current =
-          creation;
-
-        void creation.finally(
-          () => {
-            if (
-              creatingRef.current ===
-              creation
-            ) {
-              creatingRef.current =
-                null;
-            }
-          },
-        );
-
-        return creation;
-      },
-      [
-        router,
-        showNotice,
-        toPayload,
-      ],
-    );
-
-  /* --------------------------------------------------
-     Save
-  -------------------------------------------------- */
-
-  const saveNow =
-    useCallback(
-      async (): Promise<void> => {
-        if (
-          saveInFlightRef.current
-        ) {
-          return saveInFlightRef.current;
-        }
-
-        const worker =
-          (async () => {
-            while (
-              dirtyRef.current
-            ) {
-              const current =
-                noteRef.current;
-
-              if (!current) {
-                return;
-              }
-
-              const version =
-                saveVersionRef.current;
-
-              if (
-                mountedRef.current
-              ) {
-                setSaveState(
-                  'saving',
-                );
-              }
-
-              let id =
-                realNoteIdRef.current;
-
-              if (!id) {
-                if (
-                  current.id ===
-                  'new'
-                ) {
-                  id =
-                    await ensureRow();
-                } else {
-                  id =
-                    current.id;
-
-                  realNoteIdRef.current =
-                    id;
-                }
-              }
-
-              if (!id) {
-                return;
-              }
-
-              const latest =
-                noteRef.current;
-
-              if (!latest) {
-                return;
-              }
-
-              const updatedAt =
-                new Date().toISOString();
-
-              const {
-                error,
-              } =
-                await supabase
-                  .from('notes')
-                  .update({
-                    ...toPayload(
-                      latest,
-                    ),
-                    updated_at:
-                      updatedAt,
-                  })
-                  .eq(
-                    'id',
-                    id,
-                  );
-
-              if (error) {
-                if (
-                  mountedRef.current
-                ) {
-                  setSaveState(
-                    'error',
-                  );
-
-                  showNotice({
-                    type: 'error',
-                    title:
-                      'Changes not saved',
-                    message:
-                      error.message ||
-                      'Please try again.',
-                  });
-                }
-
-                return;
-              }
-
-              const afterSave =
-                noteRef.current;
-
-              if (
-                afterSave &&
-                afterSave.id ===
-                  id
-              ) {
-                const refreshed =
-                  {
-                    ...afterSave,
-                    updated_at:
-                      updatedAt,
-                  };
-
-                noteRef.current =
-                  refreshed;
-
-                if (
-                  mountedRef.current
-                ) {
-                  setNote(
-                    refreshed,
-                  );
-                }
-              }
-
-              /*
-               * If the user typed while the request was
-               * running, dirtyRef stays true and the loop
-               * immediately saves the newest version.
-               */
-              if (
-                saveVersionRef.current ===
-                version
-              ) {
-                dirtyRef.current =
-                  false;
-
-                if (
-                  mountedRef.current
-                ) {
-                  setSaveState(
-                    'saved',
-                  );
-                }
-
-                return;
-              }
-            }
-          })()
-            .catch(
-              (
-                error: unknown,
-              ) => {
-                if (
-                  mountedRef.current
-                ) {
-                  setSaveState(
-                    'error',
-                  );
-
-                  showNotice({
-                    type: 'error',
-                    title:
-                      'Could not save',
-                    message:
-                      error instanceof
-                      Error
-                        ? error.message
-                        : 'An unexpected error occurred.',
-                  });
-                }
-              },
-            )
-            .finally(() => {
-              saveInFlightRef.current =
-                null;
-            });
-
-        saveInFlightRef.current =
-          worker;
-
-        return worker;
-      },
-      [
-        ensureRow,
-        showNotice,
-        toPayload,
-      ],
-    );
-
-  /* --------------------------------------------------
-     Schedule save
-  -------------------------------------------------- */
-
-  const scheduleSave =
-    useCallback(() => {
-      if (saveTimer.current) {
-        clearTimeout(
-          saveTimer.current,
-        );
-      }
-
-      saveTimer.current =
-        setTimeout(() => {
-          saveTimer.current =
-            null;
-
-          void saveNow();
-        }, AUTOSAVE_DELAY);
-    }, [saveNow]);
-
-  /* --------------------------------------------------
-     Dirty
-  -------------------------------------------------- */
-
-  const markDirty =
-    useCallback(() => {
-      saveVersionRef.current +=
-        1;
-
-      dirtyRef.current =
-        true;
-
-      setSaveState(
-        'saving',
-      );
-
-      scheduleSave();
-    }, [scheduleSave]);
-
-  /* --------------------------------------------------
-     History
-  -------------------------------------------------- */
-
-  const pushHistory =
-    useCallback(
-      (previous: EditorNote) => {
-        const snapshot =
-          createSnapshot(
-            previous,
-          );
-
-        if (!snapshot) {
-          return;
-        }
-
-        const last =
-          undoStackRef.current[
-            undoStackRef.current
-              .length - 1
-          ] || null;
-
-        if (
-          snapshotsEqual(
-            last,
-            snapshot,
-          )
-        ) {
-          return;
-        }
-
-        undoStackRef.current.push(
-          snapshot,
-        );
-
-        if (
-          undoStackRef.current
-            .length > MAX_HISTORY
-        ) {
-          undoStackRef.current.shift();
-        }
-
-        redoStackRef.current =
-          [];
-
-        setHistoryVersion(
-          (value) =>
-            value + 1,
-        );
-      },
-      [],
-    );
-
-  /* --------------------------------------------------
-     Update note
-  -------------------------------------------------- */
-
-  const updateNote =
-    useCallback(
-      (
-        changes:
-          | Partial<EditorNote>
-          | ((
-              current: EditorNote,
-            ) => EditorNote),
-      ) => {
-        const current =
-          noteRef.current;
-
-        if (!current) {
-          return;
-        }
-
-        const next =
-          typeof changes ===
-          'function'
-            ? changes(current)
-            : {
-                ...current,
-                ...changes,
-              };
-
-        if (
-          current.title ===
-            next.title &&
-          current.content ===
-            next.content &&
-          current.category ===
-            next.category &&
-          current.pinned ===
-            next.pinned &&
-          current.favorite ===
-            next.favorite &&
-          current.archived ===
-            next.archived
-        ) {
-          return;
-        }
-
-        pushHistory(current);
-
-        noteRef.current =
-          next;
-
-        setNote(next);
-
-        markDirty();
-      },
-      [
-        markDirty,
-        pushHistory,
-      ],
-    );
-
-  /* --------------------------------------------------
-     Undo / Redo
-  -------------------------------------------------- */
-
-  const restoreSnapshot =
-    useCallback(
-      (snapshot: HistorySnapshot) => {
-        const current =
-          noteRef.current;
-
-        if (!current) {
-          return;
-        }
-
-        const next: EditorNote =
-          {
-            ...current,
-            title:
-              snapshot.title,
-            content:
-              snapshot.content,
-            category:
-              snapshot.category,
-          };
-
-        noteRef.current =
-          next;
-
-        setNote(next);
-
-        saveVersionRef.current +=
-          1;
-
-        dirtyRef.current =
-          true;
-
-        setSaveState(
-          'saving',
-        );
-
-        if (saveTimer.current) {
-          clearTimeout(
-            saveTimer.current,
-          );
-        }
-
-        saveTimer.current =
-          setTimeout(() => {
-            saveTimer.current =
-              null;
-
-            void saveNow();
-          }, AUTOSAVE_DELAY);
-
-        requestAnimationFrame(() => {
-          resizeTitle();
-
-          bodyRef.current?.focus();
-        });
-      },
-      [
-        resizeTitle,
-        saveNow,
-      ],
-    );
-
-  const undo =
-    useCallback(() => {
-      const current =
-        noteRef.current;
-
-      if (!current) {
-        return;
-      }
-
-      const previous =
-        undoStackRef.current.pop();
-
-      if (!previous) {
-        return;
-      }
-
-      const currentSnapshot =
-        createSnapshot(
-          current,
-        );
-
-      if (currentSnapshot) {
-        redoStackRef.current.push(
-          currentSnapshot,
-        );
-      }
-
-      restoreSnapshot(
-        previous,
-      );
-
-      setHistoryVersion(
-        (value) =>
-          value + 1,
-      );
-    }, [restoreSnapshot]);
-
-  const redo =
-    useCallback(() => {
-      const current =
-        noteRef.current;
-
-      if (!current) {
-        return;
-      }
-
-      const next =
-        redoStackRef.current.pop();
-
-      if (!next) {
-        return;
-      }
-
-      const currentSnapshot =
-        createSnapshot(
-          current,
-        );
-
-      if (currentSnapshot) {
-        undoStackRef.current.push(
-          currentSnapshot,
-        );
-      }
-
-      restoreSnapshot(next);
-
-      setHistoryVersion(
-        (value) =>
-          value + 1,
-      );
-    }, [restoreSnapshot]);
-
-  /* --------------------------------------------------
-     Flush saves
-  -------------------------------------------------- */
+    const currentHtml =
+      editor.innerHTML;
+
+    if (
+      currentHtml !==
+      (note.content || '')
+    ) {
+      editor.innerHTML =
+        note.content || '';
+    }
+  }, [note?.id]);
 
   useEffect(() => {
-    function flush() {
-      if (saveTimer.current) {
+    return () => {
+      if (
+        saveTimerRef.current
+      ) {
         clearTimeout(
-          saveTimer.current,
+          saveTimerRef.current,
         );
-
-        saveTimer.current =
-          null;
       }
 
-      if (dirtyRef.current) {
+      if (
+        dirtyRef.current
+      ) {
         void saveNow();
       }
-    }
+    };
+  }, [saveNow]);
 
-    function handleVisibility() {
-      if (
-        document.visibilityState ===
-        'hidden'
-      ) {
-        flush();
-      }
-    }
+  useEffect(() => {
+    const handleVisibility =
+      () => {
+        if (
+          document.visibilityState ===
+          'hidden'
+        ) {
+          if (
+            saveTimerRef.current
+          ) {
+            clearTimeout(
+              saveTimerRef.current,
+            );
 
-    window.addEventListener(
-      'pagehide',
-      flush,
-    );
+            saveTimerRef.current =
+              null;
+          }
+
+          if (
+            dirtyRef.current
+          ) {
+            void saveNow();
+          }
+        }
+      };
 
     document.addEventListener(
       'visibilitychange',
@@ -1448,11 +1767,6 @@ function NoteEditor() {
     );
 
     return () => {
-      window.removeEventListener(
-        'pagehide',
-        flush,
-      );
-
       document.removeEventListener(
         'visibilitychange',
         handleVisibility,
@@ -1460,1505 +1774,1107 @@ function NoteEditor() {
     };
   }, [saveNow]);
 
-  /* --------------------------------------------------
-     Keyboard shortcuts
-  -------------------------------------------------- */
+  useEffect(() => {
+    const textarea =
+      titleRef.current;
+
+    if (!textarea) return;
+
+    textarea.style.height =
+      '0px';
+
+    textarea.style.height =
+      `${Math.min(
+        Math.max(
+          textarea.scrollHeight,
+          56,
+        ),
+        180,
+      )}px`;
+  }, [note?.title]);
 
   useEffect(() => {
-    function handleKeyDown(
-      event: KeyboardEvent,
-    ) {
-      const modifier =
-        event.ctrlKey ||
-        event.metaKey;
+    const handleChecklistClick =
+      (event: MouseEvent) => {
+        const target =
+          event.target as HTMLElement;
 
-      if (
-        event.key === 'Escape'
-      ) {
-        if (deletePrompt) {
-          setDeletePrompt(
-            false,
-          );
+        if (
+          !target.classList.contains(
+            'enotes-checkbox',
+          )
+        ) {
           return;
         }
 
-        if (unlockPrompt) {
-          setUnlockPrompt(
-            false,
-          );
-          return;
-        }
-      }
-
-      if (!modifier) {
-        return;
-      }
-
-      const key =
-        event.key.toLowerCase();
-
-      if (key === 'z') {
         event.preventDefault();
 
-        if (event.shiftKey) {
-          redo();
-        } else {
-          undo();
-        }
+        const current =
+          target.textContent ===
+          '☑';
 
-        return;
-      }
+        target.textContent =
+          current ? '☐' : '☑';
 
-      if (key === 'y') {
-        event.preventDefault();
-        redo();
-      }
-    }
+        target.classList.toggle(
+          'enotes-checkbox-checked',
+          !current,
+        );
 
-    window.addEventListener(
-      'keydown',
-      handleKeyDown,
+        handleEditorInput();
+      };
+
+    const editor =
+      editorRef.current;
+
+    if (!editor) return;
+
+    editor.addEventListener(
+      'click',
+      handleChecklistClick,
     );
 
     return () => {
-      window.removeEventListener(
-        'keydown',
-        handleKeyDown,
+      editor.removeEventListener(
+        'click',
+        handleChecklistClick,
       );
     };
   }, [
-    deletePrompt,
-    redo,
-    undo,
-    unlockPrompt,
+    handleEditorInput,
   ]);
 
-  /* --------------------------------------------------
-     Flag actions
-  -------------------------------------------------- */
-
-  const toggleFlag =
-    useCallback(
-      (
-        flag:
-          | 'pinned'
-          | 'favorite'
-          | 'archived',
-      ) => {
-        updateNote(
-          (current) => ({
-            ...current,
-            [flag]:
-              !current[flag],
-          }),
-        );
-      },
-      [updateNote],
-    );
-
-  /* --------------------------------------------------
-     Ensure real ID
-  -------------------------------------------------- */
-
-  const ensureRealId =
-    useCallback(async () => {
-      if (
-        realNoteIdRef.current
-      ) {
-        return realNoteIdRef.current;
-      }
-
-      const current =
-        noteRef.current;
-
-      if (!current) {
-        return null;
-      }
-
-      if (
-        current.id !== 'new'
-      ) {
-        realNoteIdRef.current =
-          current.id;
-
-        return current.id;
-      }
-
-      return ensureRow();
-    }, [ensureRow]);
-
-  /* --------------------------------------------------
-     Delete
-  -------------------------------------------------- */
-
-  const onDelete =
-    useCallback(async () => {
-      if (deleting) {
-        return;
-      }
-
-      setDeleting(true);
-
-      try {
-        if (saveTimer.current) {
-          clearTimeout(
-            saveTimer.current,
-          );
-
-          saveTimer.current =
-            null;
-        }
-
-        if (dirtyRef.current) {
-          await saveNow();
-        }
-
-        const id =
-          realNoteIdRef.current ||
-          noteRef.current?.id;
-
-        if (!id || id === 'new') {
-          dirtyRef.current =
-            false;
-
-          router.push('/notes');
-          return;
-        }
-
-        const { error } =
-          await supabase
-            .from('notes')
-            .delete()
-            .eq('id', id);
-
-        if (error) {
-          showNotice({
-            type: 'error',
-            title:
-              'Could not delete note',
-            message:
-              error.message ||
-              'Please try again.',
-          });
-
-          return;
-        }
-
-        removeLocalStorage(
-          getLockStorageKey(
-            id,
-          ),
-        );
-
-        dirtyRef.current =
-          false;
-
-        router.push('/notes');
-      } finally {
-        if (
-          mountedRef.current
-        ) {
-          setDeleting(false);
-        }
-      }
-    }, [
-      deleting,
-      router,
-      saveNow,
-      showNotice,
-    ]);
-
-  /* --------------------------------------------------
-     Share
-  -------------------------------------------------- */
-
-  const onShare =
-    useCallback(async () => {
-      const current =
-        noteRef.current;
-
-      if (!current) {
-        return;
-      }
-
-      if (dirtyRef.current) {
-        await saveNow();
-      }
-
-      const id =
-        await ensureRealId();
-
-      if (!id) {
-        showNotice({
-          type: 'error',
-          title:
-            'Could not share note',
-          message:
-            'The note needs to be saved first.',
-        });
-
-        return;
-      }
-
-      const url =
-        `${window.location.origin}/notes/${id}`;
-
-      const shareTitle =
-        current.title.trim() ||
-        'My note';
-
-      try {
-        if (
-          typeof navigator.share ===
-          'function'
-        ) {
-          await navigator.share({
-            title:
-              shareTitle,
-            text:
-              current.content
-                .trim()
-                .slice(0, 120),
-            url,
-          });
-
-          return;
-        }
-
-        if (
-          navigator.clipboard?.writeText
-        ) {
-          await navigator.clipboard.writeText(
-            url,
-          );
-        } else {
-          const input =
-            document.createElement(
-              'textarea',
-            );
-
-          input.value = url;
-          input.style.position =
-            'fixed';
-          input.style.left =
-            '-9999px';
-
-          document.body.appendChild(
-            input,
-          );
-
-          input.focus();
-          input.select();
-
-          document.execCommand(
-            'copy',
-          );
-
-          input.remove();
-        }
-
-        setCopied(true);
-
-        if (
-          copiedTimer.current
-        ) {
-          clearTimeout(
-            copiedTimer.current,
-          );
-        }
-
-        copiedTimer.current =
-          setTimeout(() => {
-            if (
-              mountedRef.current
-            ) {
-              setCopied(false);
-            }
-          }, 1800);
-      } catch {
-        /*
-         * Native share cancellation is intentionally
-         * silent.
-         */
-      }
-    }, [
-      ensureRealId,
-      saveNow,
-      showNotice,
-    ]);
-
-  /* --------------------------------------------------
-     Lock
-  -------------------------------------------------- */
-
-  const lockNote =
-    useCallback(() => {
-      const current =
-        noteRef.current;
-
-      if (!current) {
-        return;
-      }
-
-      const id =
-        realNoteIdRef.current ||
-        (current.id !== 'new'
-          ? current.id
-          : null);
-
-      setLocked(true);
-
-      if (id) {
-        writeLocalStorage(
-          getLockStorageKey(
-            id,
-          ),
-          '1',
-        );
-      }
-    }, []);
-
-  const unlockNote =
-    useCallback(() => {
-      const current =
-        noteRef.current;
-
-      const id =
-        realNoteIdRef.current ||
-        (current &&
-        current.id !== 'new'
-          ? current.id
-          : null);
-
-      setLocked(false);
-      setUnlockPrompt(false);
-
-      if (id) {
-        removeLocalStorage(
-          getLockStorageKey(
-            id,
-          ),
-        );
-      }
-    }, []);
-
-  /* --------------------------------------------------
-     Formatting
-  -------------------------------------------------- */
-
-  const applyFormat =
-    useCallback(
-      (kind: FormatKind) => {
-        const textarea =
-          bodyRef.current;
-
-        const current =
-          noteRef.current;
-
-        if (
-          !textarea ||
-          !current
-        ) {
-          return;
-        }
-
-        const {
-          selectionStart,
-          selectionEnd,
-          value,
-        } = textarea;
-
-        let result;
-
-        if (
-          kind === 'bold'
-        ) {
-          result =
-            wrapSelection(
-              value,
-              selectionStart,
-              selectionEnd,
-              '**',
-            );
-        } else if (
-          kind === 'italic'
-        ) {
-          result =
-            wrapSelection(
-              value,
-              selectionStart,
-              selectionEnd,
-              '*',
-            );
-        } else if (
-          kind === 'underline'
-        ) {
-          result =
-            wrapSelection(
-              value,
-              selectionStart,
-              selectionEnd,
-              '__',
-            );
-        } else if (
-          kind === 'ol'
-        ) {
-          result =
-            toggleBlockPrefix(
-              value,
-              selectionStart,
-              selectionEnd,
-              '1. ',
-            );
-        } else if (
-          kind === 'ul'
-        ) {
-          result =
-            toggleBlockPrefix(
-              value,
-              selectionStart,
-              selectionEnd,
-              '- ',
-            );
-        } else {
-          result =
-            toggleBlockPrefix(
-              value,
-              selectionStart,
-              selectionEnd,
-              '[ ] ',
-            );
-        }
-
-        pushHistory(current);
-
-        const next: EditorNote =
-          {
-            ...current,
-            content:
-              result.text,
-          };
-
-        noteRef.current =
-          next;
-
-        setNote(next);
-
-        markDirty();
-
-        requestAnimationFrame(
-          () => {
-            textarea.focus();
-
-            textarea.setSelectionRange(
-              result.selectionStart,
-              result.selectionEnd,
-            );
-          },
-        );
-      },
-      [
-        markDirty,
-        pushHistory,
-      ],
-    );
-
-  /* --------------------------------------------------
-     Categories
-  -------------------------------------------------- */
-
   const categories =
-    useMemo(
-      () =>
-        Array.from(
-          new Set([
-            ...CATEGORIES,
-            note?.category || '',
-          ]),
-        ).filter(Boolean),
-      [note?.category],
-    );
+    useMemo(() => {
+      const values = [
+        ...CATEGORIES,
+        note?.category || '',
+      ];
 
-  const commitCategory =
-    useCallback(() => {
-      const value =
-        normalizeCategory(
-          newCategory,
-        );
-
-      if (!value) {
-        setShowNewCategory(
-          false,
-        );
-
-        setNewCategory('');
-
-        return;
-      }
-
-      updateNote({
-        category: value,
-      });
-
-      setShowNewCategory(
-        false,
+      return Array.from(
+        new Set(
+          values
+            .map(
+              normalizeCategory,
+            )
+            .filter(Boolean),
+        ),
       );
-
-      setNewCategory('');
-    }, [
-      newCategory,
-      updateNote,
-    ]);
-
-  /* --------------------------------------------------
-     Derived values
-  -------------------------------------------------- */
+    }, [note?.category]);
 
   const wordCount =
-    note?.content.trim()
-      ? note.content
-          .trim()
-          .split(/\s+/)
-          .filter(Boolean)
-          .length
+    typeof document !== 'undefined' &&
+    note
+      ? countWords(
+          note.content || '',
+        )
       : 0;
 
   const characterCount =
-    note?.content.length || 0;
+    typeof document !== 'undefined' &&
+    note
+      ? countCharacters(
+          note.content || '',
+        )
+      : 0;
 
-  const canUndo =
-    undoStackRef.current.length >
-    0;
-
-  const canRedo =
-    redoStackRef.current.length >
-    0;
-
-  /*
-   * Force toolbar rerender when history changes.
-   */
-  void historyVersion;
-
-  /* --------------------------------------------------
-     Loading
-  -------------------------------------------------- */
-
-  if (loading) {
+  if (
+    loading ||
+    !note
+  ) {
     return (
-      <main className="flex min-h-[100dvh] items-center justify-center bg-[#FFF7F8]">
-        <div className="flex items-center gap-2 text-sm text-[#8B8B8B]">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          Loading note…
+      <main className="min-h-screen bg-[#FFF7F8] px-4 py-8">
+        <div className="mx-auto max-w-5xl">
+          <div className="h-6 w-28 animate-pulse rounded bg-black/5" />
+
+          <div className="mt-8 rounded-3xl border border-black/5 bg-white/75 p-6 shadow-sm">
+            <div className="h-10 w-2/3 animate-pulse rounded bg-black/5" />
+
+            <div className="mt-6 h-80 animate-pulse rounded-2xl bg-black/5" />
+          </div>
         </div>
       </main>
     );
   }
-
-  /* --------------------------------------------------
-     Not found
-  -------------------------------------------------- */
-
-  if (notFound) {
-    return (
-      <main className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#FFF7F8] px-4 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white shadow-sm">
-          <Trash2 className="h-6 w-6 text-[#9B9B9B]" />
-        </div>
-
-        <p className="mt-4 text-base font-bold">
-          Note not found
-        </p>
-
-        <p className="mt-1 max-w-sm text-sm leading-relaxed text-[#6B6B6B]">
-          It may have been deleted,
-          moved, or you may no longer
-          have permission to access it.
-        </p>
-
-        <Link
-          href="/notes"
-          className="mt-5 rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-[#FFB6C1] transition hover:opacity-90"
-        >
-          Back to notes
-        </Link>
-      </main>
-    );
-  }
-
-  if (!note) {
-    return null;
-  }
-
-  const saveLabel =
-    saveState === 'saving'
-      ? 'Saving…'
-      : saveState === 'saved'
-        ? 'Saved'
-        : saveState === 'error'
-          ? 'Not saved'
-          : '';
-
-  /* --------------------------------------------------
-     UI
-  -------------------------------------------------- */
 
   return (
-    <main className="min-h-[100dvh] bg-[#FFF7F8] text-[#111111]">
-      <header className="sticky top-0 z-30 border-b border-[#E8E2E4]/70 bg-[#FFF7F8]/95 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-2 py-2 sm:px-4">
-          <button
-            type="button"
-            onClick={() =>
-              router.push('/notes')
-            }
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5 active:scale-95"
-            aria-label="Back to notes"
-            title="Back"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
+    <main className="min-h-screen bg-[#FFF7F8] text-black">
+      <div className="mx-auto w-full max-w-7xl px-2 pb-8 pt-2 sm:px-4 sm:pt-4 lg:px-7">
+        <header className="sticky top-0 z-40 mb-3 rounded-2xl border border-black/5 bg-[#FFF7F8]/90 px-2 py-2 backdrop-blur-xl sm:px-3">
+          <div className="flex min-h-12 items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1">
+              <Link
+                href="/notes"
+                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-black/65 transition hover:bg-black/5 hover:text-black"
+                aria-label="Back to notes"
+              >
+                <svg
+                  width="19"
+                  height="19"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m15 18-6-6 6-6" />
+                </svg>
+              </Link>
 
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() =>
-                toggleFlag(
-                  'pinned',
-                )
-              }
-              aria-pressed={
-                note.pinned
-              }
-              aria-label={
-                note.pinned
-                  ? 'Unpin note'
-                  : 'Pin note'
-              }
-              title={
-                note.pinned
-                  ? 'Unpin'
-                  : 'Pin'
-              }
-              className={`flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95 ${
-                note.pinned
-                  ? 'bg-[#FFF0F3] text-[#E5798F]'
-                  : 'hover:bg-black/5'
-              }`}
-            >
-              <Pin
-                className={`h-5 w-5 ${
-                  note.pinned
-                    ? 'fill-current'
-                    : ''
-                }`}
-              />
-            </button>
+              <div className="hidden min-w-0 sm:block">
+                <div className="flex items-center gap-2">
+                  <FileText
+                    size={17}
+                    className="text-[#E5798F]"
+                  />
 
-            <button
-              type="button"
-              onClick={() =>
-                toggleFlag(
-                  'favorite',
-                )
-              }
-              aria-pressed={
-                note.favorite
-              }
-              aria-label={
-                note.favorite
-                  ? 'Unfavorite note'
-                  : 'Favorite note'
-              }
-              title={
-                note.favorite
-                  ? 'Unfavorite'
-                  : 'Favorite'
-              }
-              className={`flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95 ${
-                note.favorite
-                  ? 'bg-[#FFF0F3] text-[#E5798F]'
-                  : 'hover:bg-black/5'
-              }`}
-            >
-              <Heart
-                className={`h-5 w-5 ${
-                  note.favorite
-                    ? 'fill-current'
-                    : ''
-                }`}
-              />
-            </button>
+                  <span className="truncate text-sm font-semibold">
+                    {note.title.trim() ||
+                      'Untitled note'}
+                  </span>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (locked) {
-                  setUnlockPrompt(
-                    true,
-                  );
-                } else {
-                  lockNote();
-                }
-              }}
-              aria-pressed={locked}
-              aria-label={
-                locked
-                  ? 'Unlock note'
-                  : 'Lock note'
-              }
-              title={
-                locked
-                  ? 'Unlock'
-                  : 'Lock'
-              }
-              className={`flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95 ${
-                locked
-                  ? 'bg-[#FFF0F3] text-[#E5798F]'
-                  : 'hover:bg-black/5'
-              }`}
-            >
-              <Lock className="h-5 w-5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                void onShare()
-              }
-              aria-label="Share note"
-              title="Share"
-              className="flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-black/5 active:scale-95"
-            >
-              <Share2 className="h-5 w-5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                toggleFlag(
-                  'archived',
-                )
-              }
-              aria-pressed={
-                note.archived
-              }
-              aria-label={
-                note.archived
-                  ? 'Restore note'
-                  : 'Archive note'
-              }
-              title={
-                note.archived
-                  ? 'Restore'
-                  : 'Archive'
-              }
-              className={`flex h-11 w-11 items-center justify-center rounded-full transition active:scale-95 ${
-                note.archived
-                  ? 'bg-[#FFF0F3] text-[#E5798F]'
-                  : 'hover:bg-black/5'
-              }`}
-            >
-              {note.archived ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Check className="h-5 w-5 rotate-90" />
-              )}
-            </button>
-          </div>
-        </div>
-      </header>
-
-      {locked && (
-        <div className="mx-auto max-w-2xl px-4 pt-8">
-          <div className="rounded-3xl border border-[#E8E2E4] bg-white p-7 text-center shadow-sm">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#FFF0F3] text-[#E5798F]">
-              <Lock className="h-6 w-6" />
+                <div className="mt-0.5 text-[11px] text-black/40">
+                  {saveState ===
+                  'saving'
+                    ? 'Saving changes…'
+                    : saveState ===
+                        'error'
+                      ? 'Save failed'
+                      : `Saved ${formatTimestamp(note.updated_at)}`}
+                </div>
+              </div>
             </div>
 
-            <p className="mt-4 text-base font-bold">
-              This note is locked
-            </p>
-
-            <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-[#6B6B6B]">
-              The editor is hidden on
-              this device. This local
-              lock does not encrypt the
-              database record.
-            </p>
-
-            <button
-              type="button"
-              onClick={() =>
-                setUnlockPrompt(
-                  true,
-                )
-              }
-              className="mt-5 rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-[#FFB6C1] transition hover:opacity-90 active:scale-[0.98]"
-            >
-              Unlock
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div
-        className={`mx-auto max-w-2xl px-4 pb-36 pt-4 sm:px-6 ${
-          locked
-            ? 'pointer-events-none select-none blur-[7px] opacity-60'
-            : ''
-        }`}
-        aria-hidden={
-          locked
-        }
-      >
-        <textarea
-          ref={titleRef}
-          value={note.title}
-          maxLength={
-            MAX_TITLE_LENGTH
-          }
-          rows={1}
-          placeholder="title"
-          aria-label="Note title"
-          onChange={(event) => {
-            const value =
-              event.target.value
-                .replace(
-                  /\n/g,
-                  '',
-                )
-                .slice(
-                  0,
-                  MAX_TITLE_LENGTH,
-                );
-
-            updateNote({
-              title: value,
-            });
-
-            requestAnimationFrame(
-              resizeTitle,
-            );
-          }}
-          onKeyDown={(event) => {
-            if (
-              event.key ===
-              'Enter'
-            ) {
-              event.preventDefault();
-              bodyRef.current?.focus();
-            }
-          }}
-          className="w-full resize-none overflow-hidden bg-transparent text-4xl font-extrabold tracking-tight placeholder:text-[#C9C0C4] focus:outline-none sm:text-5xl"
-        />
-
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#6B6B6B] sm:text-sm">
-          <span>
-            {formatTimestamp(
-              note.updated_at,
-            )}
-          </span>
-
-          {saveLabel && (
-            <span
-              className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                saveState ===
-                'error'
-                  ? 'bg-red-50 text-red-600'
-                  : saveState ===
-                      'saving'
-                    ? 'bg-amber-50 text-amber-700'
-                    : 'bg-[#FFF0F3] text-[#E5798F]'
-              }`}
-            >
-              {saveState ===
-                'saving' && (
-                <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
-              )}
-
-              {saveLabel}
-            </span>
-          )}
-        </div>
-
-        <hr className="mt-3 border-[#E8E2E4]" />
-
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          {categories.map(
-            (category) => (
-              <button
-                key={category}
-                type="button"
-                onClick={() =>
-                  updateNote({
-                    category,
-                  })
-                }
-                aria-pressed={
-                  note.category ===
-                  category
-                }
-                className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium capitalize transition active:scale-[0.98] ${
-                  note.category ===
-                  category
-                    ? 'bg-[#FFF0F3] text-[#E5798F] ring-1 ring-[#FFD2DE]'
-                    : 'border border-[#E8E2E4] bg-white text-[#6B6B6B] hover:bg-gray-50'
-                }`}
+            <div className="flex items-center gap-1">
+              <div
+                className={[
+                  'hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium sm:flex',
+                  saveState === 'error'
+                    ? 'bg-red-50 text-red-600'
+                    : saveState === 'saving'
+                      ? 'bg-amber-50 text-amber-700'
+                      : 'bg-emerald-50 text-emerald-700',
+                ].join(' ')}
               >
-                {note.category ===
-                  category && (
-                  <span className="h-2 w-2 rounded-full bg-[#E5798F]" />
+                {saveState ===
+                'saved' ? (
+                  <Check size={13} />
+                ) : (
+                  <Save size={13} />
                 )}
 
-                {category}
-              </button>
-            ),
-          )}
-
-          {showNewCategory ? (
-            <div className="flex items-center gap-1">
-              <input
-                autoFocus
-                value={newCategory}
-                maxLength={
-                  MAX_CATEGORY_LENGTH
-                }
-                placeholder="category…"
-                aria-label="New category"
-                onChange={(event) =>
-                  setNewCategory(
-                    event.target.value
-                      .toLowerCase()
-                      .replace(
-                        /[^a-z0-9 -]/g,
-                        '',
-                      )
-                      .slice(
-                        0,
-                        MAX_CATEGORY_LENGTH,
-                      ),
-                  )
-                }
-                onKeyDown={(event) => {
-                  if (
-                    event.key ===
-                    'Enter'
-                  ) {
-                    event.preventDefault();
-                    commitCategory();
-                  }
-
-                  if (
-                    event.key ===
-                    'Escape'
-                  ) {
-                    event.preventDefault();
-                    setShowNewCategory(
-                      false,
-                    );
-                    setNewCategory(
-                      '',
-                    );
-                  }
-                }}
-                className="w-32 rounded-full border border-[#E5798F] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD2DE]"
-              />
+                {saveState ===
+                'saving'
+                  ? 'Saving'
+                  : saveState ===
+                      'error'
+                    ? 'Error'
+                    : 'Saved'}
+              </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  setShowNewCategory(
-                    false,
-                  );
-                  setNewCategory(
-                    '',
-                  );
-                }}
-                className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-gray-100"
-                aria-label="Cancel category"
+                onClick={() =>
+                  toggleFlag(
+                    'is_pinned',
+                  )
+                }
+                className={[
+                  'hidden h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition sm:flex',
+                  note.is_pinned
+                    ? 'bg-amber-50 text-amber-700'
+                    : 'text-black/60 hover:bg-black/5',
+                ].join(' ')}
+                title="Pin note"
               >
-                <X className="h-4 w-4" />
+                <Pin size={16} />
+
+                {note.is_pinned
+                  ? 'Pinned'
+                  : 'Pin'}
+              </button>
+
+              <button
+                type="button"
+                onClick={
+                  toggleLocalLock
+                }
+                className={[
+                  'inline-flex h-10 w-10 items-center justify-center rounded-xl transition',
+                  locked
+                    ? 'bg-black text-white'
+                    : 'text-black/60 hover:bg-black/5 hover:text-black',
+                ].join(' ')}
+                title={
+                  locked
+                    ? 'Unlock note'
+                    : 'Lock note'
+                }
+              >
+                {locked ? (
+                  <Lock size={17} />
+                ) : (
+                  <Unlock size={17} />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onShare}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-black/60 transition hover:bg-black/5 hover:text-black"
+                title="Share note"
+              >
+                <Share2 size={17} />
+              </button>
+
+              <button
+                type="button"
+                onClick={onDelete}
+                disabled={deleting}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+                title="Delete note"
+              >
+                <Trash2 size={17} />
               </button>
             </div>
-          ) : (
+          </div>
+        </header>
+
+        <section className="overflow-hidden rounded-[26px] border border-black/5 bg-white shadow-[0_18px_60px_rgba(0,0,0,0.07)]">
+          <div className="flex flex-wrap items-center gap-2 border-b border-black/5 px-3 py-3 sm:px-5">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() =>
+                  setShowCategoryMenu(
+                    (value) => !value,
+                  )
+                }
+                className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-[#FFF7F8] px-3 py-1.5 text-xs font-medium text-black/65 transition hover:border-[#E5798F]/30"
+              >
+                <span className="h-2 w-2 rounded-full bg-[#E5798F]" />
+
+                {note.category ||
+                  'general'}
+
+                <ChevronDown
+                  size={13}
+                />
+              </button>
+
+              {showCategoryMenu && (
+                <div className="absolute left-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-black/8 bg-white p-2 shadow-2xl">
+                  <div className="max-h-52 overflow-y-auto">
+                    {categories.map(
+                      (category) => (
+                        <button
+                          key={category}
+                          type="button"
+                          onClick={() =>
+                            selectCategory(
+                              category,
+                            )
+                          }
+                          className={[
+                            'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition',
+                            note.category ===
+                            category
+                              ? 'bg-[#E5798F]/10 font-medium text-[#C95F76]'
+                              : 'hover:bg-black/5',
+                          ].join(' ')}
+                        >
+                          <span>
+                            {category}
+                          </span>
+
+                          {note.category ===
+                            category && (
+                            <Check
+                              size={14}
+                            />
+                          )}
+                        </button>
+                      ),
+                    )}
+                  </div>
+
+                  <div className="mt-2 border-t border-black/5 pt-2">
+                    <div className="flex gap-2">
+                      <input
+                        value={
+                          newCategory
+                        }
+                        onChange={(
+                          event,
+                        ) =>
+                          setNewCategory(
+                            event.target
+                              .value,
+                          )
+                        }
+                        onKeyDown={(
+                          event,
+                        ) => {
+                          if (
+                            event.key ===
+                            'Enter'
+                          ) {
+                            event.preventDefault();
+                            addCategory();
+                          }
+
+                          if (
+                            event.key ===
+                            'Escape'
+                          ) {
+                            setShowCategoryMenu(
+                              false,
+                            );
+                          }
+                        }}
+                        placeholder="New category"
+                        className="min-w-0 flex-1 rounded-xl border border-black/10 px-3 py-2 text-sm outline-none focus:border-[#E5798F]/50 focus:ring-2 focus:ring-[#E5798F]/10"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={
+                          addCategory
+                        }
+                        className="rounded-xl bg-[#E5798F] px-3 text-xs font-semibold text-white hover:bg-[#d96d84]"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={() =>
-                setShowNewCategory(
-                  true,
+                toggleFlag(
+                  'is_archived',
                 )
               }
-              className="flex items-center gap-1.5 rounded-full border border-[#E8E2E4] bg-white px-4 py-2 text-sm font-medium text-[#E5798F] transition hover:bg-gray-50 active:scale-[0.98]"
+              className={[
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition',
+                note.is_archived
+                  ? 'bg-slate-100 text-slate-700'
+                  : 'bg-black/5 text-black/55 hover:bg-black/8',
+              ].join(' ')}
             >
-              <span className="text-base leading-none">
-                +
-              </span>
-              new
+              <Archive size={13} />
+
+              {note.is_archived
+                ? 'Archived'
+                : 'Archive'}
             </button>
-          )}
-        </div>
 
-        <div
-          className="no-scrollbar mt-5 flex items-center gap-1 overflow-x-auto rounded-2xl border border-[#E8E2E4] bg-white px-2 py-1.5 shadow-sm"
-          role="toolbar"
-          aria-label="Text formatting"
-        >
-          <ToolbarButton
-            label="Undo"
-            disabled={!canUndo}
-            onClick={undo}
-          >
-            <Undo2 className="h-4 w-4" />
-          </ToolbarButton>
+            <button
+              type="button"
+              onClick={() =>
+                toggleFlag(
+                  'is_pinned',
+                )
+              }
+              className={[
+                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition sm:hidden',
+                note.is_pinned
+                  ? 'bg-amber-50 text-amber-700'
+                  : 'bg-black/5 text-black/55 hover:bg-black/8',
+              ].join(' ')}
+            >
+              <Pin size={13} />
 
-          <ToolbarButton
-            label="Redo"
-            disabled={!canRedo}
-            onClick={redo}
-          >
-            <Redo2 className="h-4 w-4" />
-          </ToolbarButton>
+              {note.is_pinned
+                ? 'Pinned'
+                : 'Pin'}
+            </button>
 
-          <ToolbarDivider />
+            <div className="ml-auto flex items-center gap-2 text-[11px] text-black/35">
+              <span>
+                {wordCount} words
+              </span>
 
-          <ToolbarButton
-            label="Bold"
-            onClick={() =>
-              applyFormat(
-                'bold',
-              )
-            }
-          >
-            <BoldIcon className="h-4 w-4" />
-          </ToolbarButton>
+              <span>•</span>
 
-          <ToolbarButton
-            label="Italic"
-            onClick={() =>
-              applyFormat(
-                'italic',
-              )
-            }
-          >
-            <ItalicIcon className="h-4 w-4 italic" />
-          </ToolbarButton>
-
-          <ToolbarButton
-            label="Underline"
-            onClick={() =>
-              applyFormat(
-                'underline',
-              )
-            }
-          >
-            <UnderlineIcon className="h-4 w-4" />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          <ToolbarButton
-            label="Numbered list"
-            onClick={() =>
-              applyFormat('ol')
-            }
-          >
-            <ListOrdered className="h-4 w-4" />
-          </ToolbarButton>
-
-          <ToolbarButton
-            label="Bullet list"
-            onClick={() =>
-              applyFormat('ul')
-            }
-          >
-            <List className="h-4 w-4" />
-          </ToolbarButton>
-
-          <ToolbarButton
-            label="Checklist"
-            onClick={() =>
-              applyFormat(
-                'check',
-              )
-            }
-          >
-            <CheckSquare className="h-4 w-4" />
-          </ToolbarButton>
-
-          <ToolbarDivider />
-
-          <ToolbarButton
-            label="Delete note"
-            danger
-            onClick={() =>
-              setDeletePrompt(
-                true,
-              )
-            }
-          >
-            <Trash2 className="h-4 w-4" />
-          </ToolbarButton>
-        </div>
-
-        <textarea
-          ref={bodyRef}
-          value={note.content}
-          placeholder="what's on your mind?"
-          aria-label="Note body"
-          spellCheck
-          className="mt-5 min-h-[48dvh] w-full resize-none bg-transparent text-[17px] leading-[1.85] placeholder:text-[#C9C0C4] focus:outline-none sm:min-h-[55dvh] sm:text-lg"
-          onChange={(event) => {
-            updateNote({
-              content:
-                event.target.value,
-            });
-          }}
-          onKeyDown={(event) => {
-            const modifier =
-              event.ctrlKey ||
-              event.metaKey;
-
-            if (
-              modifier &&
-              event.key.toLowerCase() ===
-                'b'
-            ) {
-              event.preventDefault();
-              applyFormat(
-                'bold',
-              );
-              return;
-            }
-
-            if (
-              modifier &&
-              event.key.toLowerCase() ===
-                'i'
-            ) {
-              event.preventDefault();
-              applyFormat(
-                'italic',
-              );
-              return;
-            }
-
-            if (
-              modifier &&
-              event.key.toLowerCase() ===
-                'u'
-            ) {
-              event.preventDefault();
-              applyFormat(
-                'underline',
-              );
-            }
-          }}
-        />
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#E8E2E4] pt-3 text-[11px] text-[#8B8B8B]">
-          <div className="flex items-center gap-3">
-            <span>
-              {wordCount}{' '}
-              {wordCount === 1
-                ? 'word'
-                : 'words'}
-            </span>
-
-            <span>
-              {characterCount}{' '}
-              {characterCount === 1
-                ? 'character'
-                : 'characters'}
-            </span>
+              <span>
+                {characterCount}{' '}
+                chars
+              </span>
+            </div>
           </div>
 
-          <span>
-            {note.title.length}/
-            {MAX_TITLE_LENGTH}
-          </span>
-        </div>
+          <div className="sticky top-[68px] z-30 overflow-x-auto border-b border-black/5 bg-white/95 px-2 py-2 backdrop-blur-xl sm:px-4">
+            <div className="flex min-w-max items-center gap-0.5">
+              <ToolbarButton
+                label="Undo (Ctrl/Cmd+Z)"
+                disabled={
+                  locked ||
+                  undoCount === 0
+                }
+                onMouseDown={
+                  undo
+                }
+              >
+                <Undo2 size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Redo (Ctrl/Cmd+Y)"
+                disabled={
+                  locked ||
+                  redoCount === 0
+                }
+                onMouseDown={
+                  redo
+                }
+              >
+                <Redo2 size={17} />
+              </ToolbarButton>
+
+              <ToolbarDivider />
+
+              <ToolbarButton
+                label="Bold (Ctrl/Cmd+B)"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'bold',
+                  )
+                }
+              >
+                <Bold size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Italic (Ctrl/Cmd+I)"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'italic',
+                  )
+                }
+              >
+                <Italic size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Underline (Ctrl/Cmd+U)"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'underline',
+                  )
+                }
+              >
+                <Underline size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Strikethrough"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'strikeThrough',
+                  )
+                }
+              >
+                <Strikethrough
+                  size={17}
+                />
+              </ToolbarButton>
+
+              <ToolbarDivider />
+
+              <div className="flex h-9 items-center rounded-lg border border-black/8 bg-white px-2">
+                <Type
+                  size={14}
+                  className="mr-1.5 text-black/45"
+                />
+
+                <select
+                  value={heading}
+                  disabled={locked}
+                  onChange={(event) =>
+                    applyHeading(
+                      event.target
+                        .value,
+                    )
+                  }
+                  className="h-full cursor-pointer bg-transparent text-xs font-medium outline-none"
+                  title="Text style"
+                >
+                  <option value="p">
+                    Paragraph
+                  </option>
+
+                  <option value="h1">
+                    Heading 1
+                  </option>
+
+                  <option value="h2">
+                    Heading 2
+                  </option>
+
+                  <option value="h3">
+                    Heading 3
+                  </option>
+
+                  <option value="h4">
+                    Heading 4
+                  </option>
+                </select>
+              </div>
+
+              <div className="flex h-9 items-center rounded-lg border border-black/8 bg-white px-2">
+                <select
+                  value={fontSize}
+                  disabled={locked}
+                  onChange={(event) =>
+                    applyFontSize(
+                      event.target
+                        .value,
+                    )
+                  }
+                  className="h-full cursor-pointer bg-transparent text-xs font-medium outline-none"
+                  title="Font size"
+                >
+                  <option value="2">
+                    Small
+                  </option>
+
+                  <option value="3">
+                    Normal
+                  </option>
+
+                  <option value="4">
+                    Large
+                  </option>
+
+                  <option value="5">
+                    Extra Large
+                  </option>
+
+                  <option value="6">
+                    Huge
+                  </option>
+                </select>
+              </div>
+
+              <ToolbarDivider />
+
+              <ToolbarButton
+                label="Bullet list"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'insertUnorderedList',
+                  )
+                }
+              >
+                <List size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Numbered list"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'insertOrderedList',
+                  )
+                }
+              >
+                <ListOrdered
+                  size={17}
+                />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Checklist"
+                disabled={locked}
+                onMouseDown={
+                  insertChecklist
+                }
+              >
+                <span className="text-sm font-bold">
+                  ☑
+                </span>
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Quote"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'formatBlock',
+                    'blockquote',
+                  )
+                }
+              >
+                <Quote size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Code"
+                disabled={locked}
+                onMouseDown={
+                  toggleCode
+                }
+              >
+                <Code2 size={17} />
+              </ToolbarButton>
+
+              <ToolbarDivider />
+
+              <ToolbarButton
+                label="Align left"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'justifyLeft',
+                  )
+                }
+              >
+                <AlignLeft size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Align center"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'justifyCenter',
+                  )
+                }
+              >
+                <AlignCenter
+                  size={17}
+                />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Align right"
+                disabled={locked}
+                onMouseDown={() =>
+                  executeCommand(
+                    'justifyRight',
+                  )
+                }
+              >
+                <AlignRight
+                  size={17}
+                />
+              </ToolbarButton>
+
+              <ToolbarDivider />
+
+              <ToolbarButton
+                label="Text color"
+                disabled={locked}
+                onMouseDown={
+                  changeTextColor
+                }
+              >
+                <Palette size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Highlight"
+                disabled={locked}
+                onMouseDown={
+                  changeHighlight
+                }
+              >
+                <Highlighter
+                  size={17}
+                />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Insert link"
+                disabled={locked}
+                onMouseDown={
+                  insertLink
+                }
+              >
+                <Link2 size={17} />
+              </ToolbarButton>
+
+              <ToolbarButton
+                label="Horizontal divider"
+                disabled={locked}
+                onMouseDown={
+                  insertHorizontalRule
+                }
+              >
+                <span className="text-base font-bold">
+                  —
+                </span>
+              </ToolbarButton>
+            </div>
+          </div>
+
+          <div className="px-4 pb-10 pt-6 sm:px-8 sm:pb-14 sm:pt-8 lg:px-14">
+            <textarea
+              ref={titleRef}
+              value={note.title}
+              disabled={locked}
+              onChange={(event) =>
+                commitNote(
+                  (current) => ({
+                    ...current,
+                    title:
+                      event.target
+                        .value,
+                  }),
+                )
+              }
+              placeholder="Untitled note"
+              rows={1}
+              className="block w-full resize-none overflow-hidden border-0 bg-transparent text-3xl font-bold leading-tight tracking-tight outline-none placeholder:text-black/20 sm:text-4xl"
+              aria-label="Note title"
+            />
+
+            <div className="my-5 h-px bg-black/5" />
+
+            <div
+              className={[
+                'relative rounded-2xl transition-all',
+                editorFocused
+                  ? 'bg-white'
+                  : '',
+              ].join(' ')}
+            >
+              {!note.content &&
+                !locked && (
+                  <div className="pointer-events-none absolute left-0 top-0 z-0 text-[16px] leading-8 text-black/25 sm:text-[17px]">
+                    Start writing your
+                    thoughts...
+                  </div>
+                )}
+
+              <div
+                ref={editorRef}
+                contentEditable={!locked}
+                suppressContentEditableWarning
+                role="textbox"
+                aria-multiline="true"
+                aria-label="Note content"
+                spellCheck
+                onFocus={() =>
+                  setEditorFocused(
+                    true,
+                  )
+                }
+                onBlur={() =>
+                  setEditorFocused(
+                    false,
+                  )
+                }
+                onInput={
+                  handleEditorInput
+                }
+                onKeyDown={
+                  handleEditorKeyDown
+                }
+                className={[
+                  'relative z-10 min-h-[55vh] w-full border-0 bg-transparent outline-none',
+                  'text-[16px] leading-8 text-black/80 sm:min-h-[62vh] sm:text-[17px]',
+                  'prose prose-neutral max-w-none',
+                  locked
+                    ? 'pointer-events-none select-none blur-[5px]'
+                    : '',
+                ].join(' ')}
+              />
+
+              {locked && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center">
+                  <div className="flex max-w-xs flex-col items-center rounded-2xl border border-black/8 bg-white/95 px-6 py-5 text-center shadow-xl backdrop-blur">
+                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-black text-white">
+                      <Lock size={18} />
+                    </div>
+
+                    <h2 className="text-sm font-semibold">
+                      Note locked
+                    </h2>
+
+                    <p className="mt-1 text-xs leading-5 text-black/45">
+                      This is a
+                      device-local
+                      privacy lock.
+                      Your actual
+                      server-side
+                      protection
+                      should be
+                      enforced by
+                      Supabase RLS.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={
+                        toggleLocalLock
+                      }
+                      className="mt-4 rounded-xl bg-[#E5798F] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#d96d84]"
+                    >
+                      Unlock
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-black/5 bg-[#FFFBFC] px-4 py-3 text-[11px] text-black/35 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex items-center gap-2">
+              {saveState ===
+              'saving' ? (
+                <span>
+                  Saving changes…
+                </span>
+              ) : saveState ===
+                'error' ? (
+                <span className="text-red-500">
+                  Changes need
+                  attention
+                </span>
+              ) : (
+                <>
+                  <span>
+                    All changes
+                    saved
+                  </span>
+
+                  <Check
+                    size={12}
+                    className="text-emerald-600"
+                  />
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <span>
+                {wordCount} words
+              </span>
+
+              <span>
+                {characterCount}{' '}
+                characters
+              </span>
+
+              <span className="hidden sm:inline">
+                Ctrl/Cmd+B
+                Bold
+              </span>
+
+              <span className="hidden sm:inline">
+                Ctrl/Cmd+I
+                Italic
+              </span>
+
+              <span className="hidden sm:inline">
+                Ctrl/Cmd+U
+                Underline
+              </span>
+            </div>
+          </div>
+        </section>
       </div>
 
       {notice && (
-        <StyledAlert
-          notice={notice}
-          onClose={() =>
-            setNotice(null)
+        <div className="fixed bottom-4 left-1/2 z-[100] -translate-x-1/2 px-4">
+          <div className="flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-black/8 bg-black px-4 py-3 text-sm font-medium text-white shadow-2xl">
+            <Check
+              size={15}
+              className="shrink-0"
+            />
+
+            <span className="truncate">
+              {notice}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <style jsx global>{`
+        .enotes-checklist {
+          display: flex;
+          align-items: center;
+          min-height: 32px;
+        }
+
+        .enotes-checkbox {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          margin-right: 5px;
+          border-radius: 6px;
+          cursor: pointer;
+          user-select: none;
+          font-size: 18px;
+          line-height: 1;
+          transition:
+            background 0.15s ease,
+            transform 0.15s ease;
+        }
+
+        .enotes-checkbox:hover {
+          background: rgba(229, 121, 143, 0.12);
+        }
+
+        .enotes-checkbox-checked {
+          color: #e5798f;
+        }
+
+        [contenteditable='true'] a {
+          color: #d7647d;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
+
+        [contenteditable='true'] blockquote {
+          margin: 18px 0;
+          padding: 10px 18px;
+          border-left: 4px solid #e5798f;
+          background: #fff7f8;
+          color: rgba(0, 0, 0, 0.62);
+          border-radius: 0 12px 12px 0;
+        }
+
+        [contenteditable='true'] pre {
+          margin: 18px 0;
+          padding: 16px;
+          overflow-x: auto;
+          border-radius: 14px;
+          background: #171717;
+          color: #ffffff;
+          font-family:
+            ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Monaco,
+            Consolas,
+            monospace;
+          font-size: 14px;
+          line-height: 1.7;
+        }
+
+        [contenteditable='true'] code {
+          padding: 2px 5px;
+          border-radius: 5px;
+          background: rgba(0, 0, 0, 0.06);
+          font-family:
+            ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Monaco,
+            Consolas,
+            monospace;
+          font-size: 0.92em;
+        }
+
+        [contenteditable='true'] pre code {
+          padding: 0;
+          background: transparent;
+          color: inherit;
+        }
+
+        [contenteditable='true'] ul,
+        [contenteditable='true'] ol {
+          padding-left: 28px;
+          margin: 12px 0;
+        }
+
+        [contenteditable='true'] li {
+          padding-left: 4px;
+          margin: 3px 0;
+        }
+
+        [contenteditable='true'] h1,
+        [contenteditable='true'] h2,
+        [contenteditable='true'] h3,
+        [contenteditable='true'] h4 {
+          color: #111111;
+          line-height: 1.25;
+          margin-top: 22px;
+          margin-bottom: 10px;
+        }
+
+        [contenteditable='true'] h1 {
+          font-size: 2rem;
+          font-weight: 800;
+        }
+
+        [contenteditable='true'] h2 {
+          font-size: 1.6rem;
+          font-weight: 750;
+        }
+
+        [contenteditable='true'] h3 {
+          font-size: 1.3rem;
+          font-weight: 700;
+        }
+
+        [contenteditable='true'] h4 {
+          font-size: 1.1rem;
+          font-weight: 700;
+        }
+
+        [contenteditable='true'] hr {
+          border: 0;
+          border-top: 1px solid rgba(0, 0, 0, 0.1);
+          margin: 26px 0;
+        }
+
+        [contenteditable='true']:focus {
+          outline: none;
+        }
+
+        [contenteditable='true'] img {
+          max-width: 100%;
+          height: auto;
+          border-radius: 14px;
+        }
+
+        @media (max-width: 640px) {
+          [contenteditable='true'] {
+            font-size: 16px;
+            line-height: 1.9;
           }
-        />
-      )}
 
-      {deletePrompt && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-          onClick={() => {
-            if (!deleting) {
-              setDeletePrompt(
-                false,
-              );
-            }
-          }}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl border border-white/70 bg-white p-6 shadow-2xl"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-            role="alertdialog"
-            aria-modal="true"
-            aria-labelledby="delete-title"
-          >
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
-              <Trash2 className="h-5 w-5" />
-            </div>
-
-            <h2
-              id="delete-title"
-              className="mt-4 text-center text-base font-bold"
-            >
-              Delete this note?
-            </h2>
-
-            <p className="mt-1 text-center text-sm leading-relaxed text-[#6B6B6B]">
-              This permanently removes
-              the note from your account.
-              This action cannot be undone.
-            </p>
-
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() =>
-                  setDeletePrompt(
-                    false,
-                  )
-                }
-                className="rounded-2xl border border-[#E8E2E4] px-4 py-3 text-sm font-semibold transition hover:bg-gray-50 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={() =>
-                  void onDelete()
-                }
-                className="rounded-2xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-600 disabled:opacity-60"
-              >
-                {deleting ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Deleting…
-                  </span>
-                ) : (
-                  'Delete'
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {unlockPrompt && (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-          onClick={() =>
-            setUnlockPrompt(
-              false,
-            )
+          [contenteditable='true'] h1 {
+            font-size: 1.75rem;
           }
-        >
-          <div
-            className="w-full max-w-xs rounded-3xl bg-white p-6 text-center shadow-2xl"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="unlock-title"
-          >
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF0F3] text-[#E5798F]">
-              <Lock className="h-5 w-5" />
-            </div>
 
-            <p
-              id="unlock-title"
-              className="mt-3 text-sm font-bold"
-            >
-              Unlock this note?
-            </p>
+          [contenteditable='true'] h2 {
+            font-size: 1.45rem;
+          }
 
-            <p className="mt-1 text-xs leading-relaxed text-[#6B6B6B]">
-              This local lock does not
-              encrypt the database record.
-            </p>
-
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setUnlockPrompt(
-                    false,
-                  )
-                }
-                className="rounded-xl border border-[#E8E2E4] py-2.5 text-sm font-semibold transition hover:bg-gray-50"
-              >
-                Keep locked
-              </button>
-
-              <button
-                type="button"
-                onClick={unlockNote}
-                className="rounded-xl bg-black py-2.5 text-sm font-semibold text-[#FFB6C1] transition hover:opacity-90"
-              >
-                Unlock
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {copied && (
-        <div className="pointer-events-none fixed bottom-5 left-1/2 z-30 -translate-x-1/2">
-          <div className="rounded-full bg-black px-4 py-2.5 text-xs font-semibold text-[#FFB6C1] shadow-xl">
-            <Copy className="mr-1.5 inline h-3.5 w-3.5" />
-            Link copied
-          </div>
-        </div>
-      )}
+          [contenteditable='true'] h3 {
+            font-size: 1.25rem;
+          }
+        }
+      `}</style>
     </main>
   );
 }
 
-/* =========================================================
-   Toolbar
-========================================================= */
-
-function ToolbarDivider() {
+export default function NoteEditorPage() {
   return (
-    <span
-      aria-hidden="true"
-      className="mx-1 h-5 w-px shrink-0 bg-[#E8E2E4]"
-    />
-  );
-}
-
-function ToolbarButton({
-  label,
-  onClick,
-  danger = false,
-  disabled = false,
-  children,
-}: {
-  label: string;
-  onClick: () => void;
-  danger?: boolean;
-  disabled?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 ${
-        danger
-          ? 'text-red-500 hover:bg-red-50'
-          : 'text-[#3D3D3D] hover:bg-gray-100'
-      }`}
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-[#FFF7F8]" />
+      }
     >
-      {children}
-    </button>
-  );
-}
-
-/* =========================================================
-   Alert
-========================================================= */
-
-function StyledAlert({
-  notice,
-  onClose,
-}: {
-  notice: Notice;
-  onClose: () => void;
-}) {
-  const styles = {
-    error: {
-      icon: '!',
-      iconClass:
-        'bg-red-50 text-red-500',
-      titleClass:
-        'text-red-700',
-      barClass:
-        'bg-red-500',
-    },
-
-    success: {
-      icon: '✓',
-      iconClass:
-        'bg-emerald-50 text-emerald-600',
-      titleClass:
-        'text-emerald-700',
-      barClass:
-        'bg-emerald-500',
-    },
-
-    info: {
-      icon: 'i',
-      iconClass:
-        'bg-blue-50 text-blue-600',
-      titleClass:
-        'text-blue-700',
-      barClass:
-        'bg-blue-500',
-    },
-  }[notice.type];
-
-  return (
-    <div
-      className="fixed inset-x-4 bottom-5 z-[60] mx-auto max-w-md"
-      role="alert"
-      aria-live="assertive"
-    >
-      <div className="relative overflow-hidden rounded-2xl border border-white/80 bg-white/95 p-4 shadow-[0_20px_60px_rgba(0,0,0,0.16)] backdrop-blur-xl">
-        <div
-          className={`absolute inset-y-0 left-0 w-1 ${styles.barClass}`}
-        />
-
-        <div className="flex items-start gap-3 pl-1">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-extrabold ${styles.iconClass}`}
-          >
-            {styles.icon}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <p
-              className={`text-sm font-bold ${styles.titleClass}`}
-            >
-              {notice.title}
-            </p>
-
-            <p className="mt-1 text-xs leading-relaxed text-[#666666]">
-              {notice.message}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#8B8B8B] transition hover:bg-black/5 hover:text-black"
-            aria-label="Dismiss alert"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-    </div>
+      <NoteEditor />
+    </Suspense>
   );
 }
