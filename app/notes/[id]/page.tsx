@@ -19,7 +19,6 @@ import {
   Check,
   ChevronDown,
   Code2,
-  Copy,
   FileText,
   Highlighter,
   Italic,
@@ -27,8 +26,8 @@ import {
   List,
   ListOrdered,
   Lock,
+  Palette,
   Pin,
-  Quote,
   Redo2,
   Save,
   Share2,
@@ -37,234 +36,181 @@ import {
   Underline,
   Undo2,
   Unlock,
-  Palette,
-  Type,
 } from 'lucide-react';
 
-import { createClient } from '@/lib/supabase/client';
+import { supabase } from '@/lib/supabase/client';
 import type { NoteRow } from '@/app/notes/page';
 
-const CATEGORIES = [
-  'general',
-  'ideas',
-  'work',
-  'personal',
-  'reading',
-] as const;
+type SaveState =
+  | 'idle'
+  | 'loading'
+  | 'saving'
+  | 'saved'
+  | 'unsaved'
+  | 'error';
 
-type SaveState = 'saved' | 'saving' | 'error';
+type NoticeType = 'success' | 'error' | 'info';
 
-type DraftSnapshot = {
-  title: string;
-  content: string;
-  category: string;
-  is_pinned: boolean;
-  is_favorite: boolean;
-  is_archived: boolean;
+type Notice = {
+  type: NoticeType;
+  message: string;
 };
 
-interface EditorNote extends NoteRow {
+type HistorySnapshot = {
   title: string;
   content: string;
-  category: string;
-  is_pinned: boolean;
-  is_favorite: boolean;
-  is_archived: boolean;
+};
+
+const DEFAULT_CONTENT =
+  '<p>Start writing your note here...</p>';
+
+const DEFAULT_CATEGORY = 'General';
+
+const CATEGORIES = [
+  'General',
+  'Personal',
+  'Ideas',
+  'Work',
+  'School',
+  'Projects',
+  'Important',
+  'Todo',
+  'Diary',
+  'Other',
+];
+
+const FONT_SIZES = [
+  { label: 'Small', value: '2' },
+  { label: 'Normal', value: '3' },
+  { label: 'Large', value: '5' },
+  { label: 'Huge', value: '7' },
+];
+
+function normalizeCategory(value: unknown) {
+  const category = String(value ?? '').trim();
+  return category || DEFAULT_CATEGORY;
 }
 
-function normalizeCategory(value: string): string {
-  return value
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/[^a-zA-Z0-9 _-]/g, '')
-    .slice(0, 40);
-}
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return 'Not saved yet';
 
-function formatTimestamp(
-  iso: string | null | undefined,
-): string {
-  if (!iso) return 'not saved yet';
-
-  const date = new Date(iso);
+  const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return 'not saved yet';
+    return 'Not saved yet';
   }
 
-  return date.toLocaleString([], {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
 }
 
-function createEmptyNote(): EditorNote {
+function createEmptyNote(userId: string): NoteRow {
+  const now = new Date().toISOString();
+
   return {
     id: 'new',
+    user_id: userId,
     title: '',
-    content: '',
-    category: 'general',
+    content: DEFAULT_CONTENT,
+    category: DEFAULT_CATEGORY,
     is_pinned: false,
     is_favorite: false,
     is_archived: false,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  } as EditorNote;
-}
-
-function snapshotNote(
-  note: EditorNote,
-): DraftSnapshot {
-  return {
-    title: note.title ?? '',
-    content: note.content ?? '',
-    category: note.category ?? 'general',
-    is_pinned: Boolean(note.is_pinned),
-    is_favorite: Boolean(note.is_favorite),
-    is_archived: Boolean(note.is_archived),
+    created_at: now,
+    updated_at: now,
   };
 }
 
-function countWords(html: string): number {
-  if (!html) return 0;
+function getTextFromHtml(html: string) {
+  if (typeof window === 'undefined') {
+    return html.replace(/<[^>]*>/g, ' ');
+  }
 
-  const temporary = document.createElement('div');
-  temporary.innerHTML = html;
-
-  const text =
-    temporary.textContent ||
-    temporary.innerText ||
-    '';
-
-  const cleaned = text.trim();
-
-  if (!cleaned) return 0;
-
-  return cleaned.split(/\s+/).length;
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.textContent || div.innerText || '';
 }
 
-function countCharacters(html: string): number {
-  if (!html) return 0;
+function countWords(text: string) {
+  const trimmed = text.trim();
 
-  const temporary = document.createElement('div');
-  temporary.innerHTML = html;
+  if (!trimmed) return 0;
 
-  return (
-    temporary.textContent ||
-    temporary.innerText ||
-    ''
-  ).length;
+  return trimmed.split(/\s+/).filter(Boolean).length;
 }
 
-function ToolbarButton({
-  label,
-  onMouseDown,
-  disabled = false,
-  active = false,
-  children,
-}: {
-  label: string;
-  onMouseDown: () => void;
-  disabled?: boolean;
-  active?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onMouseDown={(event) => {
-        event.preventDefault();
-
-        if (!disabled) {
-          onMouseDown();
-        }
-      }}
-      className={[
-        'inline-flex h-9 min-w-9 shrink-0 items-center justify-center rounded-lg',
-        'border px-2 transition-all duration-150',
-        disabled
-          ? 'cursor-not-allowed border-transparent text-black/20'
-          : active
-            ? 'border-[#E5798F]/30 bg-[#E5798F]/10 text-[#C95F76]'
-            : 'border-transparent text-black/65 hover:border-black/10 hover:bg-black/5 hover:text-black',
-      ].join(' ')}
-    >
-      {children}
-    </button>
-  );
+function countCharacters(text: string) {
+  return text.length;
 }
 
-function ToolbarDivider() {
-  return (
-    <div className="mx-1 h-6 w-px shrink-0 bg-black/8" />
-  );
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function NoteEditor() {
   const params = useParams();
   const router = useRouter();
 
-  const supabase = useMemo(
-    () => createClient(),
-    [],
-  );
+  const routeId = useMemo(() => {
+    const value = params?.id;
 
-  const routeId =
-    typeof params?.id === 'string'
-      ? params.id
-      : 'new';
+    if (Array.isArray(value)) {
+      return value[0] ?? '';
+    }
 
-  const initialRouteIdRef =
-    useRef(routeId);
+    return String(value ?? '');
+  }, [params]);
 
-  const isNew =
+  const initialRouteIdRef = useRef(routeId);
+
+  const isNewRoute =
     initialRouteIdRef.current === 'new';
 
-  const initialNote = useMemo(
-    () => (isNew ? createEmptyNote() : null),
-    [isNew],
-  );
+  const titleRef = useRef<HTMLInputElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
-  const [note, setNote] =
-    useState<EditorNote | null>(
-      initialNote,
-    );
+  const saveTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [loading, setLoading] =
-    useState(!isNew);
+  const mountedRef = useRef(true);
+
+  const noteRef = useRef<NoteRow | null>(null);
+
+  const dirtyRef = useRef(false);
+  const saveInFlightRef = useRef(false);
+  const creationInFlightRef = useRef(false);
+
+  const saveVersionRef = useRef(0);
+  const lastSavedVersionRef = useRef(0);
+
+  const historyRef = useRef<HistorySnapshot[]>([]);
+  const redoRef = useRef<HistorySnapshot[]>([]);
+  const historyApplyingRef = useRef(false);
+
+  const [note, setNote] = useState<NoteRow | null>(null);
+
+  const [loading, setLoading] = useState(true);
 
   const [saveState, setSaveState] =
-    useState<SaveState>(
-      isNew ? 'saved' : 'saving',
-    );
+    useState<SaveState>('loading');
 
   const [notice, setNotice] =
-    useState<string | null>(null);
+    useState<Notice | null>(null);
 
-  const [locked, setLocked] =
+  const [locked, setLocked] = useState(false);
+
+  const [categoryOpen, setCategoryOpen] =
     useState(false);
 
-  const [newCategory, setNewCategory] =
+  const [customCategory, setCustomCategory] =
     useState('');
-
-  const [
-    showCategoryMenu,
-    setShowCategoryMenu,
-  ] = useState(false);
-
-  const [deleting, setDeleting] =
-    useState(false);
-
-  const [undoCount, setUndoCount] =
-    useState(0);
-
-  const [redoCount, setRedoCount] =
-    useState(0);
 
   const [heading, setHeading] =
     useState('p');
@@ -275,930 +221,1000 @@ function NoteEditor() {
   const [editorFocused, setEditorFocused] =
     useState(false);
 
-  const titleRef =
-    useRef<HTMLTextAreaElement | null>(
-      null,
-    );
+  const [historyLength, setHistoryLength] =
+    useState(0);
 
-  const editorRef =
-    useRef<HTMLDivElement | null>(
-      null,
-    );
+  const [redoLength, setRedoLength] =
+    useState(0);
 
-  const noteRef =
-    useRef<EditorNote | null>(
-      initialNote,
-    );
+  const [deleting, setDeleting] =
+    useState(false);
 
-  const saveTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(
-      null,
-    );
-
-  const dirtyRef =
-    useRef(false);
-
-  const saveVersionRef =
-    useRef(0);
-
-  const saveInFlightRef =
-    useRef<Promise<boolean> | null>(
-      null,
-    );
-
-  const creatingRef =
-    useRef<Promise<string | null> | null>(
-      null,
-    );
-
-  const realNoteIdRef =
-    useRef<string | null>(
-      isNew ? null : routeId,
-    );
-
-  const undoStackRef =
-    useRef<DraftSnapshot[]>([]);
-
-  const redoStackRef =
-    useRef<DraftSnapshot[]>([]);
-
-  const lastHistoryTimeRef =
-    useRef(0);
+  const [userId, setUserId] =
+    useState<string | null>(null);
 
   const showNotice = useCallback(
-    (message: string) => {
-      setNotice(message);
+    (
+      type: NoticeType,
+      message: string,
+      duration = 3500,
+    ) => {
+      if (!mountedRef.current) return;
+
+      setNotice({
+        type,
+        message,
+      });
 
       window.setTimeout(() => {
-        setNotice((current) =>
-          current === message
-            ? null
-            : current,
-        );
-      }, 2800);
+        if (mountedRef.current) {
+          setNotice((current) =>
+            current?.message === message
+              ? null
+              : current,
+          );
+        }
+      }, duration);
     },
     [],
   );
 
+  const currentSnapshot = useCallback((): HistorySnapshot => {
+    return {
+      title: titleRef.current?.value ?? noteRef.current?.title ?? '',
+      content:
+        editorRef.current?.innerHTML ??
+        noteRef.current?.content ??
+        '',
+    };
+  }, []);
+
+  const updateHistoryIndicators = useCallback(() => {
+    setHistoryLength(historyRef.current.length);
+    setRedoLength(redoRef.current.length);
+  }, []);
+
   const pushHistory = useCallback(
-    (current: EditorNote) => {
-      const now = Date.now();
+    (snapshot?: HistorySnapshot) => {
+      if (historyApplyingRef.current) return;
+
+      const next = snapshot ?? currentSnapshot();
+
+      const previous =
+        historyRef.current[
+          historyRef.current.length - 1
+        ];
 
       if (
-        now - lastHistoryTimeRef.current >
-        500
+        previous &&
+        previous.title === next.title &&
+        previous.content === next.content
       ) {
-        undoStackRef.current.push(
-          snapshotNote(current),
-        );
+        return;
+      }
 
-        if (
-          undoStackRef.current.length >
-          100
-        ) {
-          undoStackRef.current.shift();
+      historyRef.current = [
+        ...historyRef.current,
+        next,
+      ].slice(-100);
+
+      redoRef.current = [];
+
+      updateHistoryIndicators();
+    },
+    [currentSnapshot, updateHistoryIndicators],
+  );
+
+  const applySnapshot = useCallback(
+    (snapshot: HistorySnapshot) => {
+      historyApplyingRef.current = true;
+
+      if (titleRef.current) {
+        titleRef.current.value = snapshot.title;
+      }
+
+      if (editorRef.current) {
+        editorRef.current.innerHTML =
+          snapshot.content || '<p><br></p>';
+      }
+
+      setNote((current) =>
+        current
+          ? {
+              ...current,
+              title: snapshot.title,
+              content: snapshot.content,
+            }
+          : current,
+      );
+
+      if (noteRef.current) {
+        noteRef.current = {
+          ...noteRef.current,
+          title: snapshot.title,
+          content: snapshot.content,
+        };
+      }
+
+      historyApplyingRef.current = false;
+    },
+    [],
+  );
+
+  const undo = useCallback(() => {
+    if (!historyRef.current.length) return;
+
+    const current = currentSnapshot();
+
+    redoRef.current = [
+      ...redoRef.current,
+      current,
+    ].slice(-100);
+
+    const previous =
+      historyRef.current.pop();
+
+    if (!previous) return;
+
+    applySnapshot(previous);
+
+    dirtyRef.current = true;
+    saveVersionRef.current += 1;
+
+    setSaveState('unsaved');
+
+    updateHistoryIndicators();
+  }, [
+    applySnapshot,
+    currentSnapshot,
+    updateHistoryIndicators,
+  ]);
+
+  const redo = useCallback(() => {
+    if (!redoRef.current.length) return;
+
+    const current = currentSnapshot();
+
+    historyRef.current = [
+      ...historyRef.current,
+      current,
+    ].slice(-100);
+
+    const next = redoRef.current.pop();
+
+    if (!next) return;
+
+    applySnapshot(next);
+
+    dirtyRef.current = true;
+    saveVersionRef.current += 1;
+
+    setSaveState('unsaved');
+
+    updateHistoryIndicators();
+  }, [
+    applySnapshot,
+    currentSnapshot,
+    updateHistoryIndicators,
+  ]);
+
+  const markDirty = useCallback(() => {
+    if (historyApplyingRef.current) return;
+
+    dirtyRef.current = true;
+    saveVersionRef.current += 1;
+
+    setSaveState('unsaved');
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    saveTimerRef.current = setTimeout(() => {
+      void saveNow();
+    }, 800);
+  }, []);
+
+  const syncFromInputs = useCallback(() => {
+    const title =
+      titleRef.current?.value.trim() ?? '';
+
+    const content =
+      editorRef.current?.innerHTML ??
+      '<p><br></p>';
+
+    setNote((current) =>
+      current
+        ? {
+            ...current,
+            title,
+            content,
+          }
+        : current,
+    );
+
+    if (noteRef.current) {
+      noteRef.current = {
+        ...noteRef.current,
+        title,
+        content,
+      };
+    }
+  }, []);
+
+  const ensureRow = useCallback(async () => {
+    if (!userId) {
+      throw new Error('You must be signed in.');
+    }
+
+    if (noteRef.current?.id !== 'new') {
+      return noteRef.current;
+    }
+
+    if (creationInFlightRef.current) {
+      return noteRef.current;
+    }
+
+    creationInFlightRef.current = true;
+
+    const source =
+      noteRef.current ?? createEmptyNote(userId);
+
+    const title =
+      titleRef.current?.value.trim() || 'Untitled Note';
+
+    const content =
+      editorRef.current?.innerHTML ||
+      DEFAULT_CONTENT;
+
+    const category =
+      normalizeCategory(source.category);
+
+    const { data, error } = await supabase
+      .from('notes')
+      .insert({
+        user_id: userId,
+        title,
+        content,
+        category,
+        is_pinned: Boolean(source.is_pinned),
+        is_favorite: Boolean(source.is_favorite),
+        is_archived: Boolean(source.is_archived),
+      })
+      .select('*')
+      .single();
+
+    creationInFlightRef.current = false;
+
+    if (error) {
+      throw error;
+    }
+
+    noteRef.current = data as NoteRow;
+
+    setNote(data as NoteRow);
+
+    dirtyRef.current = false;
+    lastSavedVersionRef.current =
+      saveVersionRef.current;
+
+    setSaveState('saved');
+
+    router.replace(`/notes/${data.id}`);
+
+    return data as NoteRow;
+  }, [router, userId]);
+
+  const saveNow = useCallback(async () => {
+    if (!userId) return;
+
+    if (saveInFlightRef.current) {
+      return;
+    }
+
+    if (!dirtyRef.current && !isNewRoute) {
+      return;
+    }
+
+    saveInFlightRef.current = true;
+
+    const versionAtStart =
+      saveVersionRef.current;
+
+    try {
+      setSaveState('saving');
+
+      syncFromInputs();
+
+      if (isNewRoute && noteRef.current?.id === 'new') {
+        await ensureRow();
+      } else {
+        const current =
+          noteRef.current;
+
+        if (!current) {
+          return;
         }
 
-        setUndoCount(
-          undoStackRef.current.length,
+        const title =
+          titleRef.current?.value.trim() ?? '';
+
+        const content =
+          editorRef.current?.innerHTML ??
+          '<p><br></p>';
+
+        const { data, error } =
+          await supabase
+            .from('notes')
+            .update({
+              title,
+              content,
+              category:
+                normalizeCategory(
+                  current.category,
+                ),
+              is_pinned:
+                Boolean(current.is_pinned),
+              is_favorite:
+                Boolean(current.is_favorite),
+              is_archived:
+                Boolean(current.is_archived),
+            })
+            .eq('id', current.id)
+            .eq('user_id', userId)
+            .select('*')
+            .single();
+
+        if (error) {
+          throw error;
+        }
+
+        if (data) {
+          noteRef.current =
+            data as NoteRow;
+
+          setNote(data as NoteRow);
+        }
+      }
+
+      if (
+        versionAtStart ===
+        saveVersionRef.current
+      ) {
+        dirtyRef.current = false;
+
+        lastSavedVersionRef.current =
+          versionAtStart;
+
+        setSaveState('saved');
+      } else {
+        setSaveState('unsaved');
+
+        if (saveTimerRef.current) {
+          clearTimeout(
+            saveTimerRef.current,
+          );
+        }
+
+        saveTimerRef.current =
+          setTimeout(() => {
+            void saveNow();
+          }, 800);
+      }
+    } catch (error) {
+      console.error(
+        'Failed to save note:',
+        error,
+      );
+
+      setSaveState('error');
+
+      showNotice(
+        'error',
+        error instanceof Error
+          ? error.message
+          : 'Failed to save your note.',
+      );
+    } finally {
+      saveInFlightRef.current = false;
+    }
+  }, [
+    ensureRow,
+    isNewRoute,
+    showNotice,
+    syncFromInputs,
+    userId,
+  ]);
+
+  const updateFlag = useCallback(
+    async (
+      field:
+        | 'is_pinned'
+        | 'is_favorite'
+        | 'is_archived',
+    ) => {
+      if (!noteRef.current) return;
+
+      const nextValue =
+        !Boolean(noteRef.current[field]);
+
+      noteRef.current = {
+        ...noteRef.current,
+        [field]: nextValue,
+      };
+
+      setNote({
+        ...noteRef.current,
+      });
+
+      dirtyRef.current = true;
+      saveVersionRef.current += 1;
+
+      setSaveState('unsaved');
+
+      if (isNewRoute) {
+        if (saveTimerRef.current) {
+          clearTimeout(
+            saveTimerRef.current,
+          );
+        }
+
+        saveTimerRef.current =
+          setTimeout(() => {
+            void saveNow();
+          }, 400);
+
+        return;
+      }
+
+      try {
+        const { error } =
+          await supabase
+            .from('notes')
+            .update({
+              [field]: nextValue,
+            })
+            .eq('id', noteRef.current.id)
+            .eq('user_id', userId);
+
+        if (error) {
+          throw error;
+        }
+
+        dirtyRef.current = false;
+        setSaveState('saved');
+      } catch (error) {
+        console.error(error);
+
+        showNotice(
+          'error',
+          'Could not update the note.',
+        );
+
+        noteRef.current = {
+          ...noteRef.current,
+          [field]: !nextValue,
+        };
+
+        setNote({
+          ...noteRef.current,
+        });
+
+        setSaveState('error');
+      }
+    },
+    [
+      isNewRoute,
+      saveNow,
+      showNotice,
+      userId,
+    ],
+  );
+
+  const executeCommand = useCallback(
+    (
+      command: string,
+      value?: string,
+    ) => {
+      if (locked) return;
+
+      editorRef.current?.focus();
+
+      pushHistory();
+
+      try {
+        document.execCommand(
+          command,
+          false,
+          value,
+        );
+      } catch (error) {
+        console.error(
+          `execCommand(${command}) failed`,
+          error,
         );
       }
 
-      lastHistoryTimeRef.current =
-        now;
-
-      redoStackRef.current = [];
-      setRedoCount(0);
+      syncFromInputs();
+      markDirty();
     },
-    [],
+    [
+      locked,
+      markDirty,
+      pushHistory,
+      syncFromInputs,
+    ],
   );
 
-  const markDirty = useCallback(() => {
-    dirtyRef.current = true;
+  const formatHeading = useCallback(
+    (value: string) => {
+      if (locked) return;
 
-    saveVersionRef.current += 1;
+      setHeading(value);
 
-    setSaveState('saving');
-
-    if (saveTimerRef.current) {
-      clearTimeout(
-        saveTimerRef.current,
+      executeCommand(
+        'formatBlock',
+        value,
       );
+    },
+    [executeCommand, locked],
+  );
+
+  const changeFontSize = useCallback(
+    (value: string) => {
+      if (locked) return;
+
+      setFontSize(value);
+
+      executeCommand(
+        'fontSize',
+        value,
+      );
+    },
+    [executeCommand, locked],
+  );
+
+  const createLink = useCallback(() => {
+    if (locked) return;
+
+    const url = window.prompt(
+      'Enter the URL:',
+      'https://',
+    );
+
+    if (!url) return;
+
+    executeCommand(
+      'createLink',
+      url.trim(),
+    );
+  }, [executeCommand, locked]);
+
+  const insertChecklist = useCallback(() => {
+    if (locked) return;
+
+    const selectedText =
+      window.getSelection()?.toString() ?? '';
+
+    pushHistory();
+
+    const text =
+      selectedText.trim() ||
+      'Checklist item';
+
+    const html = `
+      <div class="enotes-checklist-item">
+        <label>
+          <input type="checkbox" />
+          <span>${escapeHtml(text)}</span>
+        </label>
+      </div>
+    `;
+
+    executeCommand(
+      'insertHTML',
+      html,
+    );
+  }, [
+    executeCommand,
+    locked,
+    pushHistory,
+  ]);
+
+  const insertHorizontalRule =
+    useCallback(() => {
+      if (locked) return;
+
+      executeCommand(
+        'insertHorizontalRule',
+      );
+    }, [executeCommand, locked]);
+
+  const insertCode = useCallback(() => {
+    if (locked) return;
+
+    const selected =
+      window.getSelection()?.toString() ?? '';
+
+    const content =
+      selected || 'code';
+
+    const html = `
+      <pre><code>${escapeHtml(
+        content,
+      )}</code></pre>
+    `;
+
+    executeCommand(
+      'insertHTML',
+      html,
+    );
+  }, [executeCommand, locked]);
+
+  const setTextColor = useCallback(() => {
+    if (locked) return;
+
+    const color =
+      window.prompt(
+        'Enter a text color:',
+        '#E5798F',
+      );
+
+    if (!color) return;
+
+    executeCommand(
+      'foreColor',
+      color.trim(),
+    );
+  }, [executeCommand, locked]);
+
+  const setHighlight = useCallback(() => {
+    if (locked) return;
+
+    const color =
+      window.prompt(
+        'Enter a highlight color:',
+        '#FFF2A8',
+      );
+
+    if (!color) return;
+
+    editorRef.current?.focus();
+
+    pushHistory();
+
+    try {
+      document.execCommand(
+        'hiliteColor',
+        false,
+        color.trim(),
+      );
+    } catch {
+      try {
+        document.execCommand(
+          'backColor',
+          false,
+          color.trim(),
+        );
+      } catch {
+        // Ignore unsupported command.
+      }
     }
 
-    saveTimerRef.current =
-      setTimeout(() => {
-        void saveNow();
-      }, 800);
-  }, []);
+    syncFromInputs();
+    markDirty();
+  }, [
+    locked,
+    markDirty,
+    pushHistory,
+    syncFromInputs,
+  ]);
 
-  const commitNote = useCallback(
-    (
-      updater: (
-        current: EditorNote,
-      ) => EditorNote,
-      options: {
-        history?: boolean;
-        autosave?: boolean;
-      } = {},
-    ) => {
+  const selectCategory =
+    useCallback(
+      (category: string) => {
+        const normalized =
+          normalizeCategory(category);
+
+        if (!noteRef.current) return;
+
+        noteRef.current = {
+          ...noteRef.current,
+          category: normalized,
+        };
+
+        setNote({
+          ...noteRef.current,
+        });
+
+        setCategoryOpen(false);
+
+        dirtyRef.current = true;
+        saveVersionRef.current += 1;
+
+        setSaveState('unsaved');
+
+        if (saveTimerRef.current) {
+          clearTimeout(
+            saveTimerRef.current,
+          );
+        }
+
+        saveTimerRef.current =
+          setTimeout(() => {
+            void saveNow();
+          }, 500);
+      },
+      [saveNow],
+    );
+
+  const addCustomCategory =
+    useCallback(() => {
+      const value =
+        customCategory.trim();
+
+      if (!value) return;
+
+      selectCategory(value);
+      setCustomCategory('');
+    }, [
+      customCategory,
+      selectCategory,
+    ]);
+
+  const toggleLock = useCallback(() => {
+    setLocked((current) => {
+      const next = !current;
+
+      showNotice(
+        'info',
+        next
+          ? 'Editing is locked on this device.'
+          : 'Editing is unlocked.',
+      );
+
+      return next;
+    });
+  }, [showNotice]);
+
+  const copyNote = useCallback(
+    async () => {
       const current =
         noteRef.current;
 
       if (!current) return;
 
-      const next = updater(current);
+      const title =
+        titleRef.current?.value ||
+        current.title ||
+        'Untitled Note';
 
-      if (options.history !== false) {
-        pushHistory(current);
-      }
+      const content =
+        editorRef.current?.innerHTML ||
+        current.content ||
+        '';
 
-      noteRef.current = next;
-      setNote(next);
+      const text =
+        `${title}\n\n${getTextFromHtml(
+          content,
+        )}`.trim();
 
-      if (options.autosave !== false) {
-        markDirty();
+      try {
+        await navigator.clipboard.writeText(
+          text,
+        );
+
+        showNotice(
+          'success',
+          'Note copied to your clipboard.',
+        );
+      } catch {
+        showNotice(
+          'error',
+          'Could not copy the note.',
+        );
       }
     },
-    [markDirty, pushHistory],
+    [showNotice],
   );
 
-  const ensureRow = useCallback(
-    async (): Promise<string | null> => {
-      if (realNoteIdRef.current) {
-        return realNoteIdRef.current;
+  const shareNote = useCallback(
+    async () => {
+      const current =
+        noteRef.current;
+
+      if (!current || current.id === 'new') {
+        await saveNow();
       }
 
-      if (creatingRef.current) {
-        return creatingRef.current;
+      const id =
+        noteRef.current?.id;
+
+      if (!id || id === 'new') {
+        showNotice(
+          'error',
+          'Save the note before sharing it.',
+        );
+        return;
       }
 
-      const creation =
-        (async () => {
-          const current =
-            noteRef.current;
+      const url =
+        `${window.location.origin}/notes/${id}`;
 
-          if (!current) return null;
+      try {
+        if (
+          navigator.share
+        ) {
+          await navigator.share({
+            title:
+              titleRef.current?.value ||
+              'My note',
+            text: 'Shared from enotes',
+            url,
+          });
 
-          const {
-            data: {
-              user,
-            },
-          } =
-            await supabase.auth.getUser();
+          return;
+        }
 
-          if (!user) {
-            showNotice(
-              'Your session has expired. Please sign in again.',
-            );
+        await navigator.clipboard.writeText(
+          url,
+        );
 
-            return null;
-          }
+        showNotice(
+          'success',
+          'Note link copied.',
+        );
+      } catch (error) {
+        if (
+          error instanceof DOMException &&
+          error.name === 'AbortError'
+        ) {
+          return;
+        }
 
-          const title =
-            current.title.trim();
+        showNotice(
+          'error',
+          'Could not share the note.',
+        );
+      }
+    },
+    [saveNow, showNotice],
+  );
 
-          const category =
-            normalizeCategory(
-              current.category,
-            ) || 'general';
+  const deleteNote = useCallback(
+    async () => {
+      const current =
+        noteRef.current;
 
-          const {
-            data,
-            error,
-          } = await supabase
+      if (
+        !current ||
+        current.id === 'new'
+      ) {
+        router.push('/notes');
+        return;
+      }
+
+      const confirmed =
+        window.confirm(
+          'Delete this note permanently?',
+        );
+
+      if (!confirmed) return;
+
+      setDeleting(true);
+
+      try {
+        const { error } =
+          await supabase
             .from('notes')
-            .insert({
-              user_id: user.id,
-              title,
-              content:
-                current.content,
-              category,
-              is_pinned:
-                current.is_pinned,
-              is_favorite:
-                current.is_favorite,
-              is_archived:
-                current.is_archived,
-            })
-            .select('*')
-            .single();
+            .delete()
+            .eq('id', current.id)
+            .eq('user_id', userId);
 
-          if (
-            error ||
-            !data
-          ) {
-            console.error(
-              'Create note error:',
-              error,
-            );
+        if (error) {
+          throw error;
+        }
 
-            setSaveState('error');
+        router.push('/notes');
+        router.refresh();
+      } catch (error) {
+        console.error(error);
 
-            showNotice(
-              error?.message ||
-                'Unable to create the note.',
-            );
+        showNotice(
+          'error',
+          'Could not delete this note.',
+        );
 
-            return null;
-          }
-
-          const created =
-            data as EditorNote;
-
-          realNoteIdRef.current =
-            created.id;
-
-          const latest =
-            noteRef.current;
-
-          if (latest) {
-            const merged: EditorNote =
-              {
-                ...latest,
-                ...created,
-                title:
-                  latest.title,
-                content:
-                  latest.content,
-                category:
-                  latest.category,
-                is_pinned:
-                  latest.is_pinned,
-                is_favorite:
-                  latest.is_favorite,
-                is_archived:
-                  latest.is_archived,
-              };
-
-            noteRef.current =
-              merged;
-
-            setNote(merged);
-          }
-
-          router.replace(
-            `/notes/${created.id}`,
-          );
-
-          return created.id;
-        })();
-
-      creatingRef.current =
-        creation;
-
-      void creation.then(
-        () => {
-          creatingRef.current =
-            null;
-        },
-        () => {
-          creatingRef.current =
-            null;
-        },
-      );
-
-      return creation;
+        setDeleting(false);
+      }
     },
     [
       router,
       showNotice,
-      supabase,
+      userId,
     ],
   );
 
-  const saveNow = useCallback(
-    async (): Promise<boolean> => {
-      if (
-        saveInFlightRef.current
-      ) {
-        return saveInFlightRef.current;
-      }
-
-      const savePromise =
-        (async () => {
-          try {
-            while (dirtyRef.current) {
-              const current =
-                noteRef.current;
-
-              if (!current) {
-                dirtyRef.current =
-                  false;
-
-                setSaveState(
-                  'saved',
-                );
-
-                return true;
-              }
-
-              const versionAtStart =
-                saveVersionRef.current;
-
-              let id =
-                realNoteIdRef.current;
-
-              if (!id) {
-                id =
-                  await ensureRow();
-
-                if (!id) {
-                  return false;
-                }
-              }
-
-              const latest =
-                noteRef.current;
-
-              if (!latest) {
-                return false;
-              }
-
-              setSaveState(
-                'saving',
-              );
-
-              const title =
-                latest.title.trim();
-
-              const category =
-                normalizeCategory(
-                  latest.category,
-                ) || 'general';
-
-              const {
-                error,
-              } =
-                await supabase
-                  .from('notes')
-                  .update({
-                    title,
-                    content:
-                      latest.content,
-                    category,
-                    is_pinned:
-                      latest.is_pinned,
-                    is_favorite:
-                      latest.is_favorite,
-                    is_archived:
-                      latest.is_archived,
-                    updated_at:
-                      new Date().toISOString(),
-                  })
-                  .eq(
-                    'id',
-                    id,
-                  );
-
-              if (error) {
-                console.error(
-                  'Save note error:',
-                  error,
-                );
-
-                setSaveState(
-                  'error',
-                );
-
-                showNotice(
-                  error.message ||
-                    'Unable to save your changes.',
-                );
-
-                return false;
-              }
-
-              if (
-                versionAtStart ===
-                saveVersionRef.current
-              ) {
-                dirtyRef.current =
-                  false;
-
-                setSaveState(
-                  'saved',
-                );
-
-                return true;
-              }
-            }
-
-            setSaveState(
-              'saved',
-            );
-
-            return true;
-          } catch (error) {
-            console.error(
-              'Unexpected save error:',
-              error,
-            );
-
-            setSaveState(
-              'error',
-            );
-
-            showNotice(
-              'Something went wrong while saving.',
-            );
-
-            return false;
-          }
-        })();
-
-      saveInFlightRef.current =
-        savePromise;
-
-      try {
-        return await savePromise;
-      } finally {
-        saveInFlightRef.current =
-          null;
-      }
-    },
-    [
-      ensureRow,
-      showNotice,
-      supabase,
-    ],
-  );
-
-  const executeCommand =
-    useCallback(
-      (
-        command: string,
-        value?: string,
-      ) => {
-        if (locked) return;
-
-        const editor =
-          editorRef.current;
-
-        if (!editor) return;
-
-        editor.focus();
-
-        try {
-          document.execCommand(
-            command,
-            false,
-            value,
-          );
-        } catch (error) {
-          console.error(
-            `Editor command failed: ${command}`,
-            error,
-          );
-        }
-
-        const html =
-          editor.innerHTML;
-
-        commitNote((current) => ({
-          ...current,
-          content: html,
-        }));
-      },
-      [commitNote, locked],
-    );
-
-  const applyHeading =
-    useCallback(
-      (value: string) => {
-        setHeading(value);
-
-        executeCommand(
-          'formatBlock',
-          value,
-        );
-      },
-      [executeCommand],
-    );
-
-  const applyFontSize =
-    useCallback(
-      (value: string) => {
-        setFontSize(value);
-
-        executeCommand(
-          'fontSize',
-          value,
-        );
-      },
-      [executeCommand],
-    );
-
-  const insertLink =
+  const handleTitleInput =
     useCallback(() => {
-      if (locked) return;
-
-      const editor =
-        editorRef.current;
-
-      if (!editor) return;
-
-      editor.focus();
-
-      const selection =
-        window.getSelection();
-
-      const selectedText =
-        selection?.toString() || '';
-
-      const url =
-        window.prompt(
-          'Enter the URL',
-          'https://',
-        );
-
-      if (!url) return;
-
-      let safeUrl =
-        url.trim();
-
-      if (
-        !/^https?:\/\//i.test(
-          safeUrl,
-        ) &&
-        !/^mailto:/i.test(
-          safeUrl,
-        )
-      ) {
-        safeUrl =
-          `https://${safeUrl}`;
-      }
-
-      if (selectedText) {
-        document.execCommand(
-          'createLink',
-          false,
-          safeUrl,
-        );
-      } else {
-        const label =
-          window.prompt(
-            'Link text',
-            safeUrl,
-          );
-
-        if (!label) return;
-
-        document.execCommand(
-          'insertHTML',
-          false,
-          `<a href="${safeUrl.replace(
-            /"/g,
-            '&quot;',
-          )}" target="_blank" rel="noopener noreferrer">${label}</a>`,
-        );
-      }
-
-      commitNote((current) => ({
-        ...current,
-        content:
-          editor.innerHTML,
-      }));
-    },
-    [commitNote, locked],
-  );
-
-  const insertChecklist =
-    useCallback(() => {
-      if (locked) return;
-
-      const editor =
-        editorRef.current;
-
-      if (!editor) return;
-
-      editor.focus();
-
-      document.execCommand(
-        'insertHTML',
-        false,
-        '<div data-enotes-checklist="true" class="enotes-checklist"><span contenteditable="false" class="enotes-checkbox">☐</span>&nbsp;</div>',
-      );
-
-      commitNote((current) => ({
-        ...current,
-        content:
-          editor.innerHTML,
-      }));
-    }, [commitNote, locked]);
-
-  const insertHorizontalRule =
-    useCallback(() => {
-      executeCommand(
-        'insertHorizontalRule',
-      );
-    }, [executeCommand]);
-
-  const changeTextColor =
-    useCallback(() => {
-      if (locked) return;
-
-      const color =
-        window.prompt(
-          'Enter a color',
-          '#E5798F',
-        );
-
-      if (!color) return;
-
-      executeCommand(
-        'foreColor',
-        color.trim(),
-      );
-    }, [executeCommand, locked]);
-
-  const changeHighlight =
-    useCallback(() => {
-      if (locked) return;
-
-      const color =
-        window.prompt(
-          'Enter highlight color',
-          '#FFF2A8',
-        );
-
-      if (!color) return;
-
-      executeCommand(
-        'hiliteColor',
-        color.trim(),
-      );
-    }, [executeCommand, locked]);
-
-  const toggleCode =
-    useCallback(() => {
-      if (locked) return;
-
-      const editor =
-        editorRef.current;
-
-      if (!editor) return;
-
-      editor.focus();
-
-      const selection =
-        window.getSelection();
-
-      if (
-        selection &&
-        selection.rangeCount > 0 &&
-        selection.toString()
-      ) {
-        const selected =
-          selection.toString();
-
-        document.execCommand(
-          'insertHTML',
-          false,
-          `<code>${selected
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')}</code>`,
-        );
-      } else {
-        document.execCommand(
-          'formatBlock',
-          false,
-          'pre',
-        );
-      }
-
-      commitNote((current) => ({
-        ...current,
-        content:
-          editor.innerHTML,
-      }));
-    }, [commitNote, locked]);
-
-  const undo = useCallback(() => {
-    const current =
-      noteRef.current;
-
-    if (
-      !current ||
-      undoStackRef.current
-        .length === 0
-    ) {
-      return;
-    }
-
-    const previous =
-      undoStackRef.current.pop();
-
-    if (!previous) return;
-
-    redoStackRef.current.push(
-      snapshotNote(current),
-    );
-
-    const next: EditorNote = {
-      ...current,
-      ...previous,
-    };
-
-    noteRef.current =
-      next;
-
-    setNote(next);
-
-    setUndoCount(
-      undoStackRef.current.length,
-    );
-
-    setRedoCount(
-      redoStackRef.current.length,
-    );
-
-    lastHistoryTimeRef.current =
-      Date.now();
-
-    markDirty();
-
-    requestAnimationFrame(() => {
-      if (
-        editorRef.current
-      ) {
-        editorRef.current.innerHTML =
-          next.content || '';
-
-        editorRef.current.focus();
-      }
-    });
-  }, [markDirty]);
-
-  const redo = useCallback(() => {
-    const current =
-      noteRef.current;
-
-    if (
-      !current ||
-      redoStackRef.current
-        .length === 0
-    ) {
-      return;
-    }
-
-    const nextSnapshot =
-      redoStackRef.current.pop();
-
-    if (!nextSnapshot) return;
-
-    undoStackRef.current.push(
-      snapshotNote(current),
-    );
-
-    const next: EditorNote = {
-      ...current,
-      ...nextSnapshot,
-    };
-
-    noteRef.current =
-      next;
-
-    setNote(next);
-
-    setUndoCount(
-      undoStackRef.current.length,
-    );
-
-    setRedoCount(
-      redoStackRef.current.length,
-    );
-
-    lastHistoryTimeRef.current =
-      Date.now();
-
-    markDirty();
-
-    requestAnimationFrame(() => {
-      if (
-        editorRef.current
-      ) {
-        editorRef.current.innerHTML =
-          next.content || '';
-
-        editorRef.current.focus();
-      }
-    });
-  }, [markDirty]);
+      pushHistory();
+      syncFromInputs();
+      markDirty();
+    }, [
+      markDirty,
+      pushHistory,
+      syncFromInputs,
+    ]);
 
   const handleEditorInput =
     useCallback(() => {
-      const editor =
-        editorRef.current;
-
-      if (!editor) return;
-
-      const html =
-        editor.innerHTML;
-
-      const plainText =
-        editor.textContent?.trim() ||
-        '';
-
-      const normalizedHtml =
-        plainText ||
-        editor.querySelector(
-          'img, hr, table',
-        )
-          ? html
-          : '';
-
-      commitNote((current) => ({
-        ...current,
-        content:
-          normalizedHtml,
-      }));
-    }, [commitNote]);
+      pushHistory();
+      syncFromInputs();
+      markDirty();
+    }, [
+      markDirty,
+      pushHistory,
+      syncFromInputs,
+    ]);
 
   const handleEditorKeyDown =
     useCallback(
-      (
-        event: React.KeyboardEvent<HTMLDivElement>,
-      ) => {
+      (event: React.KeyboardEvent) => {
         const modifier =
           event.ctrlKey ||
           event.metaKey;
 
-        const key =
-          event.key.toLowerCase();
+        if (modifier) {
+          const key =
+            event.key.toLowerCase();
 
-        if (
-          modifier &&
-          key === 'b'
-        ) {
-          event.preventDefault();
-          executeCommand('bold');
-          return;
-        }
-
-        if (
-          modifier &&
-          key === 'i'
-        ) {
-          event.preventDefault();
-          executeCommand('italic');
-          return;
-        }
-
-        if (
-          modifier &&
-          key === 'u'
-        ) {
-          event.preventDefault();
-          executeCommand('underline');
-          return;
-        }
-
-        if (
-          modifier &&
-          key === 's'
-        ) {
-          event.preventDefault();
-
-          if (
-            saveTimerRef.current
-          ) {
-            clearTimeout(
-              saveTimerRef.current,
-            );
-
-            saveTimerRef.current =
-              null;
+          if (key === 'b') {
+            event.preventDefault();
+            executeCommand('bold');
+            return;
           }
 
-          void saveNow();
-          return;
-        }
+          if (key === 'i') {
+            event.preventDefault();
+            executeCommand('italic');
+            return;
+          }
 
-        if (
-          modifier &&
-          key === 'z' &&
-          !event.shiftKey
-        ) {
-          event.preventDefault();
-          undo();
-          return;
-        }
+          if (key === 'u') {
+            event.preventDefault();
+            executeCommand('underline');
+            return;
+          }
 
-        if (
-          modifier &&
-          (
-            key === 'y' ||
-            (
-              key === 'z' &&
-              event.shiftKey
-            )
-          )
-        ) {
-          event.preventDefault();
-          redo();
-          return;
+          if (key === 's') {
+            event.preventDefault();
+            void saveNow();
+            return;
+          }
+
+          if (
+            key === 'z' &&
+            !event.shiftKey
+          ) {
+            event.preventDefault();
+            undo();
+            return;
+          }
+
+          if (
+            key === 'z' &&
+            event.shiftKey
+          ) {
+            event.preventDefault();
+            redo();
+            return;
+          }
+
+          if (key === 'y') {
+            event.preventDefault();
+            redo();
+            return;
+          }
         }
 
         if (
@@ -1220,465 +1236,116 @@ function NoteEditor() {
       ],
     );
 
-  const toggleFlag =
-    useCallback(
-      (
-        field:
-          | 'is_pinned'
-          | 'is_favorite'
-          | 'is_archived',
-      ) => {
-        commitNote((current) => ({
-          ...current,
-          [field]:
-            !current[field],
-        }));
-      },
-      [commitNote],
-    );
+  useEffect(() => {
+    mountedRef.current = true;
 
-  const selectCategory =
-    useCallback(
-      (category: string) => {
-        const normalized =
-          normalizeCategory(
-            category,
-          ) || 'general';
+    return () => {
+      mountedRef.current = false;
 
-        commitNote((current) => ({
-          ...current,
-          category:
-            normalized,
-        }));
-
-        setShowCategoryMenu(
-          false,
-        );
-      },
-      [commitNote],
-    );
-
-  const addCategory =
-    useCallback(() => {
-      const category =
-        normalizeCategory(
-          newCategory,
-        );
-
-      if (!category) {
-        showNotice(
-          'Enter a category name.',
-        );
-
-        return;
-      }
-
-      selectCategory(category);
-
-      setNewCategory('');
-    }, [
-      newCategory,
-      selectCategory,
-      showNotice,
-    ]);
-
-  const toggleLocalLock =
-    useCallback(() => {
-      const next =
-        !locked;
-
-      setLocked(next);
-
-      const id =
-        realNoteIdRef.current;
-
-      if (id) {
-        try {
-          if (next) {
-            window.localStorage.setItem(
-              `enotes:note-lock:${id}`,
-              '1',
-            );
-          } else {
-            window.localStorage.removeItem(
-              `enotes:note-lock:${id}`,
-            );
-          }
-        } catch {
-          // Ignore local storage errors.
-        }
-      }
-
-      showNotice(
-        next
-          ? 'Note locked on this device.'
-          : 'Note unlocked.',
-      );
-    }, [
-      locked,
-      showNotice,
-    ]);
-
-  const copyText =
-    useCallback(
-      async (
-        value: string,
-      ) => {
-        try {
-          if (
-            navigator.clipboard &&
-            window.isSecureContext
-          ) {
-            await navigator.clipboard.writeText(
-              value,
-            );
-
-            return true;
-          }
-
-          const textarea =
-            document.createElement(
-              'textarea',
-            );
-
-          textarea.value =
-            value;
-
-          textarea.style.position =
-            'fixed';
-
-          textarea.style.opacity =
-            '0';
-
-          document.body.appendChild(
-            textarea,
-          );
-
-          textarea.focus();
-          textarea.select();
-
-          const copied =
-            document.execCommand(
-              'copy',
-            );
-
-          textarea.remove();
-
-          return copied;
-        } catch {
-          return false;
-        }
-      },
-      [],
-    );
-
-  const onShare =
-    useCallback(async () => {
-      if (locked) {
-        showNotice(
-          'Unlock the note before sharing.',
-        );
-
-        return;
-      }
-
-      if (
-        saveTimerRef.current
-      ) {
+      if (saveTimerRef.current) {
         clearTimeout(
           saveTimerRef.current,
         );
-
-        saveTimerRef.current =
-          null;
       }
-
-      const saved =
-        await saveNow();
-
-      if (!saved) {
-        showNotice(
-          'Save failed. Please try again.',
-        );
-
-        return;
-      }
-
-      const id =
-        await ensureRow();
-
-      if (!id) {
-        showNotice(
-          'Unable to prepare the share link.',
-        );
-
-        return;
-      }
-
-      const latest =
-        noteRef.current;
-
-      const url =
-        `${window.location.origin}/notes/${id}`;
-
-      const title =
-        latest?.title?.trim() ||
-        'My note';
-
-      const text =
-        latest?.content
-          ? (() => {
-              const element =
-                document.createElement(
-                  'div',
-                );
-
-              element.innerHTML =
-                latest.content;
-
-              return (
-                element.textContent ||
-                title
-              ).slice(0, 500);
-            })()
-          : title;
-
-      try {
-        if (
-          navigator.share
-        ) {
-          await navigator.share({
-            title,
-            text,
-            url,
-          });
-
-          return;
-        }
-      } catch (error) {
-        if (
-          error instanceof
-            DOMException &&
-          error.name ===
-            'AbortError'
-        ) {
-          return;
-        }
-      }
-
-      const copied =
-        await copyText(url);
-
-      if (copied) {
-        showNotice(
-          'Note link copied.',
-        );
-      } else {
-        showNotice(
-          'Unable to copy the share link.',
-        );
-      }
-    }, [
-      copyText,
-      ensureRow,
-      locked,
-      saveNow,
-      showNotice,
-    ]);
-
-  const onDelete =
-    useCallback(async () => {
-      if (deleting) return;
-
-      const current =
-        noteRef.current;
-
-      if (!current) return;
-
-      const confirmed =
-        window.confirm(
-          'Delete this note permanently? This action cannot be undone.',
-        );
-
-      if (!confirmed) return;
-
-      setDeleting(true);
-
-      try {
-        if (dirtyRef.current) {
-          const saved =
-            await saveNow();
-
-          if (!saved) {
-            showNotice(
-              'The note could not be saved before deletion.',
-            );
-
-            return;
-          }
-        }
-
-        const id =
-          realNoteIdRef.current;
-
-        if (!id) {
-          router.replace('/notes');
-          return;
-        }
-
-        const { error } =
-          await supabase
-            .from('notes')
-            .delete()
-            .eq(
-              'id',
-              id,
-            );
-
-        if (error) {
-          console.error(
-            'Delete note error:',
-            error,
-          );
-
-          showNotice(
-            error.message ||
-              'Unable to delete the note.',
-          );
-
-          return;
-        }
-
-        try {
-          window.localStorage.removeItem(
-            `enotes:note-lock:${id}`,
-          );
-        } catch {
-          // Ignore storage errors.
-        }
-
-        router.replace('/notes');
-      } finally {
-        setDeleting(false);
-      }
-    }, [
-      deleting,
-      router,
-      saveNow,
-      showNotice,
-      supabase,
-    ]);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      if (isNew) {
-        const draft =
-          createEmptyNote();
-
-        noteRef.current =
-          draft;
-
-        setNote(draft);
-
-        setLoading(false);
-
-        return;
-      }
-
       setLoading(true);
+      setSaveState('loading');
 
-      const {
-        data: {
-          user,
-        },
-      } =
-        await supabase.auth.getUser();
+      try {
+        const {
+          data: {
+            user,
+          },
+          error: authError,
+        } = await supabase.auth.getUser();
 
-      if (!user) {
-        router.replace('/signin');
-        return;
-      }
+        if (authError) {
+          throw authError;
+        }
 
-      const {
-        data,
-        error,
-      } =
-        await supabase
+        if (!user) {
+          router.replace('/signin');
+          return;
+        }
+
+        if (cancelled) return;
+
+        setUserId(user.id);
+
+        if (isNewRoute) {
+          const empty =
+            createEmptyNote(user.id);
+
+          noteRef.current = empty;
+
+          setNote(empty);
+
+          dirtyRef.current = true;
+
+          setSaveState('unsaved');
+
+          return;
+        }
+
+        const {
+          data,
+          error,
+        } = await supabase
           .from('notes')
           .select('*')
-          .eq(
-            'id',
-            routeId,
-          )
-          .eq(
-            'user_id',
-            user.id,
-          )
+          .eq('id', routeId)
+          .eq('user_id', user.id)
           .maybeSingle();
 
-      if (cancelled) return;
+        if (error) {
+          throw error;
+        }
 
-      if (error) {
+        if (!data) {
+          router.replace('/notes');
+          return;
+        }
+
+        if (cancelled) return;
+
+        const loaded =
+          data as NoteRow;
+
+        noteRef.current = loaded;
+
+        setNote(loaded);
+
+        dirtyRef.current = false;
+
+        setSaveState('saved');
+      } catch (error) {
         console.error(
-          'Load note error:',
+          'Failed to load note:',
           error,
         );
 
-        showNotice(
-          'Unable to load this note.',
-        );
+        if (!cancelled) {
+          setSaveState('error');
 
-        setLoading(false);
-
-        return;
+          showNotice(
+            'error',
+            error instanceof Error
+              ? error.message
+              : 'Could not load this note.',
+            5000,
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
-
-      if (!data) {
-        router.replace('/notes');
-        return;
-      }
-
-      const loaded =
-        data as EditorNote;
-
-      noteRef.current =
-        loaded;
-
-      setNote(loaded);
-
-      realNoteIdRef.current =
-        loaded.id;
-
-      dirtyRef.current =
-        false;
-
-      setSaveState('saved');
-
-      undoStackRef.current =
-        [];
-
-      redoStackRef.current =
-        [];
-
-      setUndoCount(0);
-      setRedoCount(0);
-
-      try {
-        const localLock =
-          window.localStorage.getItem(
-            `enotes:note-lock:${loaded.id}`,
-          ) === '1';
-
-        setLocked(
-          localLock,
-        );
-      } catch {
-        // Ignore storage errors.
-      }
-
-      setLoading(false);
     }
 
     void load();
@@ -1687,53 +1354,61 @@ function NoteEditor() {
       cancelled = true;
     };
   }, [
-    isNew,
+    isNewRoute,
     routeId,
     router,
     showNotice,
-    supabase,
   ]);
 
   useEffect(() => {
-    const editor =
-      editorRef.current;
+    if (loading || !note) return;
 
-    if (
-      !editor ||
-      !note
-    ) {
-      return;
+    if (titleRef.current) {
+      titleRef.current.value =
+        note.title ?? '';
     }
 
-    const currentHtml =
-      editor.innerHTML;
-
-    if (
-      currentHtml !==
-      (note.content || '')
-    ) {
-      editor.innerHTML =
-        note.content || '';
+    if (editorRef.current) {
+      editorRef.current.innerHTML =
+        note.content ||
+        '<p><br></p>';
     }
-  }, [note?.id]);
+
+    historyRef.current = [];
+    redoRef.current = [];
+
+    updateHistoryIndicators();
+  }, [
+    loading,
+    note,
+    updateHistoryIndicators,
+  ]);
 
   useEffect(() => {
-    return () => {
+    function handleBeforeUnload(
+      event: BeforeUnloadEvent,
+    ) {
       if (
-        saveTimerRef.current
+        dirtyRef.current ||
+        saveInFlightRef.current
       ) {
-        clearTimeout(
-          saveTimerRef.current,
-        );
+        event.preventDefault();
+        event.returnValue = '';
       }
+    }
 
-      if (
-        dirtyRef.current
-      ) {
-        void saveNow();
-      }
+    window.addEventListener(
+      'beforeunload',
+      handleBeforeUnload,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'beforeunload',
+        handleBeforeUnload,
+      );
     };
-  }, [saveNow]);
+  }, []);
 
   useEffect(() => {
     const handleVisibility =
@@ -1748,14 +1423,9 @@ function NoteEditor() {
             clearTimeout(
               saveTimerRef.current,
             );
-
-            saveTimerRef.current =
-              null;
           }
 
-          if (
-            dirtyRef.current
-          ) {
+          if (dirtyRef.current) {
             void saveNow();
           }
         }
@@ -1775,59 +1445,92 @@ function NoteEditor() {
   }, [saveNow]);
 
   useEffect(() => {
-    const textarea =
-      titleRef.current;
-
-    if (!textarea) return;
-
-    textarea.style.height =
-      '0px';
-
-    textarea.style.height =
-      `${Math.min(
-        Math.max(
-          textarea.scrollHeight,
-          56,
-        ),
-        180,
-      )}px`;
-  }, [note?.title]);
-
-  useEffect(() => {
-    const handleChecklistClick =
-      (event: MouseEvent) => {
-        const target =
-          event.target as HTMLElement;
+    const handleGlobalKey =
+      (event: KeyboardEvent) => {
+        const modifier =
+          event.ctrlKey ||
+          event.metaKey;
 
         if (
-          !target.classList.contains(
-            'enotes-checkbox',
-          )
+          modifier &&
+          event.key.toLowerCase() ===
+            's'
         ) {
-          return;
+          event.preventDefault();
+          void saveNow();
         }
-
-        event.preventDefault();
-
-        const current =
-          target.textContent ===
-          '☑';
-
-        target.textContent =
-          current ? '☐' : '☑';
-
-        target.classList.toggle(
-          'enotes-checkbox-checked',
-          !current,
-        );
-
-        handleEditorInput();
       };
 
+    window.addEventListener(
+      'keydown',
+      handleGlobalKey,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'keydown',
+        handleGlobalKey,
+      );
+    };
+  }, [saveNow]);
+
+  useEffect(() => {
     const editor =
       editorRef.current;
 
     if (!editor) return;
+
+    const handleChecklistClick =
+      (event: MouseEvent) => {
+        const target =
+          event.target as HTMLElement | null;
+
+        if (
+          !target ||
+          target.tagName !== 'INPUT'
+        ) {
+          return;
+        }
+
+        const input =
+          target as HTMLInputElement;
+
+        if (
+          input.type !== 'checkbox'
+        ) {
+          return;
+        }
+
+        if (locked) {
+          event.preventDefault();
+          return;
+        }
+
+        pushHistory();
+
+        const label =
+          input.closest('label');
+
+        const span =
+          label?.querySelector(
+            'span',
+          );
+
+        if (span) {
+          span.style.textDecoration =
+            input.checked
+              ? 'line-through'
+              : 'none';
+
+          span.style.opacity =
+            input.checked
+              ? '0.55'
+              : '1';
+        }
+
+        syncFromInputs();
+        markDirty();
+      };
 
     editor.addEventListener(
       'click',
@@ -1841,56 +1544,80 @@ function NoteEditor() {
       );
     };
   }, [
-    handleEditorInput,
+    locked,
+    markDirty,
+    pushHistory,
+    syncFromInputs,
   ]);
 
-  const categories =
-    useMemo(() => {
-      const values = [
-        ...CATEGORIES,
-        note?.category || '',
-      ];
-
-      return Array.from(
-        new Set(
-          values
-            .map(
-              normalizeCategory,
-            )
-            .filter(Boolean),
-        ),
-      );
-    }, [note?.category]);
+  const plainText = useMemo(() => {
+    return getTextFromHtml(
+      note?.content ?? '',
+    );
+  }, [note?.content]);
 
   const wordCount =
-    typeof document !== 'undefined' &&
-    note
-      ? countWords(
-          note.content || '',
-        )
-      : 0;
+    countWords(plainText);
 
   const characterCount =
-    typeof document !== 'undefined' &&
-    note
-      ? countCharacters(
-          note.content || '',
-        )
-      : 0;
+    countCharacters(plainText);
 
-  if (
-    loading ||
-    !note
-  ) {
+  const saveLabel =
+    saveState === 'loading'
+      ? 'Loading…'
+      : saveState === 'saving'
+        ? 'Saving…'
+        : saveState === 'saved'
+          ? 'Saved'
+          : saveState === 'unsaved'
+            ? 'Unsaved changes'
+            : saveState === 'error'
+              ? 'Save failed'
+              : 'Ready';
+
+  const saveIndicatorClass =
+    saveState === 'saved'
+      ? 'text-emerald-600'
+      : saveState === 'error'
+        ? 'text-red-600'
+        : saveState === 'saving'
+          ? 'text-blue-600'
+          : 'text-slate-500';
+
+  if (loading) {
     return (
-      <main className="min-h-screen bg-[#FFF7F8] px-4 py-8">
-        <div className="mx-auto max-w-5xl">
-          <div className="h-6 w-28 animate-pulse rounded bg-black/5" />
+      <main className="min-h-screen bg-[#FFF7F8]">
+        <div className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#E5798F]/20 border-t-[#E5798F]" />
+            <p className="text-sm font-medium text-slate-500">
+              Loading your note…
+            </p>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
-          <div className="mt-8 rounded-3xl border border-black/5 bg-white/75 p-6 shadow-sm">
-            <div className="h-10 w-2/3 animate-pulse rounded bg-black/5" />
+  if (!note) {
+    return (
+      <main className="min-h-screen bg-[#FFF7F8]">
+        <div className="mx-auto flex min-h-screen max-w-xl items-center justify-center px-4">
+          <div className="w-full rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+            <FileText className="mx-auto mb-4 h-12 w-12 text-slate-300" />
+            <h1 className="text-xl font-bold text-slate-900">
+              Note unavailable
+            </h1>
+            <p className="mt-2 text-sm text-slate-500">
+              This note could not be loaded.
+            </p>
 
-            <div className="mt-6 h-80 animate-pulse rounded-2xl bg-black/5" />
+            <Link
+              href="/notes"
+              className="mt-6 inline-flex rounded-xl bg-[#E5798F] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Back to notes
+            </Link>
           </div>
         </div>
       </main>
@@ -1898,968 +1625,1192 @@ function NoteEditor() {
   }
 
   return (
-    <main className="min-h-screen bg-[#FFF7F8] text-black">
-      <div className="mx-auto w-full max-w-7xl px-2 pb-8 pt-2 sm:px-4 sm:pt-4 lg:px-7">
-        <header className="sticky top-0 z-40 mb-3 rounded-2xl border border-black/5 bg-[#FFF7F8]/90 px-2 py-2 backdrop-blur-xl sm:px-3">
-          <div className="flex min-h-12 items-center justify-between gap-2">
-            <div className="flex min-w-0 items-center gap-1">
-              <Link
-                href="/notes"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-black/65 transition hover:bg-black/5 hover:text-black"
-                aria-label="Back to notes"
-              >
-                <svg
-                  width="19"
-                  height="19"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
+    <main className="min-h-screen bg-[#FFF7F8] text-slate-900">
+      <div className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-xl">
+        <div className="mx-auto max-w-[1500px] px-3 sm:px-5 lg:px-8">
+          <div className="flex min-h-16 items-center gap-2">
+            <Link
+              href="/notes"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+              aria-label="Back to notes"
+            >
+              <span className="text-xl">
+                ←
+              </span>
+            </Link>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={titleRef}
+                  type="text"
+                  defaultValue={
+                    note.title ?? ''
+                  }
+                  onChange={
+                    handleTitleInput
+                  }
+                  disabled={locked}
+                  placeholder="Untitled note"
+                  className="w-full min-w-0 border-0 bg-transparent p-0 text-base font-bold outline-none placeholder:text-slate-300 sm:text-lg"
+                />
+              </div>
+
+              <div className="hidden items-center gap-2 text-xs text-slate-400 sm:flex">
+                <span>
+                  {normalizeCategory(
+                    note.category,
+                  )}
+                </span>
+
+                <span>•</span>
+
+                <span
+                  className={
+                    saveIndicatorClass
+                  }
                 >
-                  <path d="m15 18-6-6 6-6" />
-                </svg>
-              </Link>
+                  {saveLabel}
+                </span>
 
-              <div className="hidden min-w-0 sm:block">
-                <div className="flex items-center gap-2">
-                  <FileText
-                    size={17}
-                    className="text-[#E5798F]"
-                  />
-
-                  <span className="truncate text-sm font-semibold">
-                    {note.title.trim() ||
-                      'Untitled note'}
-                  </span>
-                </div>
-
-                <div className="mt-0.5 text-[11px] text-black/40">
-                  {saveState ===
-                  'saving'
-                    ? 'Saving changes…'
-                    : saveState ===
-                        'error'
-                      ? 'Save failed'
-                      : `Saved ${formatTimestamp(note.updated_at)}`}
-                </div>
+                {!isNewRoute &&
+                  note.updated_at && (
+                    <>
+                      <span>•</span>
+                      <span>
+                        {formatTimestamp(
+                          note.updated_at,
+                        )}
+                      </span>
+                    </>
+                  )}
               </div>
             </div>
 
-            <div className="flex items-center gap-1">
-              <div
-                className={[
-                  'hidden items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium sm:flex',
-                  saveState === 'error'
-                    ? 'bg-red-50 text-red-600'
-                    : saveState === 'saving'
-                      ? 'bg-amber-50 text-amber-700'
-                      : 'bg-emerald-50 text-emerald-700',
-                ].join(' ')}
-              >
-                {saveState ===
-                'saved' ? (
-                  <Check size={13} />
-                ) : (
-                  <Save size={13} />
-                )}
-
-                {saveState ===
-                'saving'
-                  ? 'Saving'
-                  : saveState ===
-                      'error'
-                    ? 'Error'
-                    : 'Saved'}
-              </div>
-
+            <div className="flex shrink-0 items-center gap-1">
               <button
                 type="button"
                 onClick={() =>
-                  toggleFlag(
+                  updateFlag(
                     'is_pinned',
                   )
                 }
-                className={[
-                  'hidden h-10 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition sm:flex',
+                className={`hidden h-10 w-10 items-center justify-center rounded-xl transition sm:inline-flex ${
                   note.is_pinned
-                    ? 'bg-amber-50 text-amber-700'
-                    : 'text-black/60 hover:bg-black/5',
-                ].join(' ')}
-                title="Pin note"
+                    ? 'bg-amber-50 text-amber-600'
+                    : 'text-slate-500 hover:bg-slate-100'
+                }`}
+                title="Pin"
               >
-                <Pin size={16} />
-
-                {note.is_pinned
-                  ? 'Pinned'
-                  : 'Pin'}
+                <Pin className="h-4 w-4" />
               </button>
 
               <button
                 type="button"
-                onClick={
-                  toggleLocalLock
-                }
-                className={[
-                  'inline-flex h-10 w-10 items-center justify-center rounded-xl transition',
+                onClick={toggleLock}
+                className={`hidden h-10 w-10 items-center justify-center rounded-xl transition sm:inline-flex ${
                   locked
-                    ? 'bg-black text-white'
-                    : 'text-black/60 hover:bg-black/5 hover:text-black',
-                ].join(' ')}
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-500 hover:bg-slate-100'
+                }`}
                 title={
                   locked
-                    ? 'Unlock note'
-                    : 'Lock note'
+                    ? 'Unlock editing'
+                    : 'Lock editing'
                 }
               >
                 {locked ? (
-                  <Lock size={17} />
+                  <Lock className="h-4 w-4" />
                 ) : (
-                  <Unlock size={17} />
+                  <Unlock className="h-4 w-4" />
                 )}
               </button>
 
-              <button
-                type="button"
-                onClick={onShare}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-black/60 transition hover:bg-black/5 hover:text-black"
-                title="Share note"
-              >
-                <Share2 size={17} />
-              </button>
-
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={deleting}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                title="Delete note"
-              >
-                <Trash2 size={17} />
-              </button>
-            </div>
-          </div>
-        </header>
-
-        <section className="overflow-hidden rounded-[26px] border border-black/5 bg-white shadow-[0_18px_60px_rgba(0,0,0,0.07)]">
-          <div className="flex flex-wrap items-center gap-2 border-b border-black/5 px-3 py-3 sm:px-5">
-            <div className="relative">
               <button
                 type="button"
                 onClick={() =>
-                  setShowCategoryMenu(
-                    (value) => !value,
-                  )
+                  void saveNow()
                 }
-                className="inline-flex items-center gap-2 rounded-full border border-black/8 bg-[#FFF7F8] px-3 py-1.5 text-xs font-medium text-black/65 transition hover:border-[#E5798F]/30"
+                disabled={
+                  saveState === 'saving'
+                }
+                className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#E5798F] px-3 text-sm font-semibold text-white shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:px-4"
               >
-                <span className="h-2 w-2 rounded-full bg-[#E5798F]" />
-
-                {note.category ||
-                  'general'}
-
-                <ChevronDown
-                  size={13}
-                />
+                <Save className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  Save
+                </span>
               </button>
-
-              {showCategoryMenu && (
-                <div className="absolute left-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-black/8 bg-white p-2 shadow-2xl">
-                  <div className="max-h-52 overflow-y-auto">
-                    {categories.map(
-                      (category) => (
-                        <button
-                          key={category}
-                          type="button"
-                          onClick={() =>
-                            selectCategory(
-                              category,
-                            )
-                          }
-                          className={[
-                            'flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition',
-                            note.category ===
-                            category
-                              ? 'bg-[#E5798F]/10 font-medium text-[#C95F76]'
-                              : 'hover:bg-black/5',
-                          ].join(' ')}
-                        >
-                          <span>
-                            {category}
-                          </span>
-
-                          {note.category ===
-                            category && (
-                            <Check
-                              size={14}
-                            />
-                          )}
-                        </button>
-                      ),
-                    )}
-                  </div>
-
-                  <div className="mt-2 border-t border-black/5 pt-2">
-                    <div className="flex gap-2">
-                      <input
-                        value={
-                          newCategory
-                        }
-                        onChange={(
-                          event,
-                        ) =>
-                          setNewCategory(
-                            event.target
-                              .value,
-                          )
-                        }
-                        onKeyDown={(
-                          event,
-                        ) => {
-                          if (
-                            event.key ===
-                            'Enter'
-                          ) {
-                            event.preventDefault();
-                            addCategory();
-                          }
-
-                          if (
-                            event.key ===
-                            'Escape'
-                          ) {
-                            setShowCategoryMenu(
-                              false,
-                            );
-                          }
-                        }}
-                        placeholder="New category"
-                        className="min-w-0 flex-1 rounded-xl border border-black/10 px-3 py-2 text-sm outline-none focus:border-[#E5798F]/50 focus:ring-2 focus:ring-[#E5798F]/10"
-                      />
-
-                      <button
-                        type="button"
-                        onClick={
-                          addCategory
-                        }
-                        className="rounded-xl bg-[#E5798F] px-3 text-xs font-semibold text-white hover:bg-[#d96d84]"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
+          </div>
 
+          <div className="flex items-center gap-1 overflow-x-auto pb-2 pt-0.5 sm:hidden">
             <button
               type="button"
               onClick={() =>
-                toggleFlag(
-                  'is_archived',
-                )
+                updateFlag('is_pinned')
               }
-              className={[
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition',
-                note.is_archived
-                  ? 'bg-slate-100 text-slate-700'
-                  : 'bg-black/5 text-black/55 hover:bg-black/8',
-              ].join(' ')}
-            >
-              <Archive size={13} />
-
-              {note.is_archived
-                ? 'Archived'
-                : 'Archive'}
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                toggleFlag(
-                  'is_pinned',
-                )
-              }
-              className={[
-                'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition sm:hidden',
+              className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${
                 note.is_pinned
-                  ? 'bg-amber-50 text-amber-700'
-                  : 'bg-black/5 text-black/55 hover:bg-black/8',
-              ].join(' ')}
+                  ? 'bg-amber-50 text-amber-600'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
             >
-              <Pin size={13} />
-
-              {note.is_pinned
-                ? 'Pinned'
-                : 'Pin'}
+              <Pin className="h-3.5 w-3.5" />
+              Pin
             </button>
 
-            <div className="ml-auto flex items-center gap-2 text-[11px] text-black/35">
-              <span>
-                {wordCount} words
-              </span>
-
-              <span>•</span>
-
-              <span>
-                {characterCount}{' '}
-                chars
-              </span>
-            </div>
-          </div>
-
-          <div className="sticky top-[68px] z-30 overflow-x-auto border-b border-black/5 bg-white/95 px-2 py-2 backdrop-blur-xl sm:px-4">
-            <div className="flex min-w-max items-center gap-0.5">
-              <ToolbarButton
-                label="Undo (Ctrl/Cmd+Z)"
-                disabled={
-                  locked ||
-                  undoCount === 0
-                }
-                onMouseDown={
-                  undo
-                }
-              >
-                <Undo2 size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Redo (Ctrl/Cmd+Y)"
-                disabled={
-                  locked ||
-                  redoCount === 0
-                }
-                onMouseDown={
-                  redo
-                }
-              >
-                <Redo2 size={17} />
-              </ToolbarButton>
-
-              <ToolbarDivider />
-
-              <ToolbarButton
-                label="Bold (Ctrl/Cmd+B)"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'bold',
-                  )
-                }
-              >
-                <Bold size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Italic (Ctrl/Cmd+I)"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'italic',
-                  )
-                }
-              >
-                <Italic size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Underline (Ctrl/Cmd+U)"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'underline',
-                  )
-                }
-              >
-                <Underline size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Strikethrough"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'strikeThrough',
-                  )
-                }
-              >
-                <Strikethrough
-                  size={17}
-                />
-              </ToolbarButton>
-
-              <ToolbarDivider />
-
-              <div className="flex h-9 items-center rounded-lg border border-black/8 bg-white px-2">
-                <Type
-                  size={14}
-                  className="mr-1.5 text-black/45"
-                />
-
-                <select
-                  value={heading}
-                  disabled={locked}
-                  onChange={(event) =>
-                    applyHeading(
-                      event.target
-                        .value,
-                    )
-                  }
-                  className="h-full cursor-pointer bg-transparent text-xs font-medium outline-none"
-                  title="Text style"
-                >
-                  <option value="p">
-                    Paragraph
-                  </option>
-
-                  <option value="h1">
-                    Heading 1
-                  </option>
-
-                  <option value="h2">
-                    Heading 2
-                  </option>
-
-                  <option value="h3">
-                    Heading 3
-                  </option>
-
-                  <option value="h4">
-                    Heading 4
-                  </option>
-                </select>
-              </div>
-
-              <div className="flex h-9 items-center rounded-lg border border-black/8 bg-white px-2">
-                <select
-                  value={fontSize}
-                  disabled={locked}
-                  onChange={(event) =>
-                    applyFontSize(
-                      event.target
-                        .value,
-                    )
-                  }
-                  className="h-full cursor-pointer bg-transparent text-xs font-medium outline-none"
-                  title="Font size"
-                >
-                  <option value="2">
-                    Small
-                  </option>
-
-                  <option value="3">
-                    Normal
-                  </option>
-
-                  <option value="4">
-                    Large
-                  </option>
-
-                  <option value="5">
-                    Extra Large
-                  </option>
-
-                  <option value="6">
-                    Huge
-                  </option>
-                </select>
-              </div>
-
-              <ToolbarDivider />
-
-              <ToolbarButton
-                label="Bullet list"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'insertUnorderedList',
-                  )
-                }
-              >
-                <List size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Numbered list"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'insertOrderedList',
-                  )
-                }
-              >
-                <ListOrdered
-                  size={17}
-                />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Checklist"
-                disabled={locked}
-                onMouseDown={
-                  insertChecklist
-                }
-              >
-                <span className="text-sm font-bold">
-                  ☑
-                </span>
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Quote"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'formatBlock',
-                    'blockquote',
-                  )
-                }
-              >
-                <Quote size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Code"
-                disabled={locked}
-                onMouseDown={
-                  toggleCode
-                }
-              >
-                <Code2 size={17} />
-              </ToolbarButton>
-
-              <ToolbarDivider />
-
-              <ToolbarButton
-                label="Align left"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'justifyLeft',
-                  )
-                }
-              >
-                <AlignLeft size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Align center"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'justifyCenter',
-                  )
-                }
-              >
-                <AlignCenter
-                  size={17}
-                />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Align right"
-                disabled={locked}
-                onMouseDown={() =>
-                  executeCommand(
-                    'justifyRight',
-                  )
-                }
-              >
-                <AlignRight
-                  size={17}
-                />
-              </ToolbarButton>
-
-              <ToolbarDivider />
-
-              <ToolbarButton
-                label="Text color"
-                disabled={locked}
-                onMouseDown={
-                  changeTextColor
-                }
-              >
-                <Palette size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Highlight"
-                disabled={locked}
-                onMouseDown={
-                  changeHighlight
-                }
-              >
-                <Highlighter
-                  size={17}
-                />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Insert link"
-                disabled={locked}
-                onMouseDown={
-                  insertLink
-                }
-              >
-                <Link2 size={17} />
-              </ToolbarButton>
-
-              <ToolbarButton
-                label="Horizontal divider"
-                disabled={locked}
-                onMouseDown={
-                  insertHorizontalRule
-                }
-              >
-                <span className="text-base font-bold">
-                  —
-                </span>
-              </ToolbarButton>
-            </div>
-          </div>
-
-          <div className="px-4 pb-10 pt-6 sm:px-8 sm:pb-14 sm:pt-8 lg:px-14">
-            <textarea
-              ref={titleRef}
-              value={note.title}
-              disabled={locked}
-              onChange={(event) =>
-                commitNote(
-                  (current) => ({
-                    ...current,
-                    title:
-                      event.target
-                        .value,
-                  }),
-                )
-              }
-              placeholder="Untitled note"
-              rows={1}
-              className="block w-full resize-none overflow-hidden border-0 bg-transparent text-3xl font-bold leading-tight tracking-tight outline-none placeholder:text-black/20 sm:text-4xl"
-              aria-label="Note title"
-            />
-
-            <div className="my-5 h-px bg-black/5" />
-
-            <div
-              className={[
-                'relative rounded-2xl transition-all',
-                editorFocused
-                  ? 'bg-white'
-                  : '',
-              ].join(' ')}
+            <button
+              type="button"
+              onClick={toggleLock}
+              className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${
+                locked
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
             >
-              {!note.content &&
-                !locked && (
-                  <div className="pointer-events-none absolute left-0 top-0 z-0 text-[16px] leading-8 text-black/25 sm:text-[17px]">
-                    Start writing your
-                    thoughts...
-                  </div>
-                )}
-
-              <div
-                ref={editorRef}
-                contentEditable={!locked}
-                suppressContentEditableWarning
-                role="textbox"
-                aria-multiline="true"
-                aria-label="Note content"
-                spellCheck
-                onFocus={() =>
-                  setEditorFocused(
-                    true,
-                  )
-                }
-                onBlur={() =>
-                  setEditorFocused(
-                    false,
-                  )
-                }
-                onInput={
-                  handleEditorInput
-                }
-                onKeyDown={
-                  handleEditorKeyDown
-                }
-                className={[
-                  'relative z-10 min-h-[55vh] w-full border-0 bg-transparent outline-none',
-                  'text-[16px] leading-8 text-black/80 sm:min-h-[62vh] sm:text-[17px]',
-                  'prose prose-neutral max-w-none',
-                  locked
-                    ? 'pointer-events-none select-none blur-[5px]'
-                    : '',
-                ].join(' ')}
-              />
-
-              {locked && (
-                <div className="absolute inset-0 z-20 flex items-center justify-center">
-                  <div className="flex max-w-xs flex-col items-center rounded-2xl border border-black/8 bg-white/95 px-6 py-5 text-center shadow-xl backdrop-blur">
-                    <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-black text-white">
-                      <Lock size={18} />
-                    </div>
-
-                    <h2 className="text-sm font-semibold">
-                      Note locked
-                    </h2>
-
-                    <p className="mt-1 text-xs leading-5 text-black/45">
-                      This is a
-                      device-local
-                      privacy lock.
-                      Your actual
-                      server-side
-                      protection
-                      should be
-                      enforced by
-                      Supabase RLS.
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={
-                        toggleLocalLock
-                      }
-                      className="mt-4 rounded-xl bg-[#E5798F] px-4 py-2 text-xs font-semibold text-white transition hover:bg-[#d96d84]"
-                    >
-                      Unlock
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-2 border-t border-black/5 bg-[#FFFBFC] px-4 py-3 text-[11px] text-black/35 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-            <div className="flex items-center gap-2">
-              {saveState ===
-              'saving' ? (
-                <span>
-                  Saving changes…
-                </span>
-              ) : saveState ===
-                'error' ? (
-                <span className="text-red-500">
-                  Changes need
-                  attention
-                </span>
+              {locked ? (
+                <Lock className="h-3.5 w-3.5" />
               ) : (
-                <>
-                  <span>
-                    All changes
-                    saved
-                  </span>
-
-                  <Check
-                    size={12}
-                    className="text-emerald-600"
-                  />
-                </>
+                <Unlock className="h-3.5 w-3.5" />
               )}
-            </div>
+              {locked ? 'Locked' : 'Lock'}
+            </button>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <span>
-                {wordCount} words
-              </span>
-
-              <span>
-                {characterCount}{' '}
-                characters
-              </span>
-
-              <span className="hidden sm:inline">
-                Ctrl/Cmd+B
-                Bold
-              </span>
-
-              <span className="hidden sm:inline">
-                Ctrl/Cmd+I
-                Italic
-              </span>
-
-              <span className="hidden sm:inline">
-                Ctrl/Cmd+U
-                Underline
-              </span>
-            </div>
+            <button
+              type="button"
+              onClick={() =>
+                void shareNote()
+              }
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-slate-100 px-3 text-xs font-semibold text-slate-600"
+            >
+              <Share2 className="h-3.5 w-3.5" />
+              Share
+            </button>
           </div>
-        </section>
+        </div>
       </div>
 
       {notice && (
-        <div className="fixed bottom-4 left-1/2 z-[100] -translate-x-1/2 px-4">
-          <div className="flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border border-black/8 bg-black px-4 py-3 text-sm font-medium text-white shadow-2xl">
-            <Check
-              size={15}
-              className="shrink-0"
-            />
-
-            <span className="truncate">
-              {notice}
+        <div className="fixed right-4 top-20 z-[70] max-w-[calc(100vw-2rem)] sm:right-6">
+          <div
+            className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm font-medium shadow-xl ${
+              notice.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : notice.type === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-800'
+                  : 'border-blue-200 bg-blue-50 text-blue-800'
+            }`}
+          >
+            <Check className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              {notice.message}
             </span>
           </div>
         </div>
       )}
 
-      <style jsx global>{`
-        .enotes-checklist {
-          display: flex;
-          align-items: center;
-          min-height: 32px;
-        }
+      <div className="mx-auto max-w-[1500px] px-3 py-4 sm:px-5 sm:py-6 lg:px-8 lg:py-8">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <section className="min-w-0">
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 bg-white">
+                <div className="flex items-center gap-1 overflow-x-auto px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={undo}
+                    disabled={
+                      locked ||
+                      historyLength === 0
+                    }
+                    className="toolbar-button"
+                    title="Undo"
+                  >
+                    <Undo2 className="h-4 w-4" />
+                  </button>
 
-        .enotes-checkbox {
+                  <button
+                    type="button"
+                    onClick={redo}
+                    disabled={
+                      locked ||
+                      redoLength === 0
+                    }
+                    className="toolbar-button"
+                    title="Redo"
+                  >
+                    <Redo2 className="h-4 w-4" />
+                  </button>
+
+                  <div className="toolbar-divider" />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'bold',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Bold (Ctrl+B)"
+                  >
+                    <Bold className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'italic',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Italic (Ctrl+I)"
+                  >
+                    <Italic className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'underline',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Underline (Ctrl+U)"
+                  >
+                    <Underline className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'strikeThrough',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Strikethrough"
+                  >
+                    <Strikethrough className="h-4 w-4" />
+                  </button>
+
+                  <div className="toolbar-divider" />
+
+                  <div className="relative shrink-0">
+                    <select
+                      value={heading}
+                      onChange={(event) =>
+                        formatHeading(
+                          event.target.value,
+                        )
+                      }
+                      disabled={locked}
+                      className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#E5798F]"
+                      title="Heading"
+                    >
+                      <option value="p">
+                        Normal
+                      </option>
+                      <option value="h1">
+                        Heading 1
+                      </option>
+                      <option value="h2">
+                        Heading 2
+                      </option>
+                      <option value="h3">
+                        Heading 3
+                      </option>
+                      <option value="h4">
+                        Heading 4
+                      </option>
+                    </select>
+                  </div>
+
+                  <select
+                    value={fontSize}
+                    onChange={(event) =>
+                      changeFontSize(
+                        event.target.value,
+                      )
+                    }
+                    disabled={locked}
+                    className="h-9 shrink-0 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-[#E5798F]"
+                    title="Font size"
+                  >
+                    {FONT_SIZES.map(
+                      (item) => (
+                        <option
+                          key={item.value}
+                          value={
+                            item.value
+                          }
+                        >
+                          {item.label}
+                        </option>
+                      ),
+                    )}
+                  </select>
+
+                  <div className="toolbar-divider" />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'insertUnorderedList',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Bullet list"
+                  >
+                    <List className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'insertOrderedList',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Numbered list"
+                  >
+                    <ListOrdered className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      insertChecklist
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Checklist"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+
+                  <div className="toolbar-divider" />
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'justifyLeft',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Align left"
+                  >
+                    <AlignLeft className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'justifyCenter',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Align center"
+                  >
+                    <AlignCenter className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      executeCommand(
+                        'justifyRight',
+                      )
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Align right"
+                  >
+                    <AlignRight className="h-4 w-4" />
+                  </button>
+
+                  <div className="toolbar-divider" />
+
+                  <button
+                    type="button"
+                    onClick={
+                      createLink
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Insert link"
+                  >
+                    <Link2 className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      insertCode
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Code"
+                  >
+                    <Code2 className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      insertHorizontalRule
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Horizontal rule"
+                  >
+                    <span className="text-base font-bold">
+                      ―
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      setTextColor
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Text color"
+                  >
+                    <Palette className="h-4 w-4" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      setHighlight
+                    }
+                    disabled={locked}
+                    className="toolbar-button"
+                    title="Highlight"
+                  >
+                    <Highlighter className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className={`min-h-[65vh] bg-white px-4 py-5 sm:px-8 sm:py-8 lg:px-12 lg:py-10 ${
+                  editorFocused
+                    ? 'ring-2 ring-inset ring-[#E5798F]/10'
+                    : ''
+                }`}
+              >
+                <div
+                  ref={editorRef}
+                  contentEditable={
+                    !locked
+                  }
+                  suppressContentEditableWarning
+                  spellCheck
+                  onInput={
+                    handleEditorInput
+                  }
+                  onKeyDown={
+                    handleEditorKeyDown
+                  }
+                  onFocus={() =>
+                    setEditorFocused(
+                      true,
+                    )
+                  }
+                  onBlur={() =>
+                    setEditorFocused(
+                      false,
+                    )
+                  }
+                  className="note-editor mx-auto min-h-[60vh] max-w-[900px] outline-none"
+                  data-placeholder="Start writing..."
+                />
+              </div>
+
+              <div className="border-t border-slate-200 bg-slate-50/70 px-4 py-3 sm:px-6">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span>
+                      {wordCount}{' '}
+                      {wordCount === 1
+                        ? 'word'
+                        : 'words'}
+                    </span>
+
+                    <span>
+                      {characterCount}{' '}
+                      {characterCount ===
+                      1
+                        ? 'character'
+                        : 'characters'}
+                    </span>
+                  </div>
+
+                  <div>
+                    {locked
+                      ? 'Editing locked'
+                      : editorFocused
+                        ? 'Editing'
+                        : 'Click anywhere to continue writing'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside className="hidden lg:block">
+            <div className="sticky top-24 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-slate-900">
+                    Note options
+                  </h2>
+
+                  <ChevronDown className="h-4 w-4 text-slate-400" />
+                </div>
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateFlag(
+                        'is_pinned',
+                      )
+                    }
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                      note.is_pinned
+                        ? 'bg-amber-50 text-amber-700'
+                        : 'hover:bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Pin className="h-4 w-4" />
+                      Pinned
+                    </span>
+
+                    <span>
+                      {note.is_pinned
+                        ? 'On'
+                        : 'Off'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateFlag(
+                        'is_favorite',
+                      )
+                    }
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                      note.is_favorite
+                        ? 'bg-pink-50 text-[#E5798F]'
+                        : 'hover:bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className="text-base">
+                        ♥
+                      </span>
+                      Favorite
+                    </span>
+
+                    <span>
+                      {note.is_favorite
+                        ? 'On'
+                        : 'Off'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateFlag(
+                        'is_archived',
+                      )
+                    }
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                      note.is_archived
+                        ? 'bg-slate-100 text-slate-800'
+                        : 'hover:bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Archive className="h-4 w-4" />
+                      Archived
+                    </span>
+
+                    <span>
+                      {note.is_archived
+                        ? 'On'
+                        : 'Off'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 text-sm font-bold text-slate-900">
+                  Category
+                </h2>
+
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCategoryOpen(
+                        (value) =>
+                          !value,
+                      )
+                    }
+                    className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:border-slate-300"
+                  >
+                    <span>
+                      {normalizeCategory(
+                        note.category,
+                      )}
+                    </span>
+
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  </button>
+
+                  {categoryOpen && (
+                    <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                      {CATEGORIES.map(
+                        (category) => (
+                          <button
+                            key={
+                              category
+                            }
+                            type="button"
+                            onClick={() =>
+                              selectCategory(
+                                category,
+                              )
+                            }
+                            className={`w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-slate-50 ${
+                              normalizeCategory(
+                                note.category,
+                              ) ===
+                              category
+                                ? 'font-semibold text-[#E5798F]'
+                                : 'text-slate-600'
+                            }`}
+                          >
+                            {
+                              category
+                            }
+                          </button>
+                        ),
+                      )}
+
+                      <div className="my-1 border-t border-slate-100" />
+
+                      <div className="flex gap-1 p-1">
+                        <input
+                          value={
+                            customCategory
+                          }
+                          onChange={(
+                            event,
+                          ) =>
+                            setCustomCategory(
+                              event
+                                .target
+                                .value,
+                            )
+                          }
+                          onKeyDown={(
+                            event,
+                          ) => {
+                            if (
+                              event.key ===
+                              'Enter'
+                            ) {
+                              addCustomCategory();
+                            }
+                          }}
+                          placeholder="Custom..."
+                          className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2 py-1.5 text-xs outline-none focus:border-[#E5798F]"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={
+                            addCustomCategory
+                          }
+                          className="rounded-lg bg-[#E5798F] px-2.5 text-xs font-semibold text-white"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 text-sm font-bold text-slate-900">
+                  Actions
+                </h2>
+
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={
+                      copyNote
+                    }
+                    className="side-action"
+                  >
+                    <FileText className="h-4 w-4" />
+                    Copy note
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void shareNote()
+                    }
+                    className="side-action"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      toggleLock
+                    }
+                    className="side-action"
+                  >
+                    {locked ? (
+                      <Unlock className="h-4 w-4" />
+                    ) : (
+                      <Lock className="h-4 w-4" />
+                    )}
+                    {locked
+                      ? 'Unlock editing'
+                      : 'Lock editing'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void deleteNote()
+                    }
+                    disabled={deleting}
+                    className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {deleting
+                      ? 'Deleting…'
+                      : 'Delete note'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 text-sm font-bold text-slate-900">
+                  Note information
+                </h2>
+
+                <div className="space-y-2 text-xs text-slate-500">
+                  <div className="flex justify-between gap-3">
+                    <span>Words</span>
+                    <span className="font-semibold text-slate-700">
+                      {wordCount}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between gap-3">
+                    <span>Characters</span>
+                    <span className="font-semibold text-slate-700">
+                      {characterCount}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between gap-3">
+                    <span>Created</span>
+                    <span className="text-right font-medium text-slate-700">
+                      {formatTimestamp(
+                        note.created_at,
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between gap-3">
+                    <span>Updated</span>
+                    <span className="text-right font-medium text-slate-700">
+                      {formatTimestamp(
+                        note.updated_at,
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white/95 px-3 py-2 shadow-[0_-5px_20px_rgba(0,0,0,0.06)] backdrop-blur-xl lg:hidden">
+        <div className="mx-auto flex max-w-xl items-center justify-between gap-1">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={
+              locked ||
+              historyLength === 0
+            }
+            className="mobile-action"
+            title="Undo"
+          >
+            <Undo2 className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={redo}
+            disabled={
+              locked ||
+              redoLength === 0
+            }
+            className="mobile-action"
+            title="Redo"
+          >
+            <Redo2 className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              updateFlag(
+                'is_favorite',
+              )
+            }
+            className={`mobile-action ${
+              note.is_favorite
+                ? 'text-[#E5798F]'
+                : ''
+            }`}
+            title="Favorite"
+          >
+            <span className="text-lg">
+              ♥
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={
+              copyNote
+            }
+            className="mobile-action"
+            title="Copy"
+          >
+            <FileText className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              void shareNote()
+            }
+            className="mobile-action"
+            title="Share"
+          >
+            <Share2 className="h-4 w-4" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              void deleteNote()
+            }
+            disabled={deleting}
+            className="mobile-action text-red-500"
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <style jsx global>{`
+        .toolbar-button {
           display: inline-flex;
+          height: 36px;
+          width: 36px;
+          flex-shrink: 0;
           align-items: center;
           justify-content: center;
-          width: 22px;
-          height: 22px;
-          margin-right: 5px;
-          border-radius: 6px;
-          cursor: pointer;
-          user-select: none;
-          font-size: 18px;
-          line-height: 1;
+          border-radius: 9px;
+          color: #475569;
           transition:
-            background 0.15s ease,
-            transform 0.15s ease;
+            background-color 150ms ease,
+            color 150ms ease,
+            opacity 150ms ease;
         }
 
-        .enotes-checkbox:hover {
-          background: rgba(229, 121, 143, 0.12);
+        .toolbar-button:hover:not(:disabled) {
+          background: #f1f5f9;
+          color: #0f172a;
         }
 
-        .enotes-checkbox-checked {
-          color: #e5798f;
+        .toolbar-button:disabled {
+          cursor: not-allowed;
+          opacity: 0.35;
         }
 
-        [contenteditable='true'] a {
-          color: #d7647d;
+        .toolbar-divider {
+          width: 1px;
+          height: 24px;
+          flex-shrink: 0;
+          margin: 0 3px;
+          background: #e2e8f0;
+        }
+
+        .side-action {
+          display: flex;
+          width: 100%;
+          align-items: center;
+          gap: 8px;
+          border-radius: 12px;
+          padding: 10px 12px;
+          text-align: left;
+          font-size: 14px;
+          font-weight: 500;
+          color: #475569;
+          transition:
+            background-color 150ms ease,
+            color 150ms ease;
+        }
+
+        .side-action:hover {
+          background: #f8fafc;
+          color: #0f172a;
+        }
+
+        .mobile-action {
+          display: inline-flex;
+          height: 40px;
+          width: 40px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 11px;
+          color: #64748b;
+          transition:
+            background-color 150ms ease,
+            color 150ms ease,
+            opacity 150ms ease;
+        }
+
+        .mobile-action:active {
+          background: #f1f5f9;
+        }
+
+        .mobile-action:disabled {
+          cursor: not-allowed;
+          opacity: 0.3;
+        }
+
+        .note-editor {
+          color: #1e293b;
+          font-size: 16px;
+          line-height: 1.8;
+          word-break: break-word;
+        }
+
+        .note-editor:focus {
+          outline: none;
+        }
+
+        .note-editor:empty::before {
+          content: attr(data-placeholder);
+          color: #cbd5e1;
+          pointer-events: none;
+        }
+
+        .note-editor p {
+          min-height: 1.8em;
+          margin: 0 0 0.85em;
+        }
+
+        .note-editor h1,
+        .note-editor h2,
+        .note-editor h3,
+        .note-editor h4 {
+          color: #0f172a;
+          font-weight: 750;
+          line-height: 1.25;
+        }
+
+        .note-editor h1 {
+          margin: 0.8em 0 0.5em;
+          font-size: 2rem;
+        }
+
+        .note-editor h2 {
+          margin: 0.8em 0 0.5em;
+          font-size: 1.6rem;
+        }
+
+        .note-editor h3 {
+          margin: 0.7em 0 0.45em;
+          font-size: 1.3rem;
+        }
+
+        .note-editor h4 {
+          margin: 0.6em 0 0.4em;
+          font-size: 1.1rem;
+        }
+
+        .note-editor ul,
+        .note-editor ol {
+          margin: 0.75em 0;
+          padding-left: 1.8rem;
+        }
+
+        .note-editor li {
+          margin: 0.3em 0;
+        }
+
+        .note-editor blockquote {
+          margin: 1rem 0;
+          border-left: 4px solid #e5798f;
+          border-radius: 0 10px 10px 0;
+          background: #fff7f8;
+          padding: 0.8rem 1rem;
+          color: #64748b;
+          font-style: italic;
+        }
+
+        .note-editor pre {
+          overflow-x: auto;
+          margin: 1rem 0;
+          border-radius: 12px;
+          background: #0f172a;
+          padding: 1rem;
+          color: #f8fafc;
+          font-family:
+            ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Monaco,
+            Consolas,
+            monospace;
+          font-size: 0.875rem;
+          line-height: 1.65;
+        }
+
+        .note-editor code {
+          border-radius: 5px;
+          background: #f1f5f9;
+          padding: 0.15em 0.35em;
+          font-family:
+            ui-monospace,
+            SFMono-Regular,
+            Menlo,
+            Monaco,
+            Consolas,
+            monospace;
+          font-size: 0.9em;
+        }
+
+        .note-editor pre code {
+          background: transparent;
+          padding: 0;
+        }
+
+        .note-editor a {
+          color: #2563eb;
           text-decoration: underline;
           text-underline-offset: 3px;
         }
 
-        [contenteditable='true'] blockquote {
-          margin: 18px 0;
-          padding: 10px 18px;
-          border-left: 4px solid #e5798f;
-          background: #fff7f8;
-          color: rgba(0, 0, 0, 0.62);
-          border-radius: 0 12px 12px 0;
-        }
-
-        [contenteditable='true'] pre {
-          margin: 18px 0;
-          padding: 16px;
-          overflow-x: auto;
-          border-radius: 14px;
-          background: #171717;
-          color: #ffffff;
-          font-family:
-            ui-monospace,
-            SFMono-Regular,
-            Menlo,
-            Monaco,
-            Consolas,
-            monospace;
-          font-size: 14px;
-          line-height: 1.7;
-        }
-
-        [contenteditable='true'] code {
-          padding: 2px 5px;
-          border-radius: 5px;
-          background: rgba(0, 0, 0, 0.06);
-          font-family:
-            ui-monospace,
-            SFMono-Regular,
-            Menlo,
-            Monaco,
-            Consolas,
-            monospace;
-          font-size: 0.92em;
-        }
-
-        [contenteditable='true'] pre code {
-          padding: 0;
-          background: transparent;
-          color: inherit;
-        }
-
-        [contenteditable='true'] ul,
-        [contenteditable='true'] ol {
-          padding-left: 28px;
-          margin: 12px 0;
-        }
-
-        [contenteditable='true'] li {
-          padding-left: 4px;
-          margin: 3px 0;
-        }
-
-        [contenteditable='true'] h1,
-        [contenteditable='true'] h2,
-        [contenteditable='true'] h3,
-        [contenteditable='true'] h4 {
-          color: #111111;
-          line-height: 1.25;
-          margin-top: 22px;
-          margin-bottom: 10px;
-        }
-
-        [contenteditable='true'] h1 {
-          font-size: 2rem;
-          font-weight: 800;
-        }
-
-        [contenteditable='true'] h2 {
-          font-size: 1.6rem;
-          font-weight: 750;
-        }
-
-        [contenteditable='true'] h3 {
-          font-size: 1.3rem;
-          font-weight: 700;
-        }
-
-        [contenteditable='true'] h4 {
-          font-size: 1.1rem;
-          font-weight: 700;
-        }
-
-        [contenteditable='true'] hr {
+        .note-editor hr {
+          margin: 1.5rem 0;
           border: 0;
-          border-top: 1px solid rgba(0, 0, 0, 0.1);
-          margin: 26px 0;
+          border-top: 1px solid #e2e8f0;
         }
 
-        [contenteditable='true']:focus {
-          outline: none;
-        }
-
-        [contenteditable='true'] img {
+        .note-editor img {
           max-width: 100%;
           height: auto;
-          border-radius: 14px;
+          border-radius: 12px;
+        }
+
+        .note-editor .enotes-checklist-item {
+          margin: 0.45rem 0;
+        }
+
+        .note-editor
+          .enotes-checklist-item
+          label {
+          display: flex;
+          align-items: flex-start;
+          gap: 9px;
+          cursor: pointer;
+        }
+
+        .note-editor
+          .enotes-checklist-item
+          input[type='checkbox'] {
+          width: 17px;
+          height: 17px;
+          margin-top: 5px;
+          flex-shrink: 0;
+          accent-color: #e5798f;
+        }
+
+        .note-editor
+          .enotes-checklist-item
+          span {
+          min-width: 0;
         }
 
         @media (max-width: 640px) {
-          [contenteditable='true'] {
-            font-size: 16px;
-            line-height: 1.9;
+          .note-editor {
+            font-size: 15px;
+            line-height: 1.75;
           }
 
-          [contenteditable='true'] h1 {
-            font-size: 1.75rem;
+          .note-editor h1 {
+            font-size: 1.7rem;
           }
 
-          [contenteditable='true'] h2 {
-            font-size: 1.45rem;
+          .note-editor h2 {
+            font-size: 1.4rem;
           }
 
-          [contenteditable='true'] h3 {
-            font-size: 1.25rem;
+          .note-editor h3 {
+            font-size: 1.2rem;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .toolbar-button,
+          .side-action,
+          .mobile-action {
+            transition: none;
           }
         }
       `}</style>
@@ -2871,7 +2822,11 @@ export default function NoteEditorPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-[#FFF7F8]" />
+        <main className="min-h-screen bg-[#FFF7F8]">
+          <div className="flex min-h-screen items-center justify-center">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#E5798F]/20 border-t-[#E5798F]" />
+          </div>
+        </main>
       }
     >
       <NoteEditor />
