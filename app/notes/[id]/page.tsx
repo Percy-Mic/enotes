@@ -1,4 +1,3 @@
-```tsx
 'use client';
 
 import React, {
@@ -47,7 +46,11 @@ const MAX_CATEGORY_LENGTH = 40;
 const AUTOSAVE_DELAY = 800;
 const MAX_HISTORY = 100;
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type SaveState =
+  | 'idle'
+  | 'saving'
+  | 'saved'
+  | 'error';
 
 type Notice = {
   type: 'error' | 'success' | 'info';
@@ -72,24 +75,26 @@ interface HistorySnapshot {
 }
 
 function formatTimestamp(iso: string): string {
-  const d = new Date(iso);
+  const date = new Date(iso);
 
-  if (Number.isNaN(d.getTime())) {
+  if (Number.isNaN(date.getTime())) {
     return '';
   }
 
-  const date = d.toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  const formattedDate =
+    date.toLocaleDateString(undefined, {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
 
-  const time = d.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const formattedTime =
+    date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
 
-  return `${date.toLowerCase()} ${time}`;
+  return `${formattedDate.toLowerCase()} ${formattedTime}`;
 }
 
 function normalizeCategory(value: string): string {
@@ -101,109 +106,35 @@ function normalizeCategory(value: string): string {
     .slice(0, MAX_CATEGORY_LENGTH);
 }
 
-function clampCaret(value: string, position: number): number {
-  return Math.max(0, Math.min(position, value.length));
+function clampPosition(
+  value: string,
+  position: number,
+): number {
+  return Math.max(
+    0,
+    Math.min(position, value.length),
+  );
 }
 
-/**
- * Applies a prefix to every selected/current line.
- *
- * Examples:
- *   hello
- *   world
- *
- * becomes:
- *   - hello
- *   - world
- */
-function toggleBlockPrefix(
-  text: string,
-  selectionStart: number,
-  selectionEnd: number,
-  prefix: string,
-): {
-  text: string;
-  selectionStart: number;
-  selectionEnd: number;
-} {
-  const startLineStart =
-    text.lastIndexOf('\n', Math.max(0, selectionStart - 1)) + 1;
-
-  let endLineEnd = text.indexOf('\n', selectionEnd);
-
-  if (endLineEnd === -1) {
-    endLineEnd = text.length;
-  }
-
-  const block = text.slice(startLineStart, endLineEnd);
-  const lines = block.split('\n');
-
-  const allPrefixed =
-    lines.length > 0 &&
-    lines.every((line) => {
-      if (!line.trim()) return true;
-      return line.startsWith(prefix);
-    });
-
-  const nextLines = lines.map((line) => {
-    if (!line.trim()) return line;
-
-    if (allPrefixed && line.startsWith(prefix)) {
-      return line.slice(prefix.length);
-    }
-
-    return prefix + line;
-  });
-
-  const nextBlock = nextLines.join('\n');
-
-  const nextText =
-    text.slice(0, startLineStart) +
-    nextBlock +
-    text.slice(endLineEnd);
-
-  const lengthDelta = nextBlock.length - block.length;
-
-  const nextSelectionStart = clampCaret(
-    nextText,
-    selectionStart + (allPrefixed ? lengthDelta : 0),
-  );
-
-  const nextSelectionEnd = clampCaret(
-    nextText,
-    selectionEnd + lengthDelta,
-  );
-
-  return {
-    text: nextText,
-    selectionStart: nextSelectionStart,
-    selectionEnd: nextSelectionEnd,
-  };
-}
-
-/**
- * Wraps selected text with Markdown-like markers.
- *
- * Empty selection:
- *   **text**
- *
- * Existing wrapped selection:
- *   **hello** -> hello
- */
 function wrapSelection(
   text: string,
   selectionStart: number,
   selectionEnd: number,
   marker: string,
-): {
-  text: string;
-  selectionStart: number;
-  selectionEnd: number;
-} {
-  const selected = text.slice(selectionStart, selectionEnd);
+) {
+  const selected = text.slice(
+    selectionStart,
+    selectionEnd,
+  );
 
-  const before = text.slice(0, selectionStart);
-  const after = text.slice(selectionEnd);
+  const before = text.slice(
+    0,
+    selectionStart,
+  );
+
+  const after = text.slice(
+    selectionEnd,
+  );
 
   if (
     selected &&
@@ -215,39 +146,157 @@ function wrapSelection(
       selected +
       after.slice(marker.length);
 
-    const nextStart = selectionStart - marker.length;
-    const nextEnd = selectionEnd - marker.length;
-
     return {
       text: nextText,
-      selectionStart: nextStart,
-      selectionEnd: nextEnd,
+      selectionStart:
+        selectionStart - marker.length,
+      selectionEnd:
+        selectionEnd - marker.length,
     };
   }
 
   if (!selected) {
     const placeholder = 'text';
-    const inserted = `${marker}${placeholder}${marker}`;
+
+    const inserted =
+      marker +
+      placeholder +
+      marker;
 
     return {
-      text: `${before}${inserted}${after}`,
-      selectionStart: selectionStart + marker.length,
-      selectionEnd: selectionStart + marker.length + placeholder.length,
+      text:
+        before +
+        inserted +
+        after,
+      selectionStart:
+        selectionStart +
+        marker.length,
+      selectionEnd:
+        selectionStart +
+        marker.length +
+        placeholder.length,
     };
   }
 
-  const inserted = `${marker}${selected}${marker}`;
+  const inserted =
+    marker +
+    selected +
+    marker;
 
   return {
-    text: `${before}${inserted}${after}`,
-    selectionStart: selectionStart + marker.length,
+    text:
+      before +
+      inserted +
+      after,
+    selectionStart:
+      selectionStart +
+      marker.length,
     selectionEnd:
-      selectionStart + marker.length + selected.length,
+      selectionStart +
+      marker.length +
+      selected.length,
   };
 }
 
-function createSnapshot(note: EditorNote | null): HistorySnapshot | null {
-  if (!note) return null;
+function toggleBlockPrefix(
+  text: string,
+  selectionStart: number,
+  selectionEnd: number,
+  prefix: string,
+) {
+  const start =
+    text.lastIndexOf(
+      '\n',
+      Math.max(
+        0,
+        selectionStart - 1,
+      ),
+    ) + 1;
+
+  let end = text.indexOf(
+    '\n',
+    selectionEnd,
+  );
+
+  if (end === -1) {
+    end = text.length;
+  }
+
+  const block = text.slice(
+    start,
+    end,
+  );
+
+  const lines = block.split('\n');
+
+  const allPrefixed = lines.every(
+    (line) =>
+      !line.trim() ||
+      line.startsWith(prefix),
+  );
+
+  const nextLines = lines.map(
+    (line) => {
+      if (!line.trim()) {
+        return line;
+      }
+
+      if (
+        allPrefixed &&
+        line.startsWith(prefix)
+      ) {
+        return line.slice(
+          prefix.length,
+        );
+      }
+
+      return prefix + line;
+    },
+  );
+
+  const nextBlock =
+    nextLines.join('\n');
+
+  const nextText =
+    text.slice(0, start) +
+    nextBlock +
+    text.slice(end);
+
+  const difference =
+    nextBlock.length -
+    block.length;
+
+  let nextStart =
+    selectionStart;
+
+  let nextEnd =
+    selectionEnd;
+
+  if (allPrefixed) {
+    nextStart += difference;
+  }
+
+  nextEnd += difference;
+
+  return {
+    text: nextText,
+    selectionStart: clampPosition(
+      nextText,
+      nextStart,
+    ),
+    selectionEnd: clampPosition(
+      nextText,
+      nextEnd,
+    ),
+  };
+}
+
+function createSnapshot(
+  note: EditorNote | null,
+): HistorySnapshot | null {
+  if (!note) {
+    return null;
+  }
 
   return {
     title: note.title,
@@ -260,7 +309,9 @@ function snapshotsEqual(
   a: HistorySnapshot | null,
   b: HistorySnapshot | null,
 ): boolean {
-  if (!a || !b) return false;
+  if (!a || !b) {
+    return false;
+  }
 
   return (
     a.title === b.title &&
@@ -269,31 +320,63 @@ function snapshotsEqual(
   );
 }
 
-function safeLocalStorageGet(key: string): string | null {
-  if (typeof window === 'undefined') return null;
+function getLockStorageKey(
+  id: string,
+): string {
+  return `enotes:note-lock:${id}`;
+}
+
+function readLocalStorage(
+  key: string,
+): string | null {
+  if (
+    typeof window === 'undefined'
+  ) {
+    return null;
+  }
 
   try {
-    return window.localStorage.getItem(key);
+    return window.localStorage.getItem(
+      key,
+    );
   } catch {
     return null;
   }
 }
 
-function safeLocalStorageSet(key: string, value: string): void {
-  if (typeof window === 'undefined') return;
+function writeLocalStorage(
+  key: string,
+  value: string,
+): void {
+  if (
+    typeof window === 'undefined'
+  ) {
+    return;
+  }
 
   try {
-    window.localStorage.setItem(key, value);
+    window.localStorage.setItem(
+      key,
+      value,
+    );
   } catch {
-    // Local storage can be unavailable in private/restricted browsers.
+    // Ignore storage errors.
   }
 }
 
-function safeLocalStorageRemove(key: string): void {
-  if (typeof window === 'undefined') return;
+function removeLocalStorage(
+  key: string,
+): void {
+  if (
+    typeof window === 'undefined'
+  ) {
+    return;
+  }
 
   try {
-    window.localStorage.removeItem(key);
+    window.localStorage.removeItem(
+      key,
+    );
   } catch {
     // Ignore storage errors.
   }
@@ -303,8 +386,8 @@ export default function NoteEditorPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-[100dvh] items-center justify-center bg-[#FFF7F8] text-[#9B9B9B]">
-          <div className="flex items-center gap-2 text-sm">
+        <main className="flex min-h-[100dvh] items-center justify-center bg-[#FFF7F8]">
+          <div className="flex items-center gap-2 text-sm text-[#8B8B8B]">
             <Loader2 className="h-5 w-5 animate-spin" />
             Loading note…
           </div>
@@ -317,37 +400,70 @@ export default function NoteEditorPage() {
 }
 
 function NoteEditor() {
-  const params = useParams<{ id: string }>();
+  const params =
+    useParams<{ id: string }>();
+
   const router = useRouter();
 
-  const initialRouteIdRef = useRef<string>(
-    typeof params?.id === 'string' ? params.id : 'new',
-  );
+  const routeIdRef =
+    useRef<string>(
+      typeof params?.id === 'string'
+        ? params.id
+        : 'new',
+    );
 
-  const isNew = initialRouteIdRef.current === 'new';
+  const routeId =
+    routeIdRef.current;
 
-  const [note, setNote] = useState<EditorNote | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [notFound, setNotFound] = useState(false);
+  const isNew =
+    routeId === 'new';
+
+  const [note, setNote] =
+    useState<EditorNote | null>(
+      null,
+    );
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [notFound, setNotFound] =
+    useState(false);
 
   const [saveState, setSaveState] =
     useState<SaveState>('idle');
 
-  const [locked, setLocked] = useState(false);
-  const [unlockPrompt, setUnlockPrompt] = useState(false);
-
-  const [notice, setNotice] = useState<Notice | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const [showNewCategory, setShowNewCategory] =
+  const [locked, setLocked] =
     useState(false);
 
-  const [newCategory, setNewCategory] = useState('');
+  const [
+    unlockPrompt,
+    setUnlockPrompt,
+  ] = useState(false);
 
-  const [deletePrompt, setDeletePrompt] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [deletePrompt, setDeletePrompt] =
+    useState(false);
 
-  const [historyVersion, setHistoryVersion] = useState(0);
+  const [deleting, setDeleting] =
+    useState(false);
+
+  const [copied, setCopied] =
+    useState(false);
+
+  const [notice, setNotice] =
+    useState<Notice | null>(null);
+
+  const [
+    showNewCategory,
+    setShowNewCategory,
+  ] = useState(false);
+
+  const [newCategory, setNewCategory] =
+    useState('');
+
+  const [
+    historyVersion,
+    setHistoryVersion,
+  ] = useState(0);
 
   const titleRef =
     useRef<HTMLTextAreaElement>(null);
@@ -355,41 +471,47 @@ function NoteEditor() {
   const bodyRef =
     useRef<HTMLTextAreaElement>(null);
 
-  const saveTimer =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const copiedTimer =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const noticeTimer =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const dirtyRef = useRef(false);
-
   const noteRef =
     useRef<EditorNote | null>(null);
 
+  const saveTimer =
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+  const noticeTimer =
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+  const copiedTimer =
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
+
+  const dirtyRef =
+    useRef(false);
+
+  const mountedRef =
+    useRef(true);
+
   const creatingRef =
-    useRef<Promise<string | null> | null>(null);
+    useRef<Promise<
+      string | null
+    > | null>(null);
 
   const realNoteIdRef =
     useRef<string | null>(
-      initialRouteIdRef.current !== 'new'
-        ? initialRouteIdRef.current
-        : null,
+      isNew ? null : routeId,
     );
 
   const saveVersionRef =
     useRef(0);
 
   const saveInFlightRef =
-    useRef<Promise<void> | null>(null);
-
-  const mountedRef =
-    useRef(true);
-
-  const historyInitializedRef =
-    useRef(false);
+    useRef<Promise<void> | null>(
+      null,
+    );
 
   const undoStackRef =
     useRef<HistorySnapshot[]>([]);
@@ -399,9 +521,9 @@ function NoteEditor() {
 
   noteRef.current = note;
 
-  /* -------------------------------------------------------
-     Lifecycle
-  ------------------------------------------------------- */
+  /* --------------------------------------------------
+     Mounted state
+  -------------------------------------------------- */
 
   useEffect(() => {
     mountedRef.current = true;
@@ -411,33 +533,39 @@ function NoteEditor() {
     };
   }, []);
 
-  /* -------------------------------------------------------
-     Load note
-  ------------------------------------------------------- */
+  /* --------------------------------------------------
+     Load
+  -------------------------------------------------- */
 
   useEffect(() => {
     let cancelled = false;
 
-    const load = async () => {
+    async function loadNote() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
 
       if (!user) {
         const redirect = isNew
           ? '/auth/sign-in?redirect=%2Fnotes%2Fnew'
           : `/auth/sign-in?redirect=%2Fnotes%2F${encodeURIComponent(
-              initialRouteIdRef.current,
+              routeId,
             )}`;
 
-        router.replace(redirect);
+        router.replace(
+          redirect,
+        );
+
         return;
       }
 
       if (isNew) {
-        const now = new Date().toISOString();
+        const now =
+          new Date().toISOString();
 
         const draft: EditorNote = {
           id: 'new',
@@ -451,27 +579,32 @@ function NoteEditor() {
           updated_at: now,
         };
 
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
+
+        noteRef.current =
+          draft;
 
         setNote(draft);
-        noteRef.current = draft;
-
-        historyInitializedRef.current = true;
-        undoStackRef.current = [];
-        redoStackRef.current = [];
-
         setLoading(false);
+
         return;
       }
 
-      const { data, error } = await supabase
+      const {
+        data,
+        error,
+      } = await supabase
         .from('notes')
         .select('*')
-        .eq('id', initialRouteIdRef.current)
+        .eq('id', routeId)
         .eq('user_id', user.id)
         .maybeSingle();
 
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
 
       if (error || !data) {
         setNotFound(true);
@@ -479,600 +612,830 @@ function NoteEditor() {
         return;
       }
 
-      const loadedNote = data as EditorNote;
+      const loaded =
+        data as EditorNote;
 
-      setNote(loadedNote);
-      noteRef.current = loadedNote;
+      noteRef.current =
+        loaded;
 
-      historyInitializedRef.current = true;
-      undoStackRef.current = [];
-      redoStackRef.current = [];
-
+      setNote(loaded);
       setLoading(false);
-    };
 
-    void load();
+      const lockKey =
+        getLockStorageKey(
+          loaded.id,
+        );
+
+      if (
+        readLocalStorage(
+          lockKey,
+        ) === '1'
+      ) {
+        setLocked(true);
+      }
+    }
+
+    void loadNote();
 
     return () => {
       cancelled = true;
     };
-  }, [isNew, router]);
+  }, [
+    isNew,
+    routeId,
+    router,
+  ]);
 
-  /* -------------------------------------------------------
-     Restore local lock state
-  ------------------------------------------------------- */
+  /* --------------------------------------------------
+     Resize title
+  -------------------------------------------------- */
 
-  useEffect(() => {
-    if (!note) return;
+  const resizeTitle =
+    useCallback(() => {
+      const element =
+        titleRef.current;
 
-    const id =
-      realNoteIdRef.current ||
-      (note.id !== 'new' ? note.id : null);
+      if (!element) {
+        return;
+      }
 
-    if (!id) return;
+      element.style.height =
+        'auto';
 
-    const key = `enotes:note-lock:${id}`;
-    const stored = safeLocalStorageGet(key);
-
-    if (stored === '1') {
-      setLocked(true);
-    }
-  }, [note]);
-
-  /* -------------------------------------------------------
-     Auto-size title
-  ------------------------------------------------------- */
-
-  const resizeTitle = useCallback(() => {
-    const el = titleRef.current;
-    if (!el) return;
-
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
-  }, []);
+      element.style.height =
+        `${element.scrollHeight}px`;
+    }, []);
 
   useEffect(() => {
     if (!loading && note) {
-      requestAnimationFrame(resizeTitle);
-    }
-  }, [loading, note?.title, resizeTitle]);
-
-  /* -------------------------------------------------------
-     Notice helper
-  ------------------------------------------------------- */
-
-  const showNotice = useCallback(
-    (next: Notice, duration = 5000) => {
-      if (noticeTimer.current) {
-        clearTimeout(noticeTimer.current);
-      }
-
-      setNotice(next);
-
-      if (duration > 0) {
-        noticeTimer.current = setTimeout(() => {
-          if (mountedRef.current) {
-            setNotice(null);
-          }
-        }, duration);
-      }
-    },
-    [],
-  );
-
-  /* -------------------------------------------------------
-     Database payload
-  ------------------------------------------------------- */
-
-  const toPayload = useCallback(
-    (current: EditorNote) => ({
-      title: current.title
-        .slice(0, MAX_TITLE_LENGTH),
-
-      content: current.content,
-
-      category: current.category
-        .slice(0, MAX_CATEGORY_LENGTH),
-
-      pinned: Boolean(current.pinned),
-      favorite: Boolean(current.favorite),
-      archived: Boolean(current.archived),
-    }),
-    [],
-  );
-
-  /* -------------------------------------------------------
-     History
-  ------------------------------------------------------- */
-
-  const pushHistory = useCallback(
-    (previous: EditorNote | null) => {
-      if (!historyInitializedRef.current) return;
-
-      const snapshot = createSnapshot(previous);
-      if (!snapshot) return;
-
-      const last =
-        undoStackRef.current[
-          undoStackRef.current.length - 1
-        ] || null;
-
-      if (snapshotsEqual(last, snapshot)) {
-        return;
-      }
-
-      undoStackRef.current.push(snapshot);
-
-      if (
-        undoStackRef.current.length >
-        MAX_HISTORY
-      ) {
-        undoStackRef.current.shift();
-      }
-
-      redoStackRef.current = [];
-      setHistoryVersion((v) => v + 1);
-    },
-    [],
-  );
-
-  const applySnapshot = useCallback(
-    (
-      snapshot: HistorySnapshot,
-      current: EditorNote,
-    ) => {
-      const next: EditorNote = {
-        ...current,
-        title: snapshot.title,
-        content: snapshot.content,
-        category: snapshot.category,
-      };
-
-      noteRef.current = next;
-      setNote(next);
-
-      resizeTitle();
-
-      saveVersionRef.current += 1;
-      dirtyRef.current = true;
-      setSaveState('saving');
-
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-
-      saveTimer.current = setTimeout(() => {
-        saveTimer.current = null;
-        void saveNowRef.current?.();
-      }, AUTOSAVE_DELAY);
-    },
-    [resizeTitle],
-  );
-
-  const undo = useCallback(() => {
-    const current = noteRef.current;
-
-    if (!current) return;
-
-    const snapshot =
-      undoStackRef.current.pop();
-
-    if (!snapshot) return;
-
-    const currentSnapshot =
-      createSnapshot(current);
-
-    if (currentSnapshot) {
-      redoStackRef.current.push(
-        currentSnapshot,
+      requestAnimationFrame(
+        resizeTitle,
       );
     }
+  }, [
+    loading,
+    note?.title,
+    resizeTitle,
+  ]);
 
-    applySnapshot(snapshot, current);
+  /* --------------------------------------------------
+     Notice
+  -------------------------------------------------- */
 
-    setHistoryVersion((v) => v + 1);
-
-    requestAnimationFrame(() => {
-      bodyRef.current?.focus();
-    });
-  }, [applySnapshot]);
-
-  const redo = useCallback(() => {
-    const current = noteRef.current;
-
-    if (!current) return;
-
-    const snapshot =
-      redoStackRef.current.pop();
-
-    if (!snapshot) return;
-
-    const currentSnapshot =
-      createSnapshot(current);
-
-    if (currentSnapshot) {
-      undoStackRef.current.push(
-        currentSnapshot,
-      );
-    }
-
-    applySnapshot(snapshot, current);
-
-    setHistoryVersion((v) => v + 1);
-
-    requestAnimationFrame(() => {
-      bodyRef.current?.focus();
-    });
-  }, [applySnapshot]);
-
-  /* -------------------------------------------------------
-     Create row
-  ------------------------------------------------------- */
-
-  const ensureRow = useCallback(
-    async (): Promise<string | null> => {
-      if (realNoteIdRef.current) {
-        return realNoteIdRef.current;
-      }
-
-      if (creatingRef.current) {
-        return creatingRef.current;
-      }
-
-      const current = noteRef.current;
-
-      if (!current) {
-        return null;
-      }
-
-      if (current.id !== 'new') {
-        realNoteIdRef.current = current.id;
-        return current.id;
-      }
-
-      const payload = toPayload(current);
-
-      const creation =
-        (async (): Promise<string | null> => {
-          const {
-            data: { user },
-          } = await supabase.auth.getUser();
-
-          if (!user) {
-            setSaveState('error');
-
-            showNotice({
-              type: 'error',
-              title: 'Sign-in required',
-              message:
-                'Your note could not be saved because your session has ended.',
-            });
-
-            return null;
-          }
-
-          const { data, error } =
-            await supabase
-              .from('notes')
-              .insert({
-                ...payload,
-                user_id: user.id,
-              })
-              .select('id, created_at, updated_at')
-              .single();
-
-          if (error || !data) {
-            setSaveState('error');
-
-            showNotice({
-              type: 'error',
-              title: 'Could not create note',
-              message:
-                error?.message ||
-                'The note could not be created. Your changes remain on this screen.',
-            });
-
-            return null;
-          }
-
-          const realId =
-            (data as { id: string }).id;
-
-          realNoteIdRef.current = realId;
-
-          const latest = noteRef.current;
-
-          if (latest) {
-            const updated: EditorNote = {
-              ...latest,
-              id: realId,
-              ...(data as Partial<EditorNote>),
-            };
-
-            noteRef.current = updated;
-
-            if (mountedRef.current) {
-              setNote(updated);
-            }
-          }
-
-          if (mountedRef.current) {
-            router.replace(`/notes/${realId}`);
-          }
-
-          return realId;
-        })();
-
-      creatingRef.current = creation;
-
-      void creation.finally(() => {
-        if (
-          creatingRef.current === creation
-        ) {
-          creatingRef.current = null;
+  const showNotice =
+    useCallback(
+      (next: Notice) => {
+        if (noticeTimer.current) {
+          clearTimeout(
+            noticeTimer.current,
+          );
         }
-      });
 
-      return creation;
-    },
-    [router, showNotice, toPayload],
-  );
+        setNotice(next);
 
-  /* -------------------------------------------------------
-     Save worker
-  ------------------------------------------------------- */
-
-  const saveNow = useCallback(
-    async (): Promise<void> => {
-      if (saveInFlightRef.current) {
-        return saveInFlightRef.current;
-      }
-
-      const run = (async () => {
-        while (dirtyRef.current) {
-          const current = noteRef.current;
-
-          if (!current) {
-            return;
-          }
-
-          const versionBeingSaved =
-            saveVersionRef.current;
-
-          if (mountedRef.current) {
-            setSaveState('saving');
-          }
-
-          let realId =
-            realNoteIdRef.current;
-
-          if (!realId) {
-            if (current.id === 'new') {
-              realId = await ensureRow();
-            } else {
-              realId = current.id;
-              realNoteIdRef.current =
-                current.id;
+        noticeTimer.current =
+          setTimeout(() => {
+            if (
+              mountedRef.current
+            ) {
+              setNotice(null);
             }
-          }
+          }, 5000);
+      },
+      [],
+    );
 
-          if (!realId) {
-            return;
-          }
+  /* --------------------------------------------------
+     Payload
+  -------------------------------------------------- */
 
-          const latest = noteRef.current;
+  const toPayload =
+    useCallback(
+      (current: EditorNote) => ({
+        title: current.title.slice(
+          0,
+          MAX_TITLE_LENGTH,
+        ),
+        content:
+          current.content,
+        category:
+          current.category.slice(
+            0,
+            MAX_CATEGORY_LENGTH,
+          ),
+        pinned:
+          Boolean(current.pinned),
+        favorite:
+          Boolean(current.favorite),
+        archived:
+          Boolean(current.archived),
+      }),
+      [],
+    );
 
-          if (!latest) {
-            return;
-          }
+  /* --------------------------------------------------
+     Save row creation
+  -------------------------------------------------- */
 
-          const payload =
-            toPayload(latest);
+  const ensureRow =
+    useCallback(
+      async (): Promise<
+        string | null
+      > => {
+        if (
+          realNoteIdRef.current
+        ) {
+          return realNoteIdRef.current;
+        }
 
-          const updatedAt =
-            new Date().toISOString();
+        if (creatingRef.current) {
+          return creatingRef.current;
+        }
 
-          const { error } =
-            await supabase
-              .from('notes')
-              .update({
-                ...payload,
-                updated_at: updatedAt,
-              })
-              .eq('id', realId);
+        const current =
+          noteRef.current;
 
-          if (error) {
-            if (mountedRef.current) {
-              setSaveState('error');
+        if (!current) {
+          return null;
+        }
+
+        if (
+          current.id !== 'new'
+        ) {
+          realNoteIdRef.current =
+            current.id;
+
+          return current.id;
+        }
+
+        const payload =
+          toPayload(current);
+
+        const creation =
+          (async () => {
+            const {
+              data: {
+                user,
+              },
+            } =
+              await supabase.auth.getUser();
+
+            if (!user) {
+              setSaveState(
+                'error',
+              );
 
               showNotice({
                 type: 'error',
-                title: 'Changes not saved',
+                title:
+                  'Sign-in required',
                 message:
-                  error.message ||
-                  'Please check your connection and try again.',
+                  'Your session has ended. Sign in again to save this note.',
               });
+
+              return null;
             }
 
-            return;
-          }
+            const {
+              data,
+              error,
+            } =
+              await supabase
+                .from('notes')
+                .insert({
+                  ...payload,
+                  user_id:
+                    user.id,
+                })
+                .select(
+                  'id, created_at, updated_at',
+                )
+                .single();
 
-          const afterSave =
-            noteRef.current;
+            if (
+              error ||
+              !data
+            ) {
+              setSaveState(
+                'error',
+              );
 
-          if (
-            afterSave &&
-            afterSave.id === realId
-          ) {
-            const refreshed = {
-              ...afterSave,
-              updated_at: updatedAt,
-            };
+              showNotice({
+                type: 'error',
+                title:
+                  'Could not create note',
+                message:
+                  error?.message ||
+                  'The note could not be created.',
+              });
 
-            noteRef.current =
-              refreshed;
-
-            if (mountedRef.current) {
-              setNote(refreshed);
+              return null;
             }
-          }
 
-          if (
-            saveVersionRef.current ===
-            versionBeingSaved
-          ) {
-            dirtyRef.current = false;
+            const realId =
+              (
+                data as {
+                  id: string;
+                }
+              ).id;
 
-            if (mountedRef.current) {
-              setSaveState('saved');
+            /*
+             * Set this BEFORE changing React state.
+             * This prevents duplicate inserts.
+             */
+            realNoteIdRef.current =
+              realId;
+
+            const latest =
+              noteRef.current;
+
+            if (latest) {
+              const updated: EditorNote =
+                {
+                  ...latest,
+                  id: realId,
+                  created_at:
+                    (
+                      data as {
+                        created_at?: string;
+                      }
+                    ).created_at ||
+                    latest.created_at,
+                  updated_at:
+                    (
+                      data as {
+                        updated_at?: string;
+                      }
+                    ).updated_at ||
+                    latest.updated_at,
+                };
+
+              noteRef.current =
+                updated;
+
+              if (
+                mountedRef.current
+              ) {
+                setNote(
+                  updated,
+                );
+              }
             }
 
-            return;
-          }
+            if (
+              mountedRef.current
+            ) {
+              router.replace(
+                `/notes/${realId}`,
+              );
+            }
 
-          if (mountedRef.current) {
-            setSaveState('saving');
-          }
-        }
-      })()
-        .catch((error: unknown) => {
-          const message =
-            error instanceof Error
-              ? error.message
-              : 'An unexpected save error occurred.';
+            return realId;
+          })();
 
-          if (mountedRef.current) {
-            setSaveState('error');
+        creatingRef.current =
+          creation;
 
-            showNotice({
-              type: 'error',
-              title: 'Could not save',
-              message,
-            });
-          }
-        })
-        .finally(() => {
-          saveInFlightRef.current =
-            null;
-        });
+        void creation.finally(
+          () => {
+            if (
+              creatingRef.current ===
+              creation
+            ) {
+              creatingRef.current =
+                null;
+            }
+          },
+        );
 
-      saveInFlightRef.current = run;
-
-      return run;
-    },
-    [ensureRow, showNotice, toPayload],
-  );
-
-  /*
-   * Ref is used by history helpers so they can schedule
-   * saves without creating circular callback dependencies.
-   */
-  const saveNowRef =
-    useRef<(() => Promise<void>) | null>(null);
-
-  saveNowRef.current = saveNow;
-
-  /* -------------------------------------------------------
-     Autosave
-  ------------------------------------------------------- */
-
-  const scheduleSave = useCallback(() => {
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-    }
-
-    saveTimer.current = setTimeout(() => {
-      saveTimer.current = null;
-
-      void saveNow();
-    }, AUTOSAVE_DELAY);
-  }, [saveNow]);
-
-  const markDirty = useCallback(() => {
-    saveVersionRef.current += 1;
-    dirtyRef.current = true;
-
-    if (mountedRef.current) {
-      setSaveState('saving');
-    }
-
-    scheduleSave();
-  }, [scheduleSave]);
-
-  /* -------------------------------------------------------
-     Update note with history
-  ------------------------------------------------------- */
-
-  const updateNote = useCallback(
-    (
-      updater:
-        | Partial<EditorNote>
-        | ((current: EditorNote) => EditorNote),
-      options?: {
-        history?: boolean;
+        return creation;
       },
-    ) => {
+      [
+        router,
+        showNotice,
+        toPayload,
+      ],
+    );
+
+  /* --------------------------------------------------
+     Save
+  -------------------------------------------------- */
+
+  const saveNow =
+    useCallback(
+      async (): Promise<void> => {
+        if (
+          saveInFlightRef.current
+        ) {
+          return saveInFlightRef.current;
+        }
+
+        const worker =
+          (async () => {
+            while (
+              dirtyRef.current
+            ) {
+              const current =
+                noteRef.current;
+
+              if (!current) {
+                return;
+              }
+
+              const version =
+                saveVersionRef.current;
+
+              if (
+                mountedRef.current
+              ) {
+                setSaveState(
+                  'saving',
+                );
+              }
+
+              let id =
+                realNoteIdRef.current;
+
+              if (!id) {
+                if (
+                  current.id ===
+                  'new'
+                ) {
+                  id =
+                    await ensureRow();
+                } else {
+                  id =
+                    current.id;
+
+                  realNoteIdRef.current =
+                    id;
+                }
+              }
+
+              if (!id) {
+                return;
+              }
+
+              const latest =
+                noteRef.current;
+
+              if (!latest) {
+                return;
+              }
+
+              const updatedAt =
+                new Date().toISOString();
+
+              const {
+                error,
+              } =
+                await supabase
+                  .from('notes')
+                  .update({
+                    ...toPayload(
+                      latest,
+                    ),
+                    updated_at:
+                      updatedAt,
+                  })
+                  .eq(
+                    'id',
+                    id,
+                  );
+
+              if (error) {
+                if (
+                  mountedRef.current
+                ) {
+                  setSaveState(
+                    'error',
+                  );
+
+                  showNotice({
+                    type: 'error',
+                    title:
+                      'Changes not saved',
+                    message:
+                      error.message ||
+                      'Please try again.',
+                  });
+                }
+
+                return;
+              }
+
+              const afterSave =
+                noteRef.current;
+
+              if (
+                afterSave &&
+                afterSave.id ===
+                  id
+              ) {
+                const refreshed =
+                  {
+                    ...afterSave,
+                    updated_at:
+                      updatedAt,
+                  };
+
+                noteRef.current =
+                  refreshed;
+
+                if (
+                  mountedRef.current
+                ) {
+                  setNote(
+                    refreshed,
+                  );
+                }
+              }
+
+              /*
+               * If the user typed while the request was
+               * running, dirtyRef stays true and the loop
+               * immediately saves the newest version.
+               */
+              if (
+                saveVersionRef.current ===
+                version
+              ) {
+                dirtyRef.current =
+                  false;
+
+                if (
+                  mountedRef.current
+                ) {
+                  setSaveState(
+                    'saved',
+                  );
+                }
+
+                return;
+              }
+            }
+          })()
+            .catch(
+              (
+                error: unknown,
+              ) => {
+                if (
+                  mountedRef.current
+                ) {
+                  setSaveState(
+                    'error',
+                  );
+
+                  showNotice({
+                    type: 'error',
+                    title:
+                      'Could not save',
+                    message:
+                      error instanceof
+                      Error
+                        ? error.message
+                        : 'An unexpected error occurred.',
+                  });
+                }
+              },
+            )
+            .finally(() => {
+              saveInFlightRef.current =
+                null;
+            });
+
+        saveInFlightRef.current =
+          worker;
+
+        return worker;
+      },
+      [
+        ensureRow,
+        showNotice,
+        toPayload,
+      ],
+    );
+
+  /* --------------------------------------------------
+     Schedule save
+  -------------------------------------------------- */
+
+  const scheduleSave =
+    useCallback(() => {
+      if (saveTimer.current) {
+        clearTimeout(
+          saveTimer.current,
+        );
+      }
+
+      saveTimer.current =
+        setTimeout(() => {
+          saveTimer.current =
+            null;
+
+          void saveNow();
+        }, AUTOSAVE_DELAY);
+    }, [saveNow]);
+
+  /* --------------------------------------------------
+     Dirty
+  -------------------------------------------------- */
+
+  const markDirty =
+    useCallback(() => {
+      saveVersionRef.current +=
+        1;
+
+      dirtyRef.current =
+        true;
+
+      setSaveState(
+        'saving',
+      );
+
+      scheduleSave();
+    }, [scheduleSave]);
+
+  /* --------------------------------------------------
+     History
+  -------------------------------------------------- */
+
+  const pushHistory =
+    useCallback(
+      (previous: EditorNote) => {
+        const snapshot =
+          createSnapshot(
+            previous,
+          );
+
+        if (!snapshot) {
+          return;
+        }
+
+        const last =
+          undoStackRef.current[
+            undoStackRef.current
+              .length - 1
+          ] || null;
+
+        if (
+          snapshotsEqual(
+            last,
+            snapshot,
+          )
+        ) {
+          return;
+        }
+
+        undoStackRef.current.push(
+          snapshot,
+        );
+
+        if (
+          undoStackRef.current
+            .length > MAX_HISTORY
+        ) {
+          undoStackRef.current.shift();
+        }
+
+        redoStackRef.current =
+          [];
+
+        setHistoryVersion(
+          (value) =>
+            value + 1,
+        );
+      },
+      [],
+    );
+
+  /* --------------------------------------------------
+     Update note
+  -------------------------------------------------- */
+
+  const updateNote =
+    useCallback(
+      (
+        changes:
+          | Partial<EditorNote>
+          | ((
+              current: EditorNote,
+            ) => EditorNote),
+      ) => {
+        const current =
+          noteRef.current;
+
+        if (!current) {
+          return;
+        }
+
+        const next =
+          typeof changes ===
+          'function'
+            ? changes(current)
+            : {
+                ...current,
+                ...changes,
+              };
+
+        if (
+          current.title ===
+            next.title &&
+          current.content ===
+            next.content &&
+          current.category ===
+            next.category &&
+          current.pinned ===
+            next.pinned &&
+          current.favorite ===
+            next.favorite &&
+          current.archived ===
+            next.archived
+        ) {
+          return;
+        }
+
+        pushHistory(current);
+
+        noteRef.current =
+          next;
+
+        setNote(next);
+
+        markDirty();
+      },
+      [
+        markDirty,
+        pushHistory,
+      ],
+    );
+
+  /* --------------------------------------------------
+     Undo / Redo
+  -------------------------------------------------- */
+
+  const restoreSnapshot =
+    useCallback(
+      (snapshot: HistorySnapshot) => {
+        const current =
+          noteRef.current;
+
+        if (!current) {
+          return;
+        }
+
+        const next: EditorNote =
+          {
+            ...current,
+            title:
+              snapshot.title,
+            content:
+              snapshot.content,
+            category:
+              snapshot.category,
+          };
+
+        noteRef.current =
+          next;
+
+        setNote(next);
+
+        saveVersionRef.current +=
+          1;
+
+        dirtyRef.current =
+          true;
+
+        setSaveState(
+          'saving',
+        );
+
+        if (saveTimer.current) {
+          clearTimeout(
+            saveTimer.current,
+          );
+        }
+
+        saveTimer.current =
+          setTimeout(() => {
+            saveTimer.current =
+              null;
+
+            void saveNow();
+          }, AUTOSAVE_DELAY);
+
+        requestAnimationFrame(() => {
+          resizeTitle();
+
+          bodyRef.current?.focus();
+        });
+      },
+      [
+        resizeTitle,
+        saveNow,
+      ],
+    );
+
+  const undo =
+    useCallback(() => {
       const current =
         noteRef.current;
 
-      if (!current) return;
-
-      const next =
-        typeof updater === 'function'
-          ? updater(current)
-          : {
-              ...current,
-              ...updater,
-            };
-
-      if (
-        current.title === next.title &&
-        current.content === next.content &&
-        current.category === next.category &&
-        current.pinned === next.pinned &&
-        current.favorite === next.favorite &&
-        current.archived === next.archived
-      ) {
+      if (!current) {
         return;
       }
 
-      if (options?.history !== false) {
-        pushHistory(current);
+      const previous =
+        undoStackRef.current.pop();
+
+      if (!previous) {
+        return;
       }
 
-      noteRef.current = next;
-      setNote(next);
+      const currentSnapshot =
+        createSnapshot(
+          current,
+        );
 
-      markDirty();
-    },
-    [markDirty, pushHistory],
-  );
+      if (currentSnapshot) {
+        redoStackRef.current.push(
+          currentSnapshot,
+        );
+      }
 
-  /* -------------------------------------------------------
-     Flush saves on lifecycle changes
-  ------------------------------------------------------- */
+      restoreSnapshot(
+        previous,
+      );
+
+      setHistoryVersion(
+        (value) =>
+          value + 1,
+      );
+    }, [restoreSnapshot]);
+
+  const redo =
+    useCallback(() => {
+      const current =
+        noteRef.current;
+
+      if (!current) {
+        return;
+      }
+
+      const next =
+        redoStackRef.current.pop();
+
+      if (!next) {
+        return;
+      }
+
+      const currentSnapshot =
+        createSnapshot(
+          current,
+        );
+
+      if (currentSnapshot) {
+        undoStackRef.current.push(
+          currentSnapshot,
+        );
+      }
+
+      restoreSnapshot(next);
+
+      setHistoryVersion(
+        (value) =>
+          value + 1,
+      );
+    }, [restoreSnapshot]);
+
+  /* --------------------------------------------------
+     Flush saves
+  -------------------------------------------------- */
 
   useEffect(() => {
-    const flush = () => {
+    function flush() {
       if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
+        clearTimeout(
+          saveTimer.current,
+        );
+
+        saveTimer.current =
+          null;
       }
 
       if (dirtyRef.current) {
         void saveNow();
       }
-    };
+    }
 
-    const onVisibilityChange = () => {
+    function handleVisibility() {
       if (
         document.visibilityState ===
         'hidden'
       ) {
         flush();
       }
-    };
+    }
 
     window.addEventListener(
       'pagehide',
@@ -1081,7 +1444,7 @@ function NoteEditor() {
 
     document.addEventListener(
       'visibilitychange',
-      onVisibilityChange,
+      handleVisibility,
     );
 
     return () => {
@@ -1092,42 +1455,42 @@ function NoteEditor() {
 
       document.removeEventListener(
         'visibilitychange',
-        onVisibilityChange,
+        handleVisibility,
       );
-
-      if (saveTimer.current) {
-        clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
     };
   }, [saveNow]);
 
-  /* -------------------------------------------------------
+  /* --------------------------------------------------
      Keyboard shortcuts
-  ------------------------------------------------------- */
+  -------------------------------------------------- */
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
+    function handleKeyDown(
+      event: KeyboardEvent,
+    ) {
       const modifier =
-        event.ctrlKey || event.metaKey;
+        event.ctrlKey ||
+        event.metaKey;
+
+      if (
+        event.key === 'Escape'
+      ) {
+        if (deletePrompt) {
+          setDeletePrompt(
+            false,
+          );
+          return;
+        }
+
+        if (unlockPrompt) {
+          setUnlockPrompt(
+            false,
+          );
+          return;
+        }
+      }
 
       if (!modifier) {
-        if (
-          event.key === 'Escape' &&
-          unlockPrompt
-        ) {
-          setUnlockPrompt(false);
-          return;
-        }
-
-        if (
-          event.key === 'Escape' &&
-          deletePrompt
-        ) {
-          setDeletePrompt(false);
-          return;
-        }
-
         return;
       }
 
@@ -1150,17 +1513,17 @@ function NoteEditor() {
         event.preventDefault();
         redo();
       }
-    };
+    }
 
     window.addEventListener(
       'keydown',
-      onKeyDown,
+      handleKeyDown,
     );
 
     return () => {
       window.removeEventListener(
         'keydown',
-        onKeyDown,
+        handleKeyDown,
       );
     };
   }, [
@@ -1170,13 +1533,38 @@ function NoteEditor() {
     unlockPrompt,
   ]);
 
-  /* -------------------------------------------------------
-     Actions
-  ------------------------------------------------------- */
+  /* --------------------------------------------------
+     Flag actions
+  -------------------------------------------------- */
+
+  const toggleFlag =
+    useCallback(
+      (
+        flag:
+          | 'pinned'
+          | 'favorite'
+          | 'archived',
+      ) => {
+        updateNote(
+          (current) => ({
+            ...current,
+            [flag]:
+              !current[flag],
+          }),
+        );
+      },
+      [updateNote],
+    );
+
+  /* --------------------------------------------------
+     Ensure real ID
+  -------------------------------------------------- */
 
   const ensureRealId =
-    useCallback(async (): Promise<string | null> => {
-      if (realNoteIdRef.current) {
+    useCallback(async () => {
+      if (
+        realNoteIdRef.current
+      ) {
         return realNoteIdRef.current;
       }
 
@@ -1187,7 +1575,9 @@ function NoteEditor() {
         return null;
       }
 
-      if (current.id !== 'new') {
+      if (
+        current.id !== 'new'
+      ) {
         realNoteIdRef.current =
           current.id;
 
@@ -1197,31 +1587,26 @@ function NoteEditor() {
       return ensureRow();
     }, [ensureRow]);
 
-  const toggleFlag = useCallback(
-    (
-      flag:
-        | 'pinned'
-        | 'favorite'
-        | 'archived',
-    ) => {
-      updateNote((current) => ({
-        ...current,
-        [flag]: !current[flag],
-      }));
-    },
-    [updateNote],
-  );
+  /* --------------------------------------------------
+     Delete
+  -------------------------------------------------- */
 
   const onDelete =
     useCallback(async () => {
-      if (deleting) return;
+      if (deleting) {
+        return;
+      }
 
       setDeleting(true);
 
       try {
         if (saveTimer.current) {
-          clearTimeout(saveTimer.current);
-          saveTimer.current = null;
+          clearTimeout(
+            saveTimer.current,
+          );
+
+          saveTimer.current =
+            null;
         }
 
         if (dirtyRef.current) {
@@ -1233,7 +1618,9 @@ function NoteEditor() {
           noteRef.current?.id;
 
         if (!id || id === 'new') {
-          dirtyRef.current = false;
+          dirtyRef.current =
+            false;
+
           router.push('/notes');
           return;
         }
@@ -1247,7 +1634,8 @@ function NoteEditor() {
         if (error) {
           showNotice({
             type: 'error',
-            title: 'Could not delete note',
+            title:
+              'Could not delete note',
             message:
               error.message ||
               'Please try again.',
@@ -1256,15 +1644,20 @@ function NoteEditor() {
           return;
         }
 
-        safeLocalStorageRemove(
-          `enotes:note-lock:${id}`,
+        removeLocalStorage(
+          getLockStorageKey(
+            id,
+          ),
         );
 
-        dirtyRef.current = false;
+        dirtyRef.current =
+          false;
 
         router.push('/notes');
       } finally {
-        if (mountedRef.current) {
+        if (
+          mountedRef.current
+        ) {
           setDeleting(false);
         }
       }
@@ -1275,12 +1668,18 @@ function NoteEditor() {
       showNotice,
     ]);
 
+  /* --------------------------------------------------
+     Share
+  -------------------------------------------------- */
+
   const onShare =
     useCallback(async () => {
       const current =
         noteRef.current;
 
-      if (!current) return;
+      if (!current) {
+        return;
+      }
 
       if (dirtyRef.current) {
         await saveNow();
@@ -1292,7 +1691,8 @@ function NoteEditor() {
       if (!id) {
         showNotice({
           type: 'error',
-          title: 'Could not share note',
+          title:
+            'Could not share note',
           message:
             'The note needs to be saved first.',
         });
@@ -1303,18 +1703,22 @@ function NoteEditor() {
       const url =
         `${window.location.origin}/notes/${id}`;
 
-      const text =
+      const shareTitle =
         current.title.trim() ||
-        current.content.trim().slice(0, 100) ||
         'My note';
 
       try {
         if (
-          navigator.share
+          typeof navigator.share ===
+          'function'
         ) {
           await navigator.share({
-            title: text,
-            text,
+            title:
+              shareTitle,
+            text:
+              current.content
+                .trim()
+                .slice(0, 120),
             url,
           });
 
@@ -1328,47 +1732,54 @@ function NoteEditor() {
             url,
           );
         } else {
-          const textarea =
+          const input =
             document.createElement(
               'textarea',
             );
 
-          textarea.value = url;
-          textarea.style.position =
+          input.value = url;
+          input.style.position =
             'fixed';
-          textarea.style.opacity =
-            '0';
+          input.style.left =
+            '-9999px';
 
           document.body.appendChild(
-            textarea,
+            input,
           );
 
-          textarea.focus();
-          textarea.select();
+          input.focus();
+          input.select();
 
           document.execCommand(
             'copy',
           );
 
-          textarea.remove();
+          input.remove();
         }
 
-        if (copiedTimer.current) {
+        setCopied(true);
+
+        if (
+          copiedTimer.current
+        ) {
           clearTimeout(
             copiedTimer.current,
           );
         }
 
-        setCopied(true);
-
         copiedTimer.current =
           setTimeout(() => {
-            if (mountedRef.current) {
+            if (
+              mountedRef.current
+            ) {
               setCopied(false);
             }
           }, 1800);
       } catch {
-        // Native share cancellation is intentionally silent.
+        /*
+         * Native share cancellation is intentionally
+         * silent.
+         */
       }
     }, [
       ensureRealId,
@@ -1376,66 +1787,78 @@ function NoteEditor() {
       showNotice,
     ]);
 
-  /* -------------------------------------------------------
+  /* --------------------------------------------------
      Lock
-  ------------------------------------------------------- */
+  -------------------------------------------------- */
 
-  const lockNote = useCallback(() => {
-    const current =
-      noteRef.current;
+  const lockNote =
+    useCallback(() => {
+      const current =
+        noteRef.current;
 
-    if (!current) return;
+      if (!current) {
+        return;
+      }
 
-    const id =
-      realNoteIdRef.current ||
-      (current.id !== 'new'
-        ? current.id
-        : null);
+      const id =
+        realNoteIdRef.current ||
+        (current.id !== 'new'
+          ? current.id
+          : null);
 
-    setLocked(true);
+      setLocked(true);
 
-    if (id) {
-      safeLocalStorageSet(
-        `enotes:note-lock:${id}`,
-        '1',
-      );
-    }
-  }, []);
+      if (id) {
+        writeLocalStorage(
+          getLockStorageKey(
+            id,
+          ),
+          '1',
+        );
+      }
+    }, []);
 
-  const unlockNote = useCallback(() => {
-    const current =
-      noteRef.current;
+  const unlockNote =
+    useCallback(() => {
+      const current =
+        noteRef.current;
 
-    const id =
-      realNoteIdRef.current ||
-      (current && current.id !== 'new'
-        ? current.id
-        : null);
+      const id =
+        realNoteIdRef.current ||
+        (current &&
+        current.id !== 'new'
+          ? current.id
+          : null);
 
-    setLocked(false);
-    setUnlockPrompt(false);
+      setLocked(false);
+      setUnlockPrompt(false);
 
-    if (id) {
-      safeLocalStorageRemove(
-        `enotes:note-lock:${id}`,
-      );
-    }
-  }, []);
+      if (id) {
+        removeLocalStorage(
+          getLockStorageKey(
+            id,
+          ),
+        );
+      }
+    }, []);
 
-  /* -------------------------------------------------------
+  /* --------------------------------------------------
      Formatting
-  ------------------------------------------------------- */
+  -------------------------------------------------- */
 
   const applyFormat =
     useCallback(
       (kind: FormatKind) => {
-        const el =
+        const textarea =
           bodyRef.current;
 
         const current =
           noteRef.current;
 
-        if (!el || !current) {
+        if (
+          !textarea ||
+          !current
+        ) {
           return;
         }
 
@@ -1443,136 +1866,182 @@ function NoteEditor() {
           selectionStart,
           selectionEnd,
           value,
-        } = el;
+        } = textarea;
 
-        let result:
-          | ReturnType<
-              typeof wrapSelection
-            >
-          | ReturnType<
-              typeof toggleBlockPrefix
-          >;
+        let result;
 
         if (
           kind === 'bold'
         ) {
-          result = wrapSelection(
-            value,
-            selectionStart,
-            selectionEnd,
-            '**',
-          );
+          result =
+            wrapSelection(
+              value,
+              selectionStart,
+              selectionEnd,
+              '**',
+            );
         } else if (
           kind === 'italic'
         ) {
-          result = wrapSelection(
-            value,
-            selectionStart,
-            selectionEnd,
-            '*',
-          );
+          result =
+            wrapSelection(
+              value,
+              selectionStart,
+              selectionEnd,
+              '*',
+            );
         } else if (
           kind === 'underline'
         ) {
-          result = wrapSelection(
-            value,
-            selectionStart,
-            selectionEnd,
-            '__',
-          );
+          result =
+            wrapSelection(
+              value,
+              selectionStart,
+              selectionEnd,
+              '__',
+            );
         } else if (
           kind === 'ol'
         ) {
-          result = toggleBlockPrefix(
-            value,
-            selectionStart,
-            selectionEnd,
-            '1. ',
-          );
+          result =
+            toggleBlockPrefix(
+              value,
+              selectionStart,
+              selectionEnd,
+              '1. ',
+            );
         } else if (
           kind === 'ul'
         ) {
-          result = toggleBlockPrefix(
-            value,
-            selectionStart,
-            selectionEnd,
-            '- ',
-          );
+          result =
+            toggleBlockPrefix(
+              value,
+              selectionStart,
+              selectionEnd,
+              '- ',
+            );
         } else {
-          result = toggleBlockPrefix(
-            value,
-            selectionStart,
-            selectionEnd,
-            '[ ] ',
-          );
+          result =
+            toggleBlockPrefix(
+              value,
+              selectionStart,
+              selectionEnd,
+              '[ ] ',
+            );
         }
 
         pushHistory(current);
 
-        const next: EditorNote = {
-          ...current,
-          content: result.text,
-        };
+        const next: EditorNote =
+          {
+            ...current,
+            content:
+              result.text,
+          };
 
-        noteRef.current = next;
+        noteRef.current =
+          next;
+
         setNote(next);
 
         markDirty();
 
-        requestAnimationFrame(() => {
-          el.focus();
+        requestAnimationFrame(
+          () => {
+            textarea.focus();
 
-          el.setSelectionRange(
-            result.selectionStart,
-            result.selectionEnd,
-          );
-        });
+            textarea.setSelectionRange(
+              result.selectionStart,
+              result.selectionEnd,
+            );
+          },
+        );
       },
-      [markDirty, pushHistory],
+      [
+        markDirty,
+        pushHistory,
+      ],
     );
 
-  /* -------------------------------------------------------
-     Category
-  ------------------------------------------------------- */
+  /* --------------------------------------------------
+     Categories
+  -------------------------------------------------- */
 
-  const categories = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...CATEGORIES,
-          note?.category || '',
-        ]),
-      ).filter(Boolean),
-    [note?.category],
-  );
+  const categories =
+    useMemo(
+      () =>
+        Array.from(
+          new Set([
+            ...CATEGORIES,
+            note?.category || '',
+          ]),
+        ).filter(Boolean),
+      [note?.category],
+    );
 
-  const commitNewCategory =
+  const commitCategory =
     useCallback(() => {
-      const category =
+      const value =
         normalizeCategory(
           newCategory,
         );
 
-      if (!category) {
-        setShowNewCategory(false);
+      if (!value) {
+        setShowNewCategory(
+          false,
+        );
+
         setNewCategory('');
+
         return;
       }
 
       updateNote({
-        category,
+        category: value,
       });
 
-      setShowNewCategory(false);
+      setShowNewCategory(
+        false,
+      );
+
       setNewCategory('');
     }, [
       newCategory,
       updateNote,
     ]);
 
-  /* -------------------------------------------------------
-     Loading / errors
-  ------------------------------------------------------- */
+  /* --------------------------------------------------
+     Derived values
+  -------------------------------------------------- */
+
+  const wordCount =
+    note?.content.trim()
+      ? note.content
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)
+          .length
+      : 0;
+
+  const characterCount =
+    note?.content.length || 0;
+
+  const canUndo =
+    undoStackRef.current.length >
+    0;
+
+  const canRedo =
+    redoStackRef.current.length >
+    0;
+
+  /*
+   * Force toolbar rerender when history changes.
+   */
+  void historyVersion;
+
+  /* --------------------------------------------------
+     Loading
+  -------------------------------------------------- */
 
   if (loading) {
     return (
@@ -1585,6 +2054,10 @@ function NoteEditor() {
     );
   }
 
+  /* --------------------------------------------------
+     Not found
+  -------------------------------------------------- */
+
   if (notFound) {
     return (
       <main className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#FFF7F8] px-4 text-center">
@@ -1596,10 +2069,10 @@ function NoteEditor() {
           Note not found
         </p>
 
-        <p className="mt-1 max-w-sm text-sm text-[#6B6B6B]">
-          It may have been deleted, moved, or
-          you may no longer have permission to
-          access it.
+        <p className="mt-1 max-w-sm text-sm leading-relaxed text-[#6B6B6B]">
+          It may have been deleted,
+          moved, or you may no longer
+          have permission to access it.
         </p>
 
         <Link
@@ -1616,52 +2089,21 @@ function NoteEditor() {
     return null;
   }
 
-  const savePill = () => {
-    if (saveState === 'saving') {
-      return 'Saving…';
-    }
+  const saveLabel =
+    saveState === 'saving'
+      ? 'Saving…'
+      : saveState === 'saved'
+        ? 'Saved'
+        : saveState === 'error'
+          ? 'Not saved'
+          : '';
 
-    if (saveState === 'error') {
-      return 'Not saved';
-    }
-
-    if (saveState === 'saved') {
-      return 'Saved';
-    }
-
-    return '';
-  };
-
-  const wordCount =
-    note.content.trim()
-      ? note.content
-          .trim()
-          .split(/\s+/)
-          .filter(Boolean)
-          .length
-      : 0;
-
-  const characterCount =
-    note.content.length;
-
-  const canUndo =
-    undoStackRef.current.length > 0;
-
-  const canRedo =
-    redoStackRef.current.length > 0;
-
-  /*
-   * Prevent React from considering these variables unused
-   * while still allowing history changes to trigger render.
-   */
-  void historyVersion;
+  /* --------------------------------------------------
+     UI
+  -------------------------------------------------- */
 
   return (
     <main className="min-h-[100dvh] bg-[#FFF7F8] text-[#111111]">
-      {/* --------------------------------------------------
-          HEADER
-      -------------------------------------------------- */}
-
       <header className="sticky top-0 z-30 border-b border-[#E8E2E4]/70 bg-[#FFF7F8]/95 backdrop-blur-xl">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-2 py-2 sm:px-4">
           <button
@@ -1671,6 +2113,7 @@ function NoteEditor() {
             }
             className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition hover:bg-black/5 active:scale-95"
             aria-label="Back to notes"
+            title="Back"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -1679,9 +2122,13 @@ function NoteEditor() {
             <button
               type="button"
               onClick={() =>
-                toggleFlag('pinned')
+                toggleFlag(
+                  'pinned',
+                )
               }
-              aria-pressed={note.pinned}
+              aria-pressed={
+                note.pinned
+              }
               aria-label={
                 note.pinned
                   ? 'Unpin note'
@@ -1710,9 +2157,13 @@ function NoteEditor() {
             <button
               type="button"
               onClick={() =>
-                toggleFlag('favorite')
+                toggleFlag(
+                  'favorite',
+                )
               }
-              aria-pressed={note.favorite}
+              aria-pressed={
+                note.favorite
+              }
               aria-label={
                 note.favorite
                   ? 'Unfavorite note'
@@ -1742,7 +2193,9 @@ function NoteEditor() {
               type="button"
               onClick={() => {
                 if (locked) {
-                  setUnlockPrompt(true);
+                  setUnlockPrompt(
+                    true,
+                  );
                 } else {
                   lockNote();
                 }
@@ -1782,9 +2235,13 @@ function NoteEditor() {
             <button
               type="button"
               onClick={() =>
-                toggleFlag('archived')
+                toggleFlag(
+                  'archived',
+                )
               }
-              aria-pressed={note.archived}
+              aria-pressed={
+                note.archived
+              }
               aria-label={
                 note.archived
                   ? 'Restore note'
@@ -1811,10 +2268,6 @@ function NoteEditor() {
         </div>
       </header>
 
-      {/* --------------------------------------------------
-          LOCK SCREEN
-      -------------------------------------------------- */}
-
       {locked && (
         <div className="mx-auto max-w-2xl px-4 pt-8">
           <div className="rounded-3xl border border-[#E8E2E4] bg-white p-7 text-center shadow-sm">
@@ -1827,15 +2280,18 @@ function NoteEditor() {
             </p>
 
             <p className="mx-auto mt-1 max-w-sm text-sm leading-relaxed text-[#6B6B6B]">
-              The editor is hidden on this
-              device. This is a local privacy
-              feature, not encryption.
+              The editor is hidden on
+              this device. This local
+              lock does not encrypt the
+              database record.
             </p>
 
             <button
               type="button"
               onClick={() =>
-                setUnlockPrompt(true)
+                setUnlockPrompt(
+                  true,
+                )
               }
               className="mt-5 rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-[#FFB6C1] transition hover:opacity-90 active:scale-[0.98]"
             >
@@ -1845,34 +2301,39 @@ function NoteEditor() {
         </div>
       )}
 
-      {/* --------------------------------------------------
-          EDITOR
-      -------------------------------------------------- */}
-
       <div
-        className={`mx-auto max-w-2xl px-4 pb-36 pt-4 transition-[filter,opacity] duration-200 sm:px-6 ${
+        className={`mx-auto max-w-2xl px-4 pb-36 pt-4 sm:px-6 ${
           locked
             ? 'pointer-events-none select-none blur-[7px] opacity-60'
             : ''
         }`}
-        aria-hidden={locked}
+        aria-hidden={
+          locked
+        }
       >
-        {/* Title */}
-
         <textarea
           ref={titleRef}
           value={note.title}
+          maxLength={
+            MAX_TITLE_LENGTH
+          }
+          rows={1}
+          placeholder="title"
+          aria-label="Note title"
           onChange={(event) => {
-            const nextTitle =
+            const value =
               event.target.value
-                .replace(/\n/g, '')
+                .replace(
+                  /\n/g,
+                  '',
+                )
                 .slice(
                   0,
                   MAX_TITLE_LENGTH,
                 );
 
             updateNote({
-              title: nextTitle,
+              title: value,
             });
 
             requestAnimationFrame(
@@ -1880,19 +2341,16 @@ function NoteEditor() {
             );
           }}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') {
+            if (
+              event.key ===
+              'Enter'
+            ) {
               event.preventDefault();
               bodyRef.current?.focus();
             }
           }}
-          rows={1}
-          maxLength={MAX_TITLE_LENGTH}
-          placeholder="title"
-          aria-label="Note title"
           className="w-full resize-none overflow-hidden bg-transparent text-4xl font-extrabold tracking-tight placeholder:text-[#C9C0C4] focus:outline-none sm:text-5xl"
         />
-
-        {/* Metadata */}
 
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[#6B6B6B] sm:text-sm">
           <span>
@@ -1901,28 +2359,29 @@ function NoteEditor() {
             )}
           </span>
 
-          {savePill() && (
+          {saveLabel && (
             <span
               className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                saveState === 'error'
+                saveState ===
+                'error'
                   ? 'bg-red-50 text-red-600'
-                  : saveState === 'saving'
+                  : saveState ===
+                      'saving'
                     ? 'bg-amber-50 text-amber-700'
                     : 'bg-[#FFF0F3] text-[#E5798F]'
               }`}
             >
-              {saveState === 'saving' && (
+              {saveState ===
+                'saving' && (
                 <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
               )}
 
-              {savePill()}
+              {saveLabel}
             </span>
           )}
         </div>
 
         <hr className="mt-3 border-[#E8E2E4]" />
-
-        {/* Categories */}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {categories.map(
@@ -1930,16 +2389,11 @@ function NoteEditor() {
               <button
                 key={category}
                 type="button"
-                onClick={() => {
-                  if (
-                    note.category !==
-                    category
-                  ) {
-                    updateNote({
-                      category,
-                    });
-                  }
-                }}
+                onClick={() =>
+                  updateNote({
+                    category,
+                  })
+                }
                 aria-pressed={
                   note.category ===
                   category
@@ -1966,6 +2420,11 @@ function NoteEditor() {
               <input
                 autoFocus
                 value={newCategory}
+                maxLength={
+                  MAX_CATEGORY_LENGTH
+                }
+                placeholder="category…"
+                aria-label="New category"
                 onChange={(event) =>
                   setNewCategory(
                     event.target.value
@@ -1973,10 +2432,6 @@ function NoteEditor() {
                       .replace(
                         /[^a-z0-9 -]/g,
                         '',
-                      )
-                      .replace(
-                        /\s+/g,
-                        ' ',
                       )
                       .slice(
                         0,
@@ -1990,7 +2445,7 @@ function NoteEditor() {
                     'Enter'
                   ) {
                     event.preventDefault();
-                    commitNewCategory();
+                    commitCategory();
                   }
 
                   if (
@@ -2001,14 +2456,11 @@ function NoteEditor() {
                     setShowNewCategory(
                       false,
                     );
-                    setNewCategory('');
+                    setNewCategory(
+                      '',
+                    );
                   }
                 }}
-                placeholder="category…"
-                maxLength={
-                  MAX_CATEGORY_LENGTH
-                }
-                aria-label="New category name"
                 className="w-32 rounded-full border border-[#E5798F] bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#FFD2DE]"
               />
 
@@ -2018,10 +2470,12 @@ function NoteEditor() {
                   setShowNewCategory(
                     false,
                   );
-                  setNewCategory('');
+                  setNewCategory(
+                    '',
+                  );
                 }}
                 className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-gray-100"
-                aria-label="Cancel new category"
+                aria-label="Cancel category"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -2030,7 +2484,9 @@ function NoteEditor() {
             <button
               type="button"
               onClick={() =>
-                setShowNewCategory(true)
+                setShowNewCategory(
+                  true,
+                )
               }
               className="flex items-center gap-1.5 rounded-full border border-[#E8E2E4] bg-white px-4 py-2 text-sm font-medium text-[#E5798F] transition hover:bg-gray-50 active:scale-[0.98]"
             >
@@ -2041,8 +2497,6 @@ function NoteEditor() {
             </button>
           )}
         </div>
-
-        {/* Formatting toolbar */}
 
         <div
           className="no-scrollbar mt-5 flex items-center gap-1 overflow-x-auto rounded-2xl border border-[#E8E2E4] bg-white px-2 py-1.5 shadow-sm"
@@ -2070,7 +2524,9 @@ function NoteEditor() {
           <ToolbarButton
             label="Bold"
             onClick={() =>
-              applyFormat('bold')
+              applyFormat(
+                'bold',
+              )
             }
           >
             <BoldIcon className="h-4 w-4" />
@@ -2079,10 +2535,12 @@ function NoteEditor() {
           <ToolbarButton
             label="Italic"
             onClick={() =>
-              applyFormat('italic')
+              applyFormat(
+                'italic',
+              )
             }
           >
-            <ItalicIcon className="h-4 w-4" />
+            <ItalicIcon className="h-4 w-4 italic" />
           </ToolbarButton>
 
           <ToolbarButton
@@ -2099,7 +2557,7 @@ function NoteEditor() {
           <ToolbarDivider />
 
           <ToolbarButton
-            label="Ordered list"
+            label="Numbered list"
             onClick={() =>
               applyFormat('ol')
             }
@@ -2119,7 +2577,9 @@ function NoteEditor() {
           <ToolbarButton
             label="Checklist"
             onClick={() =>
-              applyFormat('check')
+              applyFormat(
+                'check',
+              )
             }
           >
             <CheckSquare className="h-4 w-4" />
@@ -2131,18 +2591,22 @@ function NoteEditor() {
             label="Delete note"
             danger
             onClick={() =>
-              setDeletePrompt(true)
+              setDeletePrompt(
+                true,
+              )
             }
           >
             <Trash2 className="h-4 w-4" />
           </ToolbarButton>
         </div>
 
-        {/* Body */}
-
         <textarea
           ref={bodyRef}
           value={note.content}
+          placeholder="what's on your mind?"
+          aria-label="Note body"
+          spellCheck
+          className="mt-5 min-h-[48dvh] w-full resize-none bg-transparent text-[17px] leading-[1.85] placeholder:text-[#C9C0C4] focus:outline-none sm:min-h-[55dvh] sm:text-lg"
           onChange={(event) => {
             updateNote({
               content:
@@ -2160,7 +2624,9 @@ function NoteEditor() {
                 'b'
             ) {
               event.preventDefault();
-              applyFormat('bold');
+              applyFormat(
+                'bold',
+              );
               return;
             }
 
@@ -2170,7 +2636,9 @@ function NoteEditor() {
                 'i'
             ) {
               event.preventDefault();
-              applyFormat('italic');
+              applyFormat(
+                'italic',
+              );
               return;
             }
 
@@ -2183,196 +2651,9 @@ function NoteEditor() {
               applyFormat(
                 'underline',
               );
-              return;
-            }
-
-            /*
-             * Automatically continue simple lists
-             * when pressing Enter.
-             */
-            if (
-              event.key === 'Enter' &&
-              !event.shiftKey
-            ) {
-              const el =
-                bodyRef.current;
-
-              if (!el) return;
-
-              const cursor =
-                el.selectionStart;
-
-              const before =
-                el.value.slice(
-                  0,
-                  cursor,
-                );
-
-              const lineStart =
-                before.lastIndexOf(
-                  '\n',
-                ) + 1;
-
-              const currentLine =
-                before.slice(
-                  lineStart,
-                );
-
-              const listMatch =
-                currentLine.match(
-                  /^(\s*)([-*]|\[\s?\]|(\d+)\.)\s(.*)$/,
-                );
-
-              if (listMatch) {
-                const prefix =
-                  listMatch[2];
-
-                const content =
-                  listMatch[4] ||
-                  '';
-
-                /*
-                 * Empty list item:
-                 * pressing Enter exits the list.
-                 */
-                if (!content.trim()) {
-                  event.preventDefault();
-
-                  const removeStart =
-                    lineStart;
-
-                  const removeEnd =
-                    cursor;
-
-                  const nextText =
-                    el.value.slice(
-                      0,
-                      removeStart,
-                    ) +
-                    el.value.slice(
-                      removeEnd,
-                    );
-
-                  const current =
-                    noteRef.current;
-
-                  if (!current)
-                    return;
-
-                  pushHistory(
-                    current,
-                  );
-
-                  const next: EditorNote =
-                    {
-                      ...current,
-                      content:
-                        nextText,
-                    };
-
-                  noteRef.current =
-                    next;
-
-                  setNote(next);
-                  markDirty();
-
-                  requestAnimationFrame(
-                    () => {
-                      const nextCursor =
-                        Math.min(
-                          removeStart,
-                          nextText.length,
-                        );
-
-                      el.focus();
-
-                      el.setSelectionRange(
-                        nextCursor,
-                        nextCursor,
-                      );
-                    },
-                  );
-
-                  return;
-                }
-
-                event.preventDefault();
-
-                let nextPrefix =
-                  `${prefix} `;
-
-                if (
-                  /^\d+\.$/.test(
-                    prefix,
-                  )
-                ) {
-                  const number =
-                    Number(
-                      prefix.slice(
-                        0,
-                        -1,
-                      ),
-                    ) + 1;
-
-                  nextPrefix = `${number}. `;
-                }
-
-                const nextContent =
-                  `${el.value.slice(
-                    0,
-                    cursor,
-                  )}\n${nextPrefix}${el.value.slice(
-                    cursor,
-                  )}`;
-
-                const current =
-                  noteRef.current;
-
-                if (!current)
-                  return;
-
-                pushHistory(
-                  current,
-                );
-
-                const next: EditorNote =
-                  {
-                    ...current,
-                    content:
-                      nextContent,
-                  };
-
-                noteRef.current =
-                  next;
-
-                setNote(next);
-                markDirty();
-
-                const nextCursor =
-                  cursor +
-                  1 +
-                  nextPrefix.length;
-
-                requestAnimationFrame(
-                  () => {
-                    el.focus();
-
-                    el.setSelectionRange(
-                      nextCursor,
-                      nextCursor,
-                    );
-                  },
-                );
-              }
             }
           }}
-          placeholder="what's on your mind?"
-          aria-label="Note body"
-          spellCheck
-          className="mt-5 min-h-[48dvh] w-full resize-none bg-transparent text-[17px] leading-[1.85] placeholder:text-[#C9C0C4] focus:outline-none sm:min-h-[55dvh] sm:text-lg"
         />
-
-        {/* Footer stats */}
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#E8E2E4] pt-3 text-[11px] text-[#8B8B8B]">
           <div className="flex items-center gap-3">
@@ -2393,14 +2674,10 @@ function NoteEditor() {
 
           <span>
             {note.title.length}/
-            {MAX_TITLE_LENGTH} title
+            {MAX_TITLE_LENGTH}
           </span>
         </div>
       </div>
-
-      {/* --------------------------------------------------
-          NOTICE
-      -------------------------------------------------- */}
 
       {notice && (
         <StyledAlert
@@ -2411,16 +2688,14 @@ function NoteEditor() {
         />
       )}
 
-      {/* --------------------------------------------------
-          DELETE DIALOG
-      -------------------------------------------------- */}
-
       {deletePrompt && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onClick={() => {
             if (!deleting) {
-              setDeletePrompt(false);
+              setDeletePrompt(
+                false,
+              );
             }
           }}
         >
@@ -2431,23 +2706,23 @@ function NoteEditor() {
             }
             role="alertdialog"
             aria-modal="true"
-            aria-labelledby="delete-note-title"
+            aria-labelledby="delete-title"
           >
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-500">
               <Trash2 className="h-5 w-5" />
             </div>
 
             <h2
-              id="delete-note-title"
+              id="delete-title"
               className="mt-4 text-center text-base font-bold"
             >
               Delete this note?
             </h2>
 
             <p className="mt-1 text-center text-sm leading-relaxed text-[#6B6B6B]">
-              This permanently removes the
-              note from your account. This
-              action cannot be undone.
+              This permanently removes
+              the note from your account.
+              This action cannot be undone.
             </p>
 
             <div className="mt-5 grid grid-cols-2 gap-2">
@@ -2455,9 +2730,11 @@ function NoteEditor() {
                 type="button"
                 disabled={deleting}
                 onClick={() =>
-                  setDeletePrompt(false)
+                  setDeletePrompt(
+                    false,
+                  )
                 }
-                className="rounded-2xl border border-[#E8E2E4] bg-white px-4 py-3 text-sm font-semibold transition hover:bg-gray-50 disabled:opacity-50"
+                className="rounded-2xl border border-[#E8E2E4] px-4 py-3 text-sm font-semibold transition hover:bg-gray-50 disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -2468,7 +2745,7 @@ function NoteEditor() {
                 onClick={() =>
                   void onDelete()
                 }
-                className="rounded-2xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+                className="rounded-2xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-600 disabled:opacity-60"
               >
                 {deleting ? (
                   <span className="flex items-center justify-center gap-2">
@@ -2484,15 +2761,13 @@ function NoteEditor() {
         </div>
       )}
 
-      {/* --------------------------------------------------
-          UNLOCK DIALOG
-      -------------------------------------------------- */}
-
       {unlockPrompt && (
         <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
           onClick={() =>
-            setUnlockPrompt(false)
+            setUnlockPrompt(
+              false,
+            )
           }
         >
           <div
@@ -2502,23 +2777,21 @@ function NoteEditor() {
             }
             role="dialog"
             aria-modal="true"
-            aria-labelledby="unlock-note-title"
+            aria-labelledby="unlock-title"
           >
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FFF0F3] text-[#E5798F]">
               <Lock className="h-5 w-5" />
             </div>
 
             <p
-              id="unlock-note-title"
+              id="unlock-title"
               className="mt-3 text-sm font-bold"
             >
               Unlock this note?
             </p>
 
             <p className="mt-1 text-xs leading-relaxed text-[#6B6B6B]">
-              Anyone with access to this
-              device may be able to read the
-              note. The local lock does not
+              This local lock does not
               encrypt the database record.
             </p>
 
@@ -2526,7 +2799,9 @@ function NoteEditor() {
               <button
                 type="button"
                 onClick={() =>
-                  setUnlockPrompt(false)
+                  setUnlockPrompt(
+                    false,
+                  )
                 }
                 className="rounded-xl border border-[#E8E2E4] py-2.5 text-sm font-semibold transition hover:bg-gray-50"
               >
@@ -2545,16 +2820,12 @@ function NoteEditor() {
         </div>
       )}
 
-      {/* --------------------------------------------------
-          COPIED TOAST
-      -------------------------------------------------- */}
-
       {copied && (
         <div className="pointer-events-none fixed bottom-5 left-1/2 z-30 -translate-x-1/2">
-          <p className="rounded-full bg-black px-4 py-2.5 text-xs font-semibold text-[#FFB6C1] shadow-xl">
+          <div className="rounded-full bg-black px-4 py-2.5 text-xs font-semibold text-[#FFB6C1] shadow-xl">
             <Copy className="mr-1.5 inline h-3.5 w-3.5" />
             Link copied
-          </p>
+          </div>
         </div>
       )}
     </main>
@@ -2577,8 +2848,8 @@ function ToolbarDivider() {
 function ToolbarButton({
   label,
   onClick,
-  danger,
-  disabled,
+  danger = false,
+  disabled = false,
   children,
 }: {
   label: string;
@@ -2590,10 +2861,10 @@ function ToolbarButton({
   return (
     <button
       type="button"
-      onClick={onClick}
       title={label}
       aria-label={label}
       disabled={disabled}
+      onClick={onClick}
       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 ${
         danger
           ? 'text-red-500 hover:bg-red-50'
@@ -2691,4 +2962,3 @@ function StyledAlert({
     </div>
   );
 }
-```
