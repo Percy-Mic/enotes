@@ -117,7 +117,10 @@ function getErrorMessage(error: unknown): string {
         return 'Camera and microphone access requires HTTPS or localhost.';
 
       default:
-        return error.message || 'Could not access your camera or microphone.';
+        return (
+          error.message ||
+          'Could not access your camera or microphone.'
+        );
     }
   }
 
@@ -281,7 +284,7 @@ export function CallProvider({
         try {
           track.stop();
         } catch {
-          // Ignore already-stopped tracks.
+          // Already stopped.
         }
       });
     },
@@ -319,12 +322,23 @@ export function CallProvider({
     peer.ontrack = null;
     peer.onconnectionstatechange = null;
     peer.oniceconnectionstatechange = null;
-    peer.onsignalingstatechange = null;
+
+    try {
+      peer.getSenders().forEach((sender) => {
+        try {
+          sender.replaceTrack(null);
+        } catch {
+          // Ignore.
+        }
+      });
+    } catch {
+      // Ignore.
+    }
 
     try {
       peer.close();
     } catch {
-      // Ignore already closed connections.
+      // Ignore.
     }
 
     peerRef.current = null;
@@ -335,52 +349,108 @@ export function CallProvider({
 
     channelRef.current = null;
 
-    if (channel) {
-      try {
-        await supabase.removeChannel(channel);
-      } catch {
-        // Ignore cleanup errors.
-      }
+    if (!channel) {
+      return;
     }
-  }, []);
 
-  const removeIncomingChannel = useCallback(async () => {
-    const channel = incomingChannelRef.current;
-
-    incomingChannelRef.current = null;
-
-    if (channel) {
-      try {
-        await supabase.removeChannel(channel);
-      } catch {
-        // Ignore cleanup errors.
-      }
+    try {
+      await supabase.removeChannel(channel);
+    } catch {
+      // Ignore cleanup errors.
     }
   }, []);
 
   const updateCallStatus = useCallback(
     async (
       callId: string,
-      nextStatus: string,
+      nextStatus: CallStatus | string,
       extra: Record<string, unknown> = {},
     ) => {
+      const payload: Record<string, unknown> = {
+        status: nextStatus,
+        updated_at: new Date().toISOString(),
+        ...extra,
+      };
+
       const { error: updateError } =
         await supabase
           .from('calls')
-          .update({
-            status: nextStatus,
-            ...extra,
-          })
-          .eq('id', callId);
+          .update(payload)
+          .eq('id', callId)
+          .or(
+            `caller_id.eq.${myId},callee_id.eq.${myId}`,
+          );
 
       if (updateError) {
         console.warn(
-          '[enotes calls]',
+          '[enotes calls] status update failed:',
           updateError.message,
         );
       }
     },
-    [],
+    [myId],
+  );
+
+  const recordCallEvent = useCallback(
+    async (
+      callId: string,
+      eventType: string,
+      metadata: Record<string, unknown> = {},
+    ) => {
+      if (!myId) {
+        return;
+      }
+
+      const { error: eventError } =
+        await supabase.from('call_events').insert({
+          call_id: callId,
+          user_id: myId,
+          event_type: eventType,
+          metadata,
+        });
+
+      if (eventError) {
+        console.warn(
+          '[enotes calls] event insert failed:',
+          eventError.message,
+        );
+      }
+    },
+    [myId],
+  );
+
+  const updateParticipant = useCallback(
+    async (
+      callId: string,
+      values: Record<string, unknown>,
+    ) => {
+      if (!myId) {
+        return;
+      }
+
+      const { error: participantError } =
+        await supabase
+          .from('call_participants')
+          .upsert(
+            {
+              call_id: callId,
+              user_id: myId,
+              ...values,
+              updated_at: new Date().toISOString(),
+            },
+            {
+              onConflict: 'call_id,user_id',
+            },
+          );
+
+      if (participantError) {
+        console.warn(
+          '[enotes calls] participant update failed:',
+          participantError.message,
+        );
+      }
+    },
+    [myId],
   );
 
   const getMedia = useCallback(
@@ -456,37 +526,36 @@ export function CallProvider({
     [stopStream],
   );
 
-  const flushPendingIce = useCallback(
-    async () => {
-      const peer = peerRef.current;
+  const flushPendingIce = useCallback(async () => {
+    const peer = peerRef.current;
 
-      if (!peer?.remoteDescription) {
-        return;
+    if (!peer?.remoteDescription) {
+      return;
+    }
+
+    const candidates =
+      pendingIceRef.current.splice(0);
+
+    for (const candidate of candidates) {
+      try {
+        await peer.addIceCandidate(candidate);
+      } catch (candidateError) {
+        console.warn(
+          '[enotes calls] queued ICE candidate failed:',
+          candidateError,
+        );
       }
-
-      const candidates =
-        pendingIceRef.current.splice(0);
-
-      for (const candidate of candidates) {
-        try {
-          await peer.addIceCandidate(candidate);
-        } catch (error) {
-          console.warn(
-            '[enotes calls] queued ICE candidate failed',
-            error,
-          );
-        }
-      }
-    },
-    [],
-  );
+    }
+  }, []);
 
   const sendSignal = useCallback(
-    async (payload: Record<string, unknown>) => {
+    async (
+      payload: Record<string, unknown>,
+    ) => {
       const channel = channelRef.current;
 
       if (!channel || !myId) {
-        return;
+        return false;
       }
 
       const result = await channel.send({
@@ -500,20 +569,25 @@ export function CallProvider({
 
       if (result !== 'ok') {
         console.warn(
-          '[enotes calls] signal broadcast result:',
+          '[enotes calls] signal failed:',
           result,
         );
+        return false;
       }
+
+      return true;
     },
     [myId],
   );
 
   const sendControl = useCallback(
-    async (payload: Record<string, unknown>) => {
+    async (
+      payload: Record<string, unknown>,
+    ) => {
       const channel = channelRef.current;
 
       if (!channel || !myId) {
-        return;
+        return false;
       }
 
       const result = await channel.send({
@@ -527,10 +601,13 @@ export function CallProvider({
 
       if (result !== 'ok') {
         console.warn(
-          '[enotes calls] control broadcast result:',
+          '[enotes calls] control failed:',
           result,
         );
+        return false;
       }
+
+      return true;
     },
     [myId],
   );
@@ -546,16 +623,17 @@ export function CallProvider({
 
       peerRef.current = peer;
 
-      const local = localStreamRef.current;
+      const local =
+        localStreamRef.current;
 
       if (local) {
         local.getTracks().forEach((track) => {
           try {
             peer.addTrack(track, local);
-          } catch (error) {
+          } catch (trackError) {
             console.warn(
-              '[enotes calls] addTrack failed',
-              error,
+              '[enotes calls] addTrack failed:',
+              trackError,
             );
           }
         });
@@ -568,20 +646,21 @@ export function CallProvider({
 
         void sendSignal({
           type: 'ice-candidate',
-          candidate: event.candidate.toJSON(),
+          candidate:
+            event.candidate.toJSON(),
         });
       };
 
       peer.ontrack = (event) => {
-        const incomingStream =
+        const stream =
           event.streams[0];
 
-        if (incomingStream) {
+        if (stream) {
           remoteStreamRef.current =
-            incomingStream;
+            stream;
 
           if (mountedRef.current) {
-            setRemoteStream(incomingStream);
+            setRemoteStream(stream);
           }
 
           return;
@@ -591,7 +670,8 @@ export function CallProvider({
           remoteStreamRef.current;
 
         if (!fallback) {
-          fallback = new MediaStream();
+          fallback =
+            new MediaStream();
 
           remoteStreamRef.current =
             fallback;
@@ -606,61 +686,152 @@ export function CallProvider({
             .getTracks()
             .some(
               (track) =>
-                track.id === event.track.id,
+                track.id ===
+                event.track.id,
             )
         ) {
-          fallback.addTrack(event.track);
+          fallback.addTrack(
+            event.track,
+          );
         }
       };
 
       peer.onconnectionstatechange = () => {
-        switch (peer.connectionState) {
-          case 'connecting':
-            setCurrentStatus('connecting');
-            break;
+        const connectionState =
+          peer.connectionState;
 
-          case 'connected':
-            setCurrentStatus('connected');
-
-            void updateCallStatus(
-              callData.callId,
-              'connected',
-              {
-                connected_at:
-                  new Date().toISOString(),
-              },
-            );
-            break;
-
-          case 'disconnected':
-            setCurrentStatus('reconnecting');
-            break;
-
-          case 'failed':
-            setCurrentStatus('reconnecting');
-            break;
-
-          case 'closed':
-            break;
-        }
-      };
-
-      peer.oniceconnectionstatechange = () => {
         if (
-          peer.iceConnectionState ===
-            'failed' &&
-          mountedRef.current
+          connectionState ===
+          'connecting'
         ) {
-          setCurrentStatus('reconnecting');
+          setCurrentStatus(
+            'connecting',
+          );
+        }
+
+        if (
+          connectionState ===
+          'connected'
+        ) {
+          setCurrentStatus(
+            'connected',
+          );
+
+          void updateCallStatus(
+            callData.callId,
+            'connected',
+            {
+              connected_at:
+                new Date().toISOString(),
+              connection_state:
+                'connected',
+            },
+          );
+
+          void updateParticipant(
+            callData.callId,
+            {
+              status: 'joined',
+              joined_at:
+                new Date().toISOString(),
+              muted:
+                !micEnabled,
+              camera_enabled:
+                callData.media ===
+                'video'
+                  ? cameraEnabled
+                  : false,
+            },
+          );
+
+          void recordCallEvent(
+            callData.callId,
+            'connected',
+          );
+        }
+
+        if (
+          connectionState ===
+          'disconnected'
+        ) {
+          setCurrentStatus(
+            'reconnecting',
+          );
+
+          void updateCallStatus(
+            callData.callId,
+            'reconnecting',
+            {
+              connection_state:
+                'disconnected',
+            },
+          );
+        }
+
+        if (
+          connectionState ===
+          'failed'
+        ) {
+          setCurrentStatus(
+            'reconnecting',
+          );
+
+          void updateCallStatus(
+            callData.callId,
+            'reconnecting',
+            {
+              connection_state:
+                'failed',
+            },
+          );
         }
       };
+
+      peer.oniceconnectionstatechange =
+        () => {
+          const iceState =
+            peer.iceConnectionState;
+
+          if (
+            iceState ===
+              'connected' ||
+            iceState ===
+              'completed'
+          ) {
+            setCurrentStatus(
+              'connected',
+            );
+          }
+
+          if (
+            iceState ===
+            'disconnected'
+          ) {
+            setCurrentStatus(
+              'reconnecting',
+            );
+          }
+
+          if (
+            iceState ===
+            'failed'
+          ) {
+            setCurrentStatus(
+              'reconnecting',
+            );
+          }
+        };
 
       return peer;
     },
     [
+      cameraEnabled,
+      micEnabled,
+      recordCallEvent,
       sendSignal,
       setCurrentStatus,
       updateCallStatus,
+      updateParticipant,
     ],
   );
 
@@ -703,18 +874,27 @@ export function CallProvider({
 
   const handleSignal = useCallback(
     async (payload: any) => {
-      const current = callRef.current;
-      const peer = peerRef.current;
+      const current =
+        callRef.current;
+
+      const peer =
+        peerRef.current;
 
       if (!current || !peer) {
         return;
       }
 
-      if (!payload || payload.from === myId) {
+      if (
+        !payload ||
+        payload.from === myId
+      ) {
         return;
       }
 
-      if (payload.type === 'offer') {
+      if (
+        payload.type ===
+        'offer'
+      ) {
         if (
           current.direction !==
           'incoming'
@@ -741,13 +921,6 @@ export function CallProvider({
 
           await flushPendingIce();
 
-          if (
-            peer.signalingState !==
-            'have-remote-offer'
-          ) {
-            return;
-          }
-
           const answer =
             await peer.createAnswer();
 
@@ -761,15 +934,22 @@ export function CallProvider({
               peer.localDescription?.sdp ??
               answer.sdp,
           });
-        } catch (error) {
+
+          await updateCallStatus(
+            current.callId,
+            'connecting',
+          );
+        } catch (signalError) {
           console.error(
-            '[enotes calls] offer handling failed',
-            error,
+            '[enotes calls] offer handling failed:',
+            signalError,
           );
 
           if (mountedRef.current) {
             setError(
-              getErrorMessage(error),
+              getErrorMessage(
+                signalError,
+              ),
             );
           }
         }
@@ -777,7 +957,10 @@ export function CallProvider({
         return;
       }
 
-      if (payload.type === 'answer') {
+      if (
+        payload.type ===
+        'answer'
+      ) {
         if (
           current.direction !==
           'outgoing'
@@ -792,7 +975,9 @@ export function CallProvider({
           return;
         }
 
-        if (applyingAnswerRef.current) {
+        if (
+          applyingAnswerRef.current
+        ) {
           return;
         }
 
@@ -800,7 +985,8 @@ export function CallProvider({
           return;
         }
 
-        applyingAnswerRef.current = true;
+        applyingAnswerRef.current =
+          true;
 
         try {
           await peer.setRemoteDescription({
@@ -809,10 +995,10 @@ export function CallProvider({
           });
 
           await flushPendingIce();
-        } catch (error) {
+        } catch (answerError) {
           console.warn(
-            '[enotes calls] answer handling failed',
-            error,
+            '[enotes calls] answer failed:',
+            answerError,
           );
         } finally {
           applyingAnswerRef.current =
@@ -835,7 +1021,9 @@ export function CallProvider({
           return;
         }
 
-        if (!peer.remoteDescription) {
+        if (
+          !peer.remoteDescription
+        ) {
           pendingIceRef.current.push(
             candidate,
           );
@@ -847,10 +1035,10 @@ export function CallProvider({
           await peer.addIceCandidate(
             candidate,
           );
-        } catch (error) {
+        } catch (candidateError) {
           console.warn(
-            '[enotes calls] ICE candidate failed',
-            error,
+            '[enotes calls] ICE candidate failed:',
+            candidateError,
           );
         }
       }
@@ -859,6 +1047,7 @@ export function CallProvider({
       flushPendingIce,
       myId,
       sendSignal,
+      updateCallStatus,
     ],
   );
 
@@ -875,7 +1064,10 @@ export function CallProvider({
         return;
       }
 
-      if (payload.type === 'ready') {
+      if (
+        payload.type ===
+        'ready'
+      ) {
         if (
           current.direction !==
             'outgoing' ||
@@ -919,7 +1111,13 @@ export function CallProvider({
           );
 
           const offer =
-            await peer.createOffer();
+            await peer.createOffer({
+              offerToReceiveAudio:
+                true,
+              offerToReceiveVideo:
+                current.media ===
+                'video',
+            });
 
           await peer.setLocalDescription(
             offer,
@@ -931,15 +1129,22 @@ export function CallProvider({
               peer.localDescription?.sdp ??
               offer.sdp,
           });
-        } catch (error) {
+
+          await recordCallEvent(
+            current.callId,
+            'offer_sent',
+          );
+        } catch (offerError) {
           console.error(
-            '[enotes calls] offer creation failed',
-            error,
+            '[enotes calls] offer creation failed:',
+            offerError,
           );
 
           if (mountedRef.current) {
             setError(
-              getErrorMessage(error),
+              getErrorMessage(
+                offerError,
+              ),
             );
           }
         } finally {
@@ -951,7 +1156,8 @@ export function CallProvider({
       }
 
       if (
-        payload.type === 'decline'
+        payload.type ===
+        'decline'
       ) {
         clearRingTimer();
 
@@ -960,6 +1166,20 @@ export function CallProvider({
           'declined',
           {
             ended_at:
+              new Date().toISOString(),
+            declined_at:
+              new Date().toISOString(),
+            ended_by: payload.from,
+            end_reason:
+              'declined',
+          },
+        );
+
+        await updateParticipant(
+          current.callId,
+          {
+            status: 'declined',
+            left_at:
               new Date().toISOString(),
           },
         );
@@ -976,7 +1196,8 @@ export function CallProvider({
       }
 
       if (
-        payload.type === 'busy'
+        payload.type ===
+        'busy'
       ) {
         clearRingTimer();
 
@@ -986,10 +1207,15 @@ export function CallProvider({
           {
             ended_at:
               new Date().toISOString(),
+            ended_by: payload.from,
+            end_reason:
+              'busy',
           },
         );
 
-        setCurrentStatus('busy');
+        setCurrentStatus(
+          'busy',
+        );
 
         window.setTimeout(() => {
           void cleanup();
@@ -998,7 +1224,10 @@ export function CallProvider({
         return;
       }
 
-      if (payload.type === 'bye') {
+      if (
+        payload.type ===
+        'bye'
+      ) {
         clearRingTimer();
 
         await updateCallStatus(
@@ -1007,10 +1236,15 @@ export function CallProvider({
           {
             ended_at:
               new Date().toISOString(),
+            ended_by: payload.from,
+            end_reason:
+              'remote_ended',
           },
         );
 
-        setCurrentStatus('ended');
+        setCurrentStatus(
+          'ended',
+        );
 
         window.setTimeout(() => {
           void cleanup();
@@ -1018,12 +1252,14 @@ export function CallProvider({
       }
     },
     [
-      myId,
-      clearRingTimer,
       cleanup,
+      clearRingTimer,
+      myId,
+      recordCallEvent,
       sendSignal,
       setCurrentStatus,
       updateCallStatus,
+      updateParticipant,
     ],
   );
 
@@ -1032,10 +1268,11 @@ export function CallProvider({
       async (
         callId: string,
       ) => {
-        if (
-          channelRef.current
-        ) {
-          return channelRef.current;
+        const existing =
+          channelRef.current;
+
+        if (existing) {
+          return existing;
         }
 
         const channel =
@@ -1080,92 +1317,111 @@ export function CallProvider({
         channelRef.current =
           channel;
 
-        await new Promise<void>(
-          (
-            resolve,
-            reject,
-          ) => {
-            let settled =
-              false;
+        try {
+          await new Promise<void>(
+            (
+              resolve,
+              reject,
+            ) => {
+              let settled =
+                false;
 
-            const timeout =
-              window.setTimeout(
-                () => {
-                  if (
-                    settled
-                  ) {
-                    return;
-                  }
+              const timeout =
+                window.setTimeout(
+                  () => {
+                    if (settled) {
+                      return;
+                    }
 
-                  settled = true;
-
-                  reject(
-                    new Error(
-                      'The call signaling channel timed out.',
-                    ),
-                  );
-                },
-                10_000,
-              );
-
-            channel.subscribe(
-              (
-                state,
-                subscribeError,
-              ) => {
-                if (
-                  state ===
-                  'SUBSCRIBED'
-                ) {
-                  window.clearTimeout(
-                    timeout,
-                  );
-
-                  if (
-                    !settled
-                  ) {
-                    settled =
-                      true;
-                    resolve();
-                  }
-
-                  return;
-                }
-
-                if (
-                  state ===
-                    'CHANNEL_ERROR' ||
-                  state ===
-                    'TIMED_OUT'
-                ) {
-                  window.clearTimeout(
-                    timeout,
-                  );
-
-                  if (
-                    !settled
-                  ) {
                     settled =
                       true;
 
                     reject(
-                      subscribeError ||
-                        new Error(
-                          'The call signaling channel could not be opened.',
-                        ),
+                      new Error(
+                        'The call signaling channel timed out.',
+                      ),
                     );
-                  }
-                }
-              },
-            );
-          },
-        );
+                  },
+                  10_000,
+                );
 
-        return channel;
+              channel.subscribe(
+                (
+                  state,
+                  subscribeError,
+                ) => {
+                  if (
+                    state ===
+                    'SUBSCRIBED'
+                  ) {
+                    window.clearTimeout(
+                      timeout,
+                    );
+
+                    if (
+                      !settled
+                    ) {
+                      settled =
+                        true;
+                      resolve();
+                    }
+
+                    return;
+                  }
+
+                  if (
+                    state ===
+                      'CHANNEL_ERROR' ||
+                    state ===
+                      'TIMED_OUT'
+                  ) {
+                    window.clearTimeout(
+                      timeout,
+                    );
+
+                    if (
+                      !settled
+                    ) {
+                      settled =
+                        true;
+
+                      reject(
+                        subscribeError ||
+                          new Error(
+                            'The call signaling channel could not be opened.',
+                          ),
+                      );
+                    }
+                  }
+                },
+              );
+            },
+          );
+
+          return channel;
+        } catch (subscriptionError) {
+          if (
+            channelRef.current ===
+            channel
+          ) {
+            channelRef.current =
+              null;
+          }
+
+          try {
+            await supabase.removeChannel(
+              channel,
+            );
+          } catch {
+            // Ignore.
+          }
+
+          throw subscriptionError;
+        }
       },
       [
-        handleSignal,
         handleControl,
+        handleSignal,
       ],
     );
 
@@ -1209,11 +1465,6 @@ export function CallProvider({
               : 'user',
           );
 
-        attachLocalStream(
-          stream,
-          media,
-        );
-
         const {
           data: callRow,
           error: insertError,
@@ -1226,9 +1477,20 @@ export function CallProvider({
             callee_id: peerId,
             media,
             status: 'ringing',
+            ringing_at:
+              new Date().toISOString(),
+            connection_state:
+              'new',
           })
           .select(
-            'id, conversation_id, caller_id, callee_id, media, status',
+            `
+              id,
+              conversation_id,
+              caller_id,
+              callee_id,
+              media,
+              status
+            `,
           )
           .single();
 
@@ -1236,6 +1498,8 @@ export function CallProvider({
           insertError ||
           !callRow
         ) {
+          stopStream(stream);
+
           throw (
             insertError ??
             new Error(
@@ -1256,12 +1520,36 @@ export function CallProvider({
           direction: 'outgoing',
         };
 
+        attachLocalStream(
+          stream,
+          media,
+        );
+
         setCurrentCall(
           activeCall,
         );
 
         setCurrentStatus(
           'calling',
+        );
+
+        await updateParticipant(
+          callRow.id,
+          {
+            role: 'caller',
+            status: 'ringing',
+            camera_enabled:
+              media === 'video',
+            muted: false,
+          },
+        );
+
+        void recordCallEvent(
+          callRow.id,
+          'call_started',
+          {
+            media,
+          },
         );
 
         createPeer(
@@ -1281,7 +1569,9 @@ export function CallProvider({
                 callRef.current;
 
               if (
-                !current
+                !current ||
+                current.callId !==
+                  callRow.id
               ) {
                 return;
               }
@@ -1301,7 +1591,16 @@ export function CallProvider({
                 {
                   ended_at:
                     new Date().toISOString(),
+                  missed_at:
+                    new Date().toISOString(),
+                  end_reason:
+                    'no_answer',
                 },
+              );
+
+              await recordCallEvent(
+                current.callId,
+                'call_missed',
               );
 
               setCurrentStatus(
@@ -1316,15 +1615,17 @@ export function CallProvider({
               );
             })();
           }, CALL_RING_TIMEOUT_MS);
-      } catch (error) {
+      } catch (callError) {
         console.error(
-          '[enotes calls] startCall failed',
-          error,
+          '[enotes calls] startCall failed:',
+          callError,
         );
 
         if (mountedRef.current) {
           setError(
-            getErrorMessage(error),
+            getErrorMessage(
+              callError,
+            ),
           );
         }
 
@@ -1332,17 +1633,19 @@ export function CallProvider({
       }
     },
     [
-      myId,
+      attachLocalStream,
+      cleanup,
+      clearRingTimer,
+      createPeer,
       facingMode,
       getMedia,
-      attachLocalStream,
+      myId,
+      recordCallEvent,
       setCurrentCall,
       setCurrentStatus,
-      createPeer,
+      stopStream,
       subscribeToCallChannel,
-      clearRingTimer,
-      updateCallStatus,
-      cleanup,
+      updateParticipant,
     ],
   );
 
@@ -1388,24 +1691,49 @@ export function CallProvider({
         await updateCallStatus(
           current.callId,
           'connecting',
+          {
+            connection_state:
+              'connecting',
+          },
+        );
+
+        await updateParticipant(
+          current.callId,
+          {
+            role: 'callee',
+            status: 'joined',
+            joined_at:
+              new Date().toISOString(),
+            muted: false,
+            camera_enabled:
+              current.media ===
+              'video',
+          },
         );
 
         await subscribeToCallChannel(
           current.callId,
         );
 
+        await recordCallEvent(
+          current.callId,
+          'call_accepted',
+        );
+
         await sendControl({
           type: 'ready',
         });
-      } catch (error) {
+      } catch (acceptError) {
         console.error(
-          '[enotes calls] acceptCall failed',
-          error,
+          '[enotes calls] acceptCall failed:',
+          acceptError,
         );
 
         if (mountedRef.current) {
           setError(
-            getErrorMessage(error),
+            getErrorMessage(
+              acceptError,
+            ),
           );
         }
 
@@ -1415,22 +1743,31 @@ export function CallProvider({
           {
             ended_at:
               new Date().toISOString(),
+            end_reason:
+              'accept_failed',
           },
+        );
+
+        await recordCallEvent(
+          current.callId,
+          'accept_failed',
         );
 
         await cleanup();
       }
     }, [
-      clearRingTimer,
-      getMedia,
-      facingMode,
       attachLocalStream,
-      createPeer,
-      setCurrentStatus,
-      updateCallStatus,
-      subscribeToCallChannel,
-      sendControl,
       cleanup,
+      clearRingTimer,
+      createPeer,
+      facingMode,
+      getMedia,
+      recordCallEvent,
+      sendControl,
+      setCurrentStatus,
+      subscribeToCallChannel,
+      updateCallStatus,
+      updateParticipant,
     ]);
 
   const declineCall =
@@ -1449,7 +1786,7 @@ export function CallProvider({
           type: 'decline',
         });
       } catch {
-        // The database status below remains authoritative.
+        // Database status is authoritative.
       }
 
       await updateCallStatus(
@@ -1458,7 +1795,26 @@ export function CallProvider({
         {
           ended_at:
             new Date().toISOString(),
+          declined_at:
+            new Date().toISOString(),
+          ended_by: myId,
+          end_reason:
+            'declined',
         },
+      );
+
+      await updateParticipant(
+        current.callId,
+        {
+          status: 'declined',
+          left_at:
+            new Date().toISOString(),
+        },
+      );
+
+      await recordCallEvent(
+        current.callId,
+        'call_declined',
       );
 
       setCurrentStatus(
@@ -1469,11 +1825,14 @@ export function CallProvider({
         void cleanup();
       }, 900);
     }, [
-      clearRingTimer,
-      sendControl,
-      updateCallStatus,
-      setCurrentStatus,
       cleanup,
+      clearRingTimer,
+      myId,
+      recordCallEvent,
+      sendControl,
+      setCurrentStatus,
+      updateCallStatus,
+      updateParticipant,
     ]);
 
   const endCall = useCallback(
@@ -1497,7 +1856,7 @@ export function CallProvider({
           type: 'bye',
         });
       } catch {
-        // Continue with database cleanup.
+        // Continue.
       }
 
       await updateCallStatus(
@@ -1506,7 +1865,26 @@ export function CallProvider({
         {
           ended_at:
             new Date().toISOString(),
+          ended_by: myId,
+          end_reason:
+            'user_ended',
+          connection_state:
+            'closed',
         },
+      );
+
+      await updateParticipant(
+        current.callId,
+        {
+          status: 'left',
+          left_at:
+            new Date().toISOString(),
+        },
+      );
+
+      await recordCallEvent(
+        current.callId,
+        'call_ended',
       );
 
       setCurrentStatus(
@@ -1515,14 +1893,17 @@ export function CallProvider({
 
       window.setTimeout(() => {
         void cleanup();
-      }, 500);
+      }, 600);
     },
     [
-      clearRingTimer,
-      sendControl,
-      updateCallStatus,
-      setCurrentStatus,
       cleanup,
+      clearRingTimer,
+      myId,
+      recordCallEvent,
+      sendControl,
+      setCurrentStatus,
+      updateCallStatus,
+      updateParticipant,
     ],
   );
 
@@ -1556,7 +1937,19 @@ export function CallProvider({
       );
 
       setMicEnabled(next);
-    }, []);
+
+      const current =
+        callRef.current;
+
+      if (current) {
+        void updateParticipant(
+          current.callId,
+          {
+            muted: !next,
+          },
+        );
+      }
+    }, [updateParticipant]);
 
   const toggleCamera =
     useCallback(() => {
@@ -1588,7 +1981,20 @@ export function CallProvider({
       );
 
       setCameraEnabled(next);
-    }, []);
+
+      const current =
+        callRef.current;
+
+      if (current) {
+        void updateParticipant(
+          current.callId,
+          {
+            camera_enabled:
+              next,
+          },
+        );
+      }
+    }, [updateParticipant]);
 
   const switchCamera =
     useCallback(async () => {
@@ -1623,7 +2029,8 @@ export function CallProvider({
           );
 
         const nextTrack =
-          replacement.getVideoTracks()[0];
+          replacement
+            .getVideoTracks()[0];
 
         if (!nextTrack) {
           stopStream(
@@ -1637,8 +2044,7 @@ export function CallProvider({
             ?.getSenders()
             .find(
               (item) =>
-                item.track
-                  ?.kind ===
+                item.track?.kind ===
                 'video',
             );
 
@@ -1648,22 +2054,21 @@ export function CallProvider({
           );
         }
 
-        const audioTracks =
-          currentStream.getAudioTracks();
-
         currentStream
           .getVideoTracks()
           .forEach(
             (track) => {
               try {
                 track.stop();
-              } catch {}
+              } catch {
+                // Ignore.
+              }
             },
           );
 
         const nextStream =
           new MediaStream([
-            ...audioTracks,
+            ...currentStream.getAudioTracks(),
             nextTrack,
           ]);
 
@@ -1674,17 +2079,19 @@ export function CallProvider({
           setLocalStream(
             nextStream,
           );
+
           setFacingMode(
             nextMode,
           );
+
           setCameraEnabled(
             true,
           );
         }
-      } catch (error) {
+      } catch (switchError) {
         console.warn(
-          '[enotes calls] camera switch failed',
-          error,
+          '[enotes calls] camera switch failed:',
+          switchError,
         );
       }
     }, [
@@ -1694,9 +2101,10 @@ export function CallProvider({
     ]);
 
   /*
-   * Global incoming-call listener.
+   * Global incoming call listener.
    *
-   * The calls table must be enabled for Realtime/Postgres Changes.
+   * Postgres Changes is only used for the persistent calls table.
+   * SDP and ICE never enter Postgres.
    */
   useEffect(() => {
     if (!myId) {
@@ -1743,13 +2151,11 @@ export function CallProvider({
           return;
         }
 
-        if (
-          callRef.current
-        ) {
-          /*
-           * Tell the new caller that this account is already
-           * handling another call.
-           */
+        /*
+         * If already handling another call, immediately mark
+         * this one busy.
+         */
+        if (callRef.current) {
           const busyChannel =
             supabase.channel(
               `call:${row.id}`,
@@ -1767,79 +2173,83 @@ export function CallProvider({
           busyChannel.on(
             'broadcast',
             {
-              event:
-                'control',
+              event: 'control',
             },
             () => {},
           );
 
           try {
             await new Promise<void>(
-              (
-                resolve,
-              ) => {
-                let done =
+              (resolve) => {
+                let finished =
                   false;
 
                 const timeout =
                   window.setTimeout(
                     () => {
-                      if (!done) {
-                        done =
-                          true;
+                      if (!finished) {
+                        finished = true;
                         resolve();
                       }
                     },
-                    2500,
+                    3000,
                   );
 
                 busyChannel.subscribe(
-                  async (
-                    state,
-                  ) => {
+                  async (state) => {
                     if (
-                      state ===
+                      state !==
                       'SUBSCRIBED'
                     ) {
-                      await busyChannel.send(
-                        {
+                      return;
+                    }
+
+                    await busyChannel.send(
+                      {
+                        type:
+                          'broadcast',
+                        event:
+                          'control',
+                        payload: {
                           type:
-                            'broadcast',
-                          event:
-                            'control',
-                          payload:
-                            {
-                              type:
-                                'busy',
-                              from:
-                                myId,
-                            },
+                            'busy',
+                          from:
+                            myId,
                         },
-                      );
+                      },
+                    );
 
-                      window.clearTimeout(
-                        timeout,
-                      );
+                    window.clearTimeout(
+                      timeout,
+                    );
 
-                      if (
-                        !done
-                      ) {
-                        done =
-                          true;
-                        resolve();
-                      }
+                    if (!finished) {
+                      finished = true;
+                      resolve();
                     }
                   },
                 );
               },
             );
           } catch {
-            // Ignore busy signaling failure.
+            // Database status below is still authoritative.
           } finally {
             await supabase.removeChannel(
               busyChannel,
             );
           }
+
+          await supabase
+            .from('calls')
+            .update({
+              status: 'busy',
+              ended_at:
+                new Date().toISOString(),
+              ended_by: myId,
+              end_reason:
+                'callee_busy',
+            })
+            .eq('id', row.id);
 
           return;
         }
@@ -1881,8 +2291,7 @@ export function CallProvider({
             profile?.avatar_url ??
             null,
           media:
-            row.media ===
-            'audio'
+            row.media === 'audio'
               ? 'audio'
               : 'video',
           direction:
@@ -1901,22 +2310,33 @@ export function CallProvider({
 
         try {
           /*
-           * Subscribe immediately so an offer cannot arrive
-           * before the callee has a signaling channel.
+           * Join immediately so an offer cannot arrive before
+           * the callee has a signaling channel.
            */
           await subscribeToCallChannel(
             row.id,
           );
-        } catch (error) {
+
+          await updateParticipant(
+            row.id,
+            {
+              role: 'callee',
+              status: 'ringing',
+              camera_enabled:
+                row.media ===
+                'video',
+            },
+          );
+        } catch (subscriptionError) {
           console.error(
-            '[enotes calls] incoming signaling subscription failed',
-            error,
+            '[enotes calls] incoming channel failed:',
+            subscriptionError,
           );
 
           if (mountedRef.current) {
             setError(
               getErrorMessage(
-                error,
+                subscriptionError,
               ),
             );
           }
@@ -1946,7 +2366,16 @@ export function CallProvider({
                 {
                   ended_at:
                     new Date().toISOString(),
+                  missed_at:
+                    new Date().toISOString(),
+                  end_reason:
+                    'no_answer',
                 },
+              );
+
+              await recordCallEvent(
+                row.id,
+                'call_missed',
               );
 
               setCurrentStatus(
@@ -1964,8 +2393,75 @@ export function CallProvider({
       },
     );
 
+    /*
+     * Also listen for call status changes belonging to this user.
+     * This makes busy/declined/ended state reliable even if a
+     * Broadcast message arrives during a race.
+     */
+    channel.on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'calls',
+      },
+      async (payload) => {
+        if (cancelled) {
+          return;
+        }
+
+        const row =
+          payload.new as CallRow;
+
+        const current =
+          callRef.current;
+
+        if (
+          !current ||
+          current.callId !==
+            row.id
+        ) {
+          return;
+        }
+
+        if (
+          row.status ===
+            'connected' &&
+          statusRef.current !==
+            'connected'
+        ) {
+          setCurrentStatus(
+            'connected',
+          );
+        }
+
+        if (
+          row.status ===
+            'declined' ||
+          row.status ===
+            'busy' ||
+          row.status ===
+            'missed' ||
+          row.status ===
+            'ended' ||
+          row.status ===
+            'failed'
+        ) {
+          clearRingTimer();
+
+          setCurrentStatus(
+            row.status as CallStatus,
+          );
+
+          window.setTimeout(() => {
+            void cleanup();
+          }, 900);
+        }
+      },
+    );
+
     channel.subscribe(
-      (state, error) => {
+      (state, subscribeError) => {
         if (
           state ===
             'CHANNEL_ERROR' ||
@@ -1973,8 +2469,8 @@ export function CallProvider({
             'TIMED_OUT'
         ) {
           console.warn(
-            '[enotes calls] incoming call listener error',
-            error,
+            '[enotes calls] incoming call listener error:',
+            subscribeError,
           );
         }
       },
@@ -1996,17 +2492,19 @@ export function CallProvider({
       );
     };
   }, [
-    myId,
-    subscribeToCallChannel,
+    cleanup,
     clearRingTimer,
-    updateCallStatus,
+    myId,
+    recordCallEvent,
     setCurrentCall,
     setCurrentStatus,
-    cleanup,
+    subscribeToCallChannel,
+    updateCallStatus,
+    updateParticipant,
   ]);
 
   /*
-   * Clean up calls if the browser hides/closes the page.
+   * Best-effort cleanup when the page disappears.
    */
   useEffect(() => {
     const onPageHide = () => {
@@ -2034,7 +2532,7 @@ export function CallProvider({
           ),
         );
       } catch {
-        // Best-effort only.
+        // Best effort only.
       }
     };
 
@@ -2052,11 +2550,12 @@ export function CallProvider({
   }, []);
 
   /*
-   * Final component cleanup.
+   * Final provider cleanup.
    */
   useEffect(() => {
     return () => {
-      mountedRef.current = false;
+      mountedRef.current =
+        false;
 
       clearRingTimer();
       closePeer();
@@ -2139,7 +2638,9 @@ export function CallProvider({
     );
 
   return (
-    <CallContext.Provider value={value}>
+    <CallContext.Provider
+      value={value}
+    >
       {children}
     </CallContext.Provider>
   );
