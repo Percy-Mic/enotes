@@ -2,6 +2,13 @@ import { NextResponse } from 'next/server';
 
 import { createClient } from '@/lib/supabase/server';
 
+const ACTIVE_STATUSES = [
+  'ringing',
+  'connecting',
+  'connected',
+  'reconnecting',
+];
+
 export async function POST(
   request: Request,
   context: {
@@ -11,7 +18,8 @@ export async function POST(
   },
 ) {
   try {
-    const { callId } = await context.params;
+    const { callId } =
+      await context.params;
 
     if (!callId) {
       return NextResponse.json(
@@ -19,17 +27,19 @@ export async function POST(
           ok: false,
           error: 'Missing call ID.',
         },
-        {
-          status: 400,
-        },
+        { status: 400 },
       );
     }
 
-    const supabase = await createClient();
+    const supabase =
+      await createClient();
 
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: {
+        user,
+      },
+    } =
+      await supabase.auth.getUser();
 
     if (!user) {
       return NextResponse.json(
@@ -37,30 +47,40 @@ export async function POST(
           ok: false,
           error: 'Not signed in.',
         },
-        {
-          status: 401,
-        },
+        { status: 401 },
       );
     }
 
-    const { data: call, error: callError } =
+    const {
+      data: call,
+      error: callError,
+    } =
       await supabase
         .from('calls')
         .select(
-          'id, caller_id, callee_id, status',
+          `
+            id,
+            caller_id,
+            callee_id,
+            status
+          `,
         )
         .eq('id', callId)
         .maybeSingle();
 
     if (callError) {
+      console.error(
+        '[POST /calls/[callId]/end]',
+        callError,
+      );
+
       return NextResponse.json(
         {
           ok: false,
-          error: callError.message,
+          error:
+            'Could not load the call.',
         },
-        {
-          status: 500,
-        },
+        { status: 500 },
       );
     }
 
@@ -70,31 +90,44 @@ export async function POST(
           ok: false,
           error: 'Call not found.',
         },
-        {
-          status: 404,
-        },
+        { status: 404 },
       );
     }
 
     const participant =
-      call.caller_id === user.id ||
-      call.callee_id === user.id;
+      call.caller_id ===
+        user.id ||
+      call.callee_id ===
+        user.id;
 
     if (!participant) {
       return NextResponse.json(
         {
           ok: false,
-          error: 'You are not a participant in this call.',
+          error:
+            'You are not a participant in this call.',
         },
-        {
-          status: 403,
-        },
+        { status: 403 },
       );
     }
 
-    const now = new Date().toISOString();
+    const now =
+      new Date().toISOString();
 
-    const { error: updateError } =
+    if (
+      !ACTIVE_STATUSES.includes(
+        call.status,
+      )
+    ) {
+      return NextResponse.json({
+        ok: true,
+        alreadyEnded: true,
+      });
+    }
+
+    const {
+      error: updateError,
+    } =
       await supabase
         .from('calls')
         .update({
@@ -102,22 +135,24 @@ export async function POST(
           ended_at: now,
         })
         .eq('id', callId)
-        .in('status', [
-          'ringing',
-          'connecting',
-          'connected',
-          'reconnecting',
-        ]);
+        .in(
+          'status',
+          ACTIVE_STATUSES,
+        );
 
     if (updateError) {
+      console.error(
+        '[POST /calls/[callId]/end] update',
+        updateError,
+      );
+
       return NextResponse.json(
         {
           ok: false,
-          error: updateError.message,
+          error:
+            'Could not end the call.',
         },
-        {
-          status: 500,
-        },
+        { status: 500 },
       );
     }
 
@@ -138,9 +173,7 @@ export async function POST(
             ? error.message
             : 'Unexpected error.',
       },
-      {
-        status: 500,
-      },
+      { status: 500 },
     );
   }
 }
