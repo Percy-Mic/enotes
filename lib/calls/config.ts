@@ -1,27 +1,24 @@
 /**
- * WebRTC ICE configuration.
+ * enotes free WebRTC configuration.
  *
- * STUN helps peers discover their public network addresses.
+ * No Twilio.
+ * No Cloudflare.
+ * No paid video API.
  *
- * TURN is strongly recommended for production because some networks
- * cannot establish a direct peer-to-peer connection.
+ * Media:
+ *   Browser <-> Browser through native WebRTC.
  *
- * The optional TURN values are read from environment variables so
- * credentials are not committed to Git.
+ * Signaling:
+ *   Supabase Realtime Broadcast.
+ *
+ * STUN:
+ *   Used to help peers discover viable network paths.
+ *
+ * Important:
+ *   STUN-only WebRTC will not work on every network.
+ *   A TURN server can be added later without changing
+ *   the calling architecture.
  */
-
-const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
-const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
-const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
-
-const turnServer =
-  turnUrl && turnUsername && turnCredential
-    ? {
-        urls: turnUrl,
-        username: turnUsername,
-        credential: turnCredential,
-      }
-    : null;
 
 export const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -31,9 +28,9 @@ export const ICE_SERVERS: RTCConfiguration = {
         'stun:stun1.l.google.com:19302',
       ],
     },
-
-    ...(turnServer ? [turnServer] : []),
   ],
+
+  iceCandidatePoolSize: 10,
 };
 
 export const CALL_RING_TIMEOUT_MS = 30_000;
