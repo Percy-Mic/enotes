@@ -37,12 +37,6 @@ export interface ActiveCall {
   direction: CallDirection;
 }
 
-interface RemoteUser {
-  id: string;
-  name: string;
-  avatar: string | null;
-}
-
 interface CallProviderProps {
   children: React.ReactNode;
   myId?: string | null;
@@ -51,14 +45,11 @@ interface CallProviderProps {
 interface CallContextValue {
   call: ActiveCall | null;
   status: CallStatus | null;
-
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
-
   micEnabled: boolean;
   cameraEnabled: boolean;
   facingMode: 'user' | 'environment';
-
   error: string | null;
 
   startCall: (
@@ -90,26 +81,10 @@ const ICE_SERVERS: RTCConfiguration = {
         'stun:stun1.l.google.com:19302',
       ],
     },
-
-    /*
-     * IMPORTANT:
-     *
-     * Add your TURN server here for production.
-     *
-     * Example:
-     *
-     * {
-     *   urls: 'turn:your-turn-server.example.com:3478',
-     *   username: 'temporary-user',
-     *   credential: 'temporary-password',
-     * }
-     *
-     * Do not put permanent TURN credentials in NEXT_PUBLIC_* variables.
-     */
   ],
 };
 
-function getErrorMessage(error: unknown): string {
+function errorMessage(error: unknown) {
   if (error instanceof DOMException) {
     if (
       error.name === 'NotAllowedError' ||
@@ -119,7 +94,7 @@ function getErrorMessage(error: unknown): string {
     }
 
     if (error.name === 'NotFoundError') {
-      return 'No camera or microphone was found on this device.';
+      return 'No camera or microphone was found.';
     }
 
     if (error.name === 'NotReadableError') {
@@ -127,36 +102,39 @@ function getErrorMessage(error: unknown): string {
     }
 
     if (error.name === 'SecurityError') {
-      return 'Camera and microphone access requires a secure connection.';
+      return 'Camera and microphone access requires HTTPS.';
     }
 
     return error.message || 'Could not access your camera or microphone.';
   }
 
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return 'Something went wrong with the call.';
+  return error instanceof Error
+    ? error.message
+    : 'Something went wrong with the call.';
 }
 
 export function CallProvider({
   children,
   myId: suppliedMyId,
 }: CallProviderProps) {
-  const [myId, setMyId] = useState<string | null>(suppliedMyId ?? null);
+  const [myId, setMyId] = useState<string | null>(
+    suppliedMyId ?? null,
+  );
 
   const [call, setCall] = useState<ActiveCall | null>(null);
   const [status, setStatus] = useState<CallStatus | null>(null);
 
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [localStream, setLocalStream] =
+    useState<MediaStream | null>(null);
+
+  const [remoteStream, setRemoteStream] =
+    useState<MediaStream | null>(null);
 
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [facingMode, setFacingMode] = useState<'user' | 'environment'>(
-    'user',
-  );
+
+  const [facingMode, setFacingMode] =
+    useState<'user' | 'environment'>('user');
 
   const [error, setError] = useState<string | null>(null);
 
@@ -164,41 +142,46 @@ export function CallProvider({
   const statusRef = useRef<CallStatus | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  const channelRef =
+    useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
 
-  const remoteUserRef = useRef<RemoteUser | null>(null);
+  const ringTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const ringTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingIceCandidatesRef =
+    useRef<RTCIceCandidateInit[]>([]);
 
   const makingOfferRef = useRef(false);
-  const acceptingAnswerRef = useRef(false);
-  const callEndingRef = useRef(false);
-  const channelReadyRef = useRef(false);
+  const applyingAnswerRef = useRef(false);
 
   const mountedRef = useRef(true);
+  const endingRef = useRef(false);
 
-  const setCurrentStatus = useCallback((next: CallStatus | null) => {
-    statusRef.current = next;
-    if (mountedRef.current) {
-      setStatus(next);
-    }
-  }, []);
+  const setCurrentCall = useCallback(
+    (value: ActiveCall | null) => {
+      callRef.current = value;
 
-  const setCurrentCall = useCallback((next: ActiveCall | null) => {
-    callRef.current = next;
-    if (mountedRef.current) {
-      setCall(next);
-    }
-  }, []);
+      if (mountedRef.current) {
+        setCall(value);
+      }
+    },
+    [],
+  );
 
-  /* ------------------------------------------------------------
-   * Get authenticated user
-   * ---------------------------------------------------------- */
+  const setCurrentStatus = useCallback(
+    (value: CallStatus | null) => {
+      statusRef.current = value;
+
+      if (mountedRef.current) {
+        setStatus(value);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -222,10 +205,6 @@ export function CallProvider({
     };
   }, [suppliedMyId]);
 
-  /* ------------------------------------------------------------
-   * Keep local refs synchronized
-   * ---------------------------------------------------------- */
-
   useEffect(() => {
     callRef.current = call;
   }, [call]);
@@ -242,10 +221,6 @@ export function CallProvider({
     remoteStreamRef.current = remoteStream;
   }, [remoteStream]);
 
-  /* ------------------------------------------------------------
-   * Clear ringing timer
-   * ---------------------------------------------------------- */
-
   const clearRingTimer = useCallback(() => {
     if (ringTimerRef.current) {
       clearTimeout(ringTimerRef.current);
@@ -253,16 +228,12 @@ export function CallProvider({
     }
   }, []);
 
-  /* ------------------------------------------------------------
-   * Media
-   * ---------------------------------------------------------- */
-
   const getMedia = useCallback(
     async (
       media: CallMedia,
       facing: 'user' | 'environment' = 'user',
-    ): Promise<MediaStream> => {
-      const constraints: MediaStreamConstraints = {
+    ) => {
+      return navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -272,23 +243,12 @@ export function CallProvider({
           media === 'video'
             ? {
                 facingMode: facing,
-                width: {
-                  ideal: 1280,
-                },
-                height: {
-                  ideal: 720,
-                },
-                frameRate: {
-                  ideal: 30,
-                  max: 30,
-                },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+                frameRate: { ideal: 30, max: 30 },
               }
             : false,
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      return stream;
+      });
     },
     [],
   );
@@ -303,23 +263,25 @@ export function CallProvider({
 
       localStreamRef.current = stream;
 
-      if (mountedRef.current) {
-        setLocalStream(stream);
-        setMicEnabled(stream.getAudioTracks().some((track) => track.enabled));
-        setCameraEnabled(
-          media === 'video' &&
-            stream.getVideoTracks().some((track) => track.enabled),
-        );
+      if (!mountedRef.current) {
+        return;
       }
+
+      setLocalStream(stream);
+
+      setMicEnabled(
+        stream.getAudioTracks().some((track) => track.enabled),
+      );
+
+      setCameraEnabled(
+        media === 'video' &&
+          stream.getVideoTracks().some((track) => track.enabled),
+      );
     },
     [],
   );
 
-  /* ------------------------------------------------------------
-   * Cleanup peer connection
-   * ---------------------------------------------------------- */
-
-  const closePeerConnection = useCallback(() => {
+  const closePeer = useCallback(() => {
     const pc = pcRef.current;
 
     if (!pc) {
@@ -339,20 +301,12 @@ export function CallProvider({
     pcRef.current = null;
   }, []);
 
-  /* ------------------------------------------------------------
-   * Cleanup media
-   * ---------------------------------------------------------- */
-
   const stopLocalMedia = useCallback(() => {
-    const stream = localStreamRef.current;
-
-    if (stream) {
-      stream.getTracks().forEach((track) => {
-        try {
-          track.stop();
-        } catch {}
-      });
-    }
+    localStreamRef.current?.getTracks().forEach((track) => {
+      try {
+        track.stop();
+      } catch {}
+    });
 
     localStreamRef.current = null;
 
@@ -375,15 +329,10 @@ export function CallProvider({
     }
   }, []);
 
-  /* ------------------------------------------------------------
-   * Remove Realtime channel
-   * ---------------------------------------------------------- */
-
-  const removeCallChannel = useCallback(async () => {
+  const removeChannel = useCallback(async () => {
     const channel = channelRef.current;
 
     channelRef.current = null;
-    channelReadyRef.current = false;
 
     if (channel) {
       try {
@@ -391,45 +340,6 @@ export function CallProvider({
       } catch {}
     }
   }, []);
-
-  /* ------------------------------------------------------------
-   * Finish call locally
-   * ---------------------------------------------------------- */
-
-  const cleanupCall = useCallback(async () => {
-    clearRingTimer();
-
-    pendingIceCandidatesRef.current = [];
-
-    makingOfferRef.current = false;
-    acceptingAnswerRef.current = false;
-
-    closePeerConnection();
-    stopLocalMedia();
-    clearRemoteMedia();
-
-    await removeCallChannel();
-
-    remoteUserRef.current = null;
-
-    callEndingRef.current = false;
-
-    setCurrentCall(null);
-    setCurrentStatus(null);
-    setError(null);
-  }, [
-    clearRingTimer,
-    closePeerConnection,
-    stopLocalMedia,
-    clearRemoteMedia,
-    removeCallChannel,
-    setCurrentCall,
-    setCurrentStatus,
-  ]);
-
-  /* ------------------------------------------------------------
-   * Update DB call status
-   * ---------------------------------------------------------- */
 
   const updateCallStatus = useCallback(
     async (
@@ -447,7 +357,7 @@ export function CallProvider({
 
       if (updateError) {
         console.warn(
-          '[CallProvider] Could not update call status:',
+          '[calls]',
           updateError.message,
         );
       }
@@ -455,30 +365,77 @@ export function CallProvider({
     [],
   );
 
-  /* ------------------------------------------------------------
-   * Create peer connection
-   * ---------------------------------------------------------- */
+  const cleanup = useCallback(async () => {
+    clearRingTimer();
 
-  const createPeerConnection = useCallback(
+    pendingIceCandidatesRef.current = [];
+
+    makingOfferRef.current = false;
+    applyingAnswerRef.current = false;
+    endingRef.current = false;
+
+    closePeer();
+    stopLocalMedia();
+    clearRemoteMedia();
+
+    await removeChannel();
+
+    setCurrentCall(null);
+    setCurrentStatus(null);
+
+    if (mountedRef.current) {
+      setError(null);
+    }
+  }, [
+    clearRingTimer,
+    closePeer,
+    stopLocalMedia,
+    clearRemoteMedia,
+    removeChannel,
+    setCurrentCall,
+    setCurrentStatus,
+  ]);
+
+  const flushIce = useCallback(async () => {
+    const pc = pcRef.current;
+
+    if (!pc?.remoteDescription) {
+      return;
+    }
+
+    const candidates =
+      pendingIceCandidatesRef.current.splice(0);
+
+    for (const candidate of candidates) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (err) {
+        console.warn(
+          '[calls] queued ICE candidate failed',
+          err,
+        );
+      }
+    }
+  }, []);
+
+  const createPeer = useCallback(
     (callData: ActiveCall) => {
-      const existing = pcRef.current;
-
-      if (existing) {
-        return existing;
+      if (pcRef.current) {
+        return pcRef.current;
       }
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
 
       pcRef.current = pc;
 
-      const currentLocalStream = localStreamRef.current;
+      const stream = localStreamRef.current;
 
-      if (currentLocalStream) {
-        currentLocalStream.getTracks().forEach((track) => {
+      if (stream) {
+        stream.getTracks().forEach((track) => {
           try {
-            pc.addTrack(track, currentLocalStream);
+            pc.addTrack(track, stream);
           } catch (err) {
-            console.warn('[CallProvider] addTrack failed:', err);
+            console.warn('[calls] addTrack failed', err);
           }
         });
       }
@@ -488,13 +445,7 @@ export function CallProvider({
           return;
         }
 
-        const channel = channelRef.current;
-
-        if (!channel || !channelReadyRef.current) {
-          return;
-        }
-
-        void channel.send({
+        void channelRef.current?.send({
           type: 'broadcast',
           event: 'signal',
           payload: {
@@ -506,7 +457,7 @@ export function CallProvider({
       };
 
       pc.ontrack = (event) => {
-        const [stream] = event.streams;
+        const stream = event.streams[0];
 
         if (stream) {
           remoteStreamRef.current = stream;
@@ -518,187 +469,71 @@ export function CallProvider({
           return;
         }
 
-        let target = remoteStreamRef.current;
+        let fallback = remoteStreamRef.current;
 
-        if (!target) {
-          target = new MediaStream();
-          remoteStreamRef.current = target;
+        if (!fallback) {
+          fallback = new MediaStream();
+          remoteStreamRef.current = fallback;
 
           if (mountedRef.current) {
-            setRemoteStream(target);
+            setRemoteStream(fallback);
           }
         }
 
-        if (!target.getTracks().some((track) => track.id === event.track.id)) {
-          target.addTrack(event.track);
+        if (
+          !fallback
+            .getTracks()
+            .some((track) => track.id === event.track.id)
+        ) {
+          fallback.addTrack(event.track);
         }
       };
 
       pc.onconnectionstatechange = () => {
-        const state = pc.connectionState;
-
-        if (state === 'connected') {
+        if (pc.connectionState === 'connected') {
           setCurrentStatus('connected');
 
-          void updateCallStatus(callData.callId, 'connected', {
-            connected_at: new Date().toISOString(),
-          });
+          void updateCallStatus(
+            callData.callId,
+            'connected',
+            {
+              connected_at: new Date().toISOString(),
+            },
+          );
 
           return;
         }
 
-        if (state === 'connecting') {
-          if (
-            statusRef.current !== 'connected' &&
-            statusRef.current !== 'reconnecting'
-          ) {
-            setCurrentStatus('connecting');
-          }
-
+        if (pc.connectionState === 'connecting') {
+          setCurrentStatus('connecting');
           return;
         }
 
-        if (state === 'disconnected') {
+        if (pc.connectionState === 'disconnected') {
           setCurrentStatus('reconnecting');
           return;
         }
 
-        if (state === 'failed') {
+        if (pc.connectionState === 'failed') {
           setCurrentStatus('reconnecting');
-
-          /*
-           * ICE restart is safer than immediately destroying the call.
-           */
-          if (
-            pc.signalingState === 'stable' &&
-            !makingOfferRef.current &&
-            callData.direction === 'outgoing'
-          ) {
-            void (async () => {
-              try {
-                makingOfferRef.current = true;
-
-                const offer = await pc.createOffer({
-                  iceRestart: true,
-                });
-
-                if (pc.signalingState !== 'stable') {
-                  makingOfferRef.current = false;
-                  return;
-                }
-
-                await pc.setLocalDescription(offer);
-
-                await channelRef.current?.send({
-                  type: 'broadcast',
-                  event: 'signal',
-                  payload: {
-                    type: 'offer',
-                    from: myId,
-                    sdp: pc.localDescription?.sdp,
-                  },
-                });
-              } catch (err) {
-                console.warn('[CallProvider] ICE restart failed:', err);
-              } finally {
-                makingOfferRef.current = false;
-              }
-            })();
-          }
-
-          return;
         }
-
-        if (state === 'closed') {
-          return;
-        }
-      };
-
-      pc.oniceconnectionstatechange = () => {
-        if (
-          pc.iceConnectionState === 'failed' &&
-          pc.signalingState === 'stable' &&
-          callData.direction === 'outgoing' &&
-          !makingOfferRef.current
-        ) {
-          void (async () => {
-            try {
-              makingOfferRef.current = true;
-
-              const offer = await pc.createOffer({
-                iceRestart: true,
-              });
-
-              if (pc.signalingState !== 'stable') {
-                return;
-              }
-
-              await pc.setLocalDescription(offer);
-
-              await channelRef.current?.send({
-                type: 'broadcast',
-                event: 'signal',
-                payload: {
-                  type: 'offer',
-                  from: myId,
-                  sdp: pc.localDescription?.sdp,
-                },
-              });
-            } catch (err) {
-              console.warn('[CallProvider] ICE restart failed:', err);
-            } finally {
-              makingOfferRef.current = false;
-            }
-          })();
-        }
-      };
-
-      pc.onsignalingstatechange = () => {
-        console.debug(
-          '[CallProvider] signaling state:',
-          pc.signalingState,
-        );
       };
 
       return pc;
     },
-    [myId, setCurrentStatus, updateCallStatus],
+    [
+      myId,
+      setCurrentStatus,
+      updateCallStatus,
+    ],
   );
-
-  /* ------------------------------------------------------------
-   * Flush queued ICE candidates
-   * ---------------------------------------------------------- */
-
-  const flushPendingIceCandidates = useCallback(async () => {
-    const pc = pcRef.current;
-
-    if (!pc || !pc.remoteDescription) {
-      return;
-    }
-
-    const pending = pendingIceCandidatesRef.current.splice(0);
-
-    for (const candidate of pending) {
-      try {
-        await pc.addIceCandidate(candidate);
-      } catch (err) {
-        console.warn(
-          '[CallProvider] Could not add queued ICE candidate:',
-          err,
-        );
-      }
-    }
-  }, []);
-
-  /* ------------------------------------------------------------
-   * Signal handler
-   * ---------------------------------------------------------- */
 
   const handleSignal = useCallback(
     async (payload: any) => {
       const currentCall = callRef.current;
+      const pc = pcRef.current;
 
-      if (!currentCall) {
+      if (!currentCall || !pc) {
         return;
       }
 
@@ -706,13 +541,7 @@ export function CallProvider({
         return;
       }
 
-      const pc = pcRef.current;
-
-      if (!pc) {
-        return;
-      }
-
-      /* ---------------- OFFER ---------------- */
+      /* OFFER */
 
       if (payload?.type === 'offer') {
         if (!payload.sdp) {
@@ -720,18 +549,11 @@ export function CallProvider({
         }
 
         /*
-         * The callee accepts offers.
+         * Incoming side only.
          *
-         * Most importantly:
-         * NEVER call setRemoteDescription(offer) while an
-         * answer is already being processed.
+         * Never overwrite an existing non-stable negotiation.
          */
         if (currentCall.direction !== 'incoming') {
-          /*
-           * An outgoing caller may receive an offer only during
-           * ICE restart. In that case the signaling state must
-           * be stable.
-           */
           if (pc.signalingState !== 'stable') {
             return;
           }
@@ -739,127 +561,118 @@ export function CallProvider({
 
         if (
           currentCall.direction === 'incoming' &&
-          statusRef.current !== 'connecting' &&
-          statusRef.current !== 'connected' &&
-          statusRef.current !== 'reconnecting'
+          pc.signalingState !== 'stable'
         ) {
           return;
         }
 
         try {
-          if (
-            currentCall.direction === 'incoming' &&
-            pc.signalingState !== 'stable'
-          ) {
+          await pc.setRemoteDescription({
+            type: 'offer',
+            sdp: payload.sdp,
+          });
+
+          await flushIce();
+
+          if (currentCall.direction !== 'incoming') {
             return;
           }
 
-          await pc.setRemoteDescription(
-            new RTCSessionDescription({
-              type: 'offer',
-              sdp: payload.sdp,
-            }),
+          /*
+           * CRITICAL:
+           *
+           * createAnswer is only valid after an offer has been
+           * successfully installed and signalingState is
+           * "have-remote-offer".
+           */
+          if (pc.signalingState !== 'have-remote-offer') {
+            return;
+          }
+
+          const answer = await pc.createAnswer();
+
+          if (pc.signalingState !== 'have-remote-offer') {
+            return;
+          }
+
+          await pc.setLocalDescription(answer);
+
+          await channelRef.current?.send({
+            type: 'broadcast',
+            event: 'signal',
+            payload: {
+              type: 'answer',
+              from: myId,
+              sdp: pc.localDescription?.sdp,
+            },
+          });
+        } catch (err) {
+          console.error(
+            '[calls] offer handling failed',
+            err,
           );
 
-          await flushPendingIceCandidates();
-
-          /*
-           * Only the callee creates an answer.
-           */
-          if (currentCall.direction === 'incoming') {
-            if (pc.signalingState !== 'have-remote-offer') {
-              return;
-            }
-
-            const answer = await pc.createAnswer();
-
-            /*
-             * This check prevents the classic:
-             * "Called in wrong state: stable"
-             */
-            if (pc.signalingState !== 'have-remote-offer') {
-              return;
-            }
-
-            await pc.setLocalDescription(answer);
-
-            await channelRef.current?.send({
-              type: 'broadcast',
-              event: 'signal',
-              payload: {
-                type: 'answer',
-                from: myId,
-                sdp: pc.localDescription?.sdp,
-              },
-            });
+          if (mountedRef.current) {
+            setError(errorMessage(err));
           }
-        } catch (err) {
-          console.error('[CallProvider] Offer handling failed:', err);
-          setError(getErrorMessage(err));
         }
 
         return;
       }
 
-      /* ---------------- ANSWER ---------------- */
+      /* ANSWER */
 
       if (payload?.type === 'answer') {
-        if (!payload.sdp) {
-          return;
-        }
-
         /*
-         * Only the caller processes answers.
+         * Only the caller accepts an answer.
          */
         if (currentCall.direction !== 'outgoing') {
           return;
         }
 
         /*
-         * This is the critical protection against:
+         * THIS IS THE IMPORTANT FIX.
          *
-         * Failed to set remote answer SDP:
-         * Called in wrong state: stable
+         * A remote answer is legal only when our peer has a
+         * local offer waiting for that answer.
          *
-         * An answer is valid only when we currently have
-         * a local offer waiting for an answer.
+         * If signalingState is "stable", this answer is duplicate
+         * or stale and must be ignored.
          */
         if (pc.signalingState !== 'have-local-offer') {
           return;
         }
 
-        /*
-         * Ignore duplicate answers while one is already being
-         * applied.
-         */
-        if (acceptingAnswerRef.current) {
+        if (applyingAnswerRef.current) {
           return;
         }
 
-        acceptingAnswerRef.current = true;
+        applyingAnswerRef.current = true;
 
         try {
-          await pc.setRemoteDescription(
-            new RTCSessionDescription({
-              type: 'answer',
-              sdp: payload.sdp,
-            }),
-          );
+          await pc.setRemoteDescription({
+            type: 'answer',
+            sdp: payload.sdp,
+          });
 
-          await flushPendingIceCandidates();
+          await flushIce();
         } catch (err) {
-          console.warn('[CallProvider] Answer ignored:', err);
+          console.warn(
+            '[calls] duplicate/stale answer ignored',
+            err,
+          );
         } finally {
-          acceptingAnswerRef.current = false;
+          applyingAnswerRef.current = false;
         }
 
         return;
       }
 
-      /* ---------------- ICE ---------------- */
+      /* ICE */
 
       if (payload?.type === 'ice-candidate') {
-        const candidate = payload.candidate as RTCIceCandidateInit | undefined;
+        const candidate =
+          payload.candidate as RTCIceCandidateInit | undefined;
 
         if (!candidate) {
           return;
@@ -873,28 +686,172 @@ export function CallProvider({
         try {
           await pc.addIceCandidate(candidate);
         } catch (err) {
-          console.warn('[CallProvider] ICE candidate failed:', err);
+          console.warn(
+            '[calls] ICE candidate failed',
+            err,
+          );
+        }
+      }
+    },
+    [flushIce, myId],
+  );
+
+  const handleControl = useCallback(
+    async (payload: any) => {
+      const currentCall = callRef.current;
+
+      if (!currentCall || payload?.from === myId) {
+        return;
+      }
+
+      /* CALLEE READY */
+
+      if (payload?.type === 'ready') {
+        if (currentCall.direction !== 'outgoing') {
+          return;
+        }
+
+        if (statusRef.current !== 'calling') {
+          return;
+        }
+
+        const pc = pcRef.current;
+
+        if (!pc) {
+          return;
+        }
+
+        if (makingOfferRef.current) {
+          return;
+        }
+
+        if (pc.signalingState !== 'stable') {
+          return;
+        }
+
+        makingOfferRef.current = true;
+
+        try {
+          setCurrentStatus('connecting');
+
+          await updateCallStatus(
+            currentCall.callId,
+            'connecting',
+          );
+
+          const offer = await pc.createOffer();
+
+          if (pc.signalingState !== 'stable') {
+            return;
+          }
+
+          await pc.setLocalDescription(offer);
+
+          await channelRef.current?.send({
+            type: 'broadcast',
+            event: 'signal',
+            payload: {
+              type: 'offer',
+              from: myId,
+              sdp: pc.localDescription?.sdp,
+            },
+          });
+        } catch (err) {
+          console.error(
+            '[calls] offer creation failed',
+            err,
+          );
+
+          if (mountedRef.current) {
+            setError(errorMessage(err));
+          }
+        } finally {
+          makingOfferRef.current = false;
         }
 
         return;
       }
+
+      /* DECLINED */
+
+      if (payload?.type === 'decline') {
+        clearRingTimer();
+
+        setCurrentStatus('declined');
+
+        await updateCallStatus(
+          currentCall.callId,
+          'declined',
+          {
+            ended_at: new Date().toISOString(),
+          },
+        );
+
+        window.setTimeout(() => {
+          void cleanup();
+        }, 1000);
+
+        return;
+      }
+
+      /* BUSY */
+
+      if (payload?.type === 'busy') {
+        clearRingTimer();
+
+        setCurrentStatus('ended');
+
+        await updateCallStatus(
+          currentCall.callId,
+          'busy',
+          {
+            ended_at: new Date().toISOString(),
+          },
+        );
+
+        window.setTimeout(() => {
+          void cleanup();
+        }, 1000);
+
+        return;
+      }
+
+      /* BYE */
+
+      if (payload?.type === 'bye') {
+        clearRingTimer();
+
+        setCurrentStatus('ended');
+
+        await updateCallStatus(
+          currentCall.callId,
+          'ended',
+          {
+            ended_at: new Date().toISOString(),
+          },
+        );
+
+        window.setTimeout(() => {
+          void cleanup();
+        }, 500);
+      }
     },
-    [flushPendingIceCandidates, myId],
+    [
+      myId,
+      clearRingTimer,
+      cleanup,
+      setCurrentStatus,
+      updateCallStatus,
+    ],
   );
 
-  /* ------------------------------------------------------------
-   * Open call channel
-   * ---------------------------------------------------------- */
-
-  const openChannel = useCallback(
+  const subscribeToCallChannel = useCallback(
     async (
       callId: string,
       callData: ActiveCall,
-    ): Promise<ReturnType<typeof supabase.channel>> => {
-      const existing = channelRef.current;
-
-      if (existing) {
-        return existing;
+    ) => {
+      if (channelRef.current) {
+        return channelRef.current;
       }
 
       const channel = supabase.channel(`call:${callId}`, {
@@ -906,34 +863,46 @@ export function CallProvider({
       });
 
       channel
-        .on('broadcast', { event: 'signal' }, ({ payload }) => {
-          void handleSignal(payload);
-        })
-        .on('broadcast', { event: 'control' }, ({ payload }) => {
-          void handleControlSignal(payload);
-        });
+        .on(
+          'broadcast',
+          { event: 'signal' },
+          ({ payload }) => {
+            void handleSignal(payload);
+          },
+        )
+        .on(
+          'broadcast',
+          { event: 'control' },
+          ({ payload }) => {
+            void handleControl(payload);
+          },
+        );
 
       channelRef.current = channel;
 
       await new Promise<void>((resolve, reject) => {
-        let settled = false;
+        let finished = false;
 
         const timeout = window.setTimeout(() => {
-          if (settled) {
+          if (finished) {
             return;
           }
 
-          settled = true;
-          reject(new Error('Could not connect to the call signaling server.'));
+          finished = true;
+
+          reject(
+            new Error(
+              'Could not connect to the call signaling server.',
+            ),
+          );
         }, 10_000);
 
-        channel.subscribe((subscriptionStatus) => {
-          if (subscriptionStatus === 'SUBSCRIBED') {
+        channel.subscribe((state) => {
+          if (state === 'SUBSCRIBED') {
             window.clearTimeout(timeout);
 
-            if (!settled) {
-              settled = true;
-              channelReadyRef.current = true;
+            if (!finished) {
+              finished = true;
               resolve();
             }
 
@@ -941,16 +910,16 @@ export function CallProvider({
           }
 
           if (
-            subscriptionStatus === 'CHANNEL_ERROR' ||
-            subscriptionStatus === 'TIMED_OUT'
+            state === 'CHANNEL_ERROR' ||
+            state === 'TIMED_OUT'
           ) {
             window.clearTimeout(timeout);
 
-            if (!settled) {
-              settled = true;
+            if (!finished) {
+              finished = true;
               reject(
                 new Error(
-                  'Could not connect to the call signaling server.',
+                  'Call signaling connection failed.',
                 ),
               );
             }
@@ -959,13 +928,17 @@ export function CallProvider({
       });
 
       /*
-       * Once the callee accepts, it announces readiness.
-       * The caller waits for this before creating the offer.
+       * Incoming call:
+       * the channel is subscribed before the user accepts.
        *
-       * This prevents the offer from being broadcast before
-       * the other browser has actually subscribed.
+       * Do not send READY here because media/peer connection
+       * are not ready yet.
        */
-      if (callData.direction === 'incoming') {
+
+      if (
+        callData.direction === 'incoming' &&
+        statusRef.current !== 'ringing'
+      ) {
         await channel.send({
           type: 'broadcast',
           event: 'control',
@@ -978,128 +951,8 @@ export function CallProvider({
 
       return channel;
     },
-    [handleSignal, myId],
+    [handleSignal, handleControl],
   );
-
-  /* ------------------------------------------------------------
-   * Control signal handler
-   * ---------------------------------------------------------- */
-
-  async function handleControlSignal(payload: any) {
-    const currentCall = callRef.current;
-
-    if (!currentCall || payload?.from === myId) {
-      return;
-    }
-
-    if (payload?.type === 'ready') {
-      /*
-       * Caller only.
-       */
-      if (currentCall.direction !== 'outgoing') {
-        return;
-      }
-
-      if (statusRef.current !== 'calling') {
-        return;
-      }
-
-      const pc = pcRef.current;
-
-      if (!pc) {
-        return;
-      }
-
-      if (makingOfferRef.current) {
-        return;
-      }
-
-      if (pc.signalingState !== 'stable') {
-        return;
-      }
-
-      makingOfferRef.current = true;
-
-      try {
-        setCurrentStatus('connecting');
-
-        await updateCallStatus(currentCall.callId, 'connecting');
-
-        const offer = await pc.createOffer();
-
-        if (pc.signalingState !== 'stable') {
-          return;
-        }
-
-        await pc.setLocalDescription(offer);
-
-        await channelRef.current?.send({
-          type: 'broadcast',
-          event: 'signal',
-          payload: {
-            type: 'offer',
-            from: myId,
-            sdp: pc.localDescription?.sdp,
-          },
-        });
-      } catch (err) {
-        console.error('[CallProvider] Offer creation failed:', err);
-        setError(getErrorMessage(err));
-      } finally {
-        makingOfferRef.current = false;
-      }
-
-      return;
-    }
-
-    if (payload?.type === 'decline') {
-      clearRingTimer();
-
-      setCurrentStatus('declined');
-
-      await updateCallStatus(currentCall.callId, 'declined');
-
-      window.setTimeout(() => {
-        void cleanupCall();
-      }, 1200);
-
-      return;
-    }
-
-    if (payload?.type === 'bye') {
-      clearRingTimer();
-
-      setCurrentStatus('ended');
-
-      await updateCallStatus(currentCall.callId, 'ended', {
-        ended_at: new Date().toISOString(),
-      });
-
-      window.setTimeout(() => {
-        void cleanupCall();
-      }, 500);
-
-      return;
-    }
-
-    if (payload?.type === 'busy') {
-      clearRingTimer();
-
-      setCurrentStatus('ended');
-
-      await updateCallStatus(currentCall.callId, 'busy', {
-        ended_at: new Date().toISOString(),
-      });
-
-      window.setTimeout(() => {
-        void cleanupCall();
-      }, 1000);
-    }
-  }
-
-  /* ------------------------------------------------------------
-   * Start outgoing call
-   * ---------------------------------------------------------- */
 
   const startCall = useCallback(
     async (
@@ -1124,46 +977,43 @@ export function CallProvider({
       }
 
       setError(null);
-      callEndingRef.current = false;
 
       try {
         /*
-         * Check whether the other person is already in an active call.
+         * Ask for media first.
          */
-        const { data: activeCalls } = await supabase
-          .from('calls')
-          .select('id, caller_id, callee_id, status')
-          .or(`caller_id.eq.${peerId},callee_id.eq.${peerId}`)
-          .in('status', ['ringing', 'connecting', 'connected', 'reconnecting'])
-          .limit(1);
-
-        if (activeCalls && activeCalls.length > 0) {
-          setError('This person is currently on another call.');
-          return;
-        }
-
-        const stream = await getMedia(media, facingMode);
+        const stream = await getMedia(
+          media,
+          media === 'video' ? facingMode : 'user',
+        );
 
         attachLocalStream(stream, media);
 
-        const { data: row, error: insertError } = await supabase
-          .from('calls')
-          .insert({
-            conversation_id: conversationId,
-            caller_id: myId,
-            callee_id: peerId,
-            media,
-            status: 'ringing',
-          })
-          .select('id')
-          .maybeSingle();
+        /*
+         * Register persistent call.
+         */
+        const { data, error: insertError } =
+          await supabase
+            .from('calls')
+            .insert({
+              conversation_id: conversationId,
+              caller_id: myId,
+              callee_id: peerId,
+              media,
+              status: 'ringing',
+            })
+            .select('id')
+            .maybeSingle();
 
-        if (insertError || !row) {
-          throw insertError || new Error('Could not register the call.');
+        if (insertError || !data) {
+          throw (
+            insertError ||
+            new Error('Could not register the call.')
+          );
         }
 
         const activeCall: ActiveCall = {
-          callId: row.id,
+          callId: data.id,
           conversationId,
           peerId,
           peerName,
@@ -1172,60 +1022,62 @@ export function CallProvider({
           direction: 'outgoing',
         };
 
-        remoteUserRef.current = {
-          id: peerId,
-          name: peerName,
-          avatar: peerAvatar,
-        };
-
         setCurrentCall(activeCall);
         setCurrentStatus('calling');
 
         /*
-         * Create peer connection now so tracks are ready,
-         * but DO NOT create the SDP offer yet.
+         * Peer connection exists, but NO OFFER is created yet.
          *
-         * The offer is created after the callee sends "ready".
+         * We wait for the callee to accept and send READY.
          */
-        const pc = createPeerConnection(activeCall);
+        createPeer(activeCall);
 
-        if (!pc) {
-          throw new Error('Could not initialize the call.');
-        }
+        await subscribeToCallChannel(
+          data.id,
+          activeCall,
+        );
 
-        await openChannel(row.id, activeCall);
+        clearRingTimer();
 
         ringTimerRef.current = setTimeout(() => {
           void (async () => {
-            if (!callRef.current) {
+            const current = callRef.current;
+
+            if (!current) {
               return;
             }
 
-            await updateCallStatus(row.id, 'missed', {
-              ended_at: new Date().toISOString(),
-            });
+            if (
+              statusRef.current !== 'calling' &&
+              statusRef.current !== 'ringing'
+            ) {
+              return;
+            }
+
+            await updateCallStatus(
+              current.callId,
+              'missed',
+              {
+                ended_at: new Date().toISOString(),
+              },
+            );
 
             setCurrentStatus('missed');
 
             window.setTimeout(() => {
-              void cleanupCall();
+              void cleanup();
             }, 1200);
           })();
         }, RING_TIMEOUT);
       } catch (err) {
-        console.error('[CallProvider] startCall failed:', err);
+        console.error(
+          '[calls] startCall failed',
+          err,
+        );
 
-        setError(getErrorMessage(err));
+        setError(errorMessage(err));
 
-        const current = callRef.current;
-
-        if (current) {
-          await updateCallStatus(current.callId, 'failed', {
-            ended_at: new Date().toISOString(),
-          });
-        }
-
-        await cleanupCall();
+        await cleanup();
       }
     },
     [
@@ -1233,27 +1085,20 @@ export function CallProvider({
       facingMode,
       getMedia,
       attachLocalStream,
-      createPeerConnection,
-      openChannel,
-      updateCallStatus,
-      cleanupCall,
       setCurrentCall,
       setCurrentStatus,
+      createPeer,
+      subscribeToCallChannel,
+      clearRingTimer,
+      updateCallStatus,
+      cleanup,
     ],
   );
 
-  /* ------------------------------------------------------------
-   * Accept incoming call
-   * ---------------------------------------------------------- */
-
   const acceptCall = useCallback(async () => {
-    const currentCall = callRef.current;
+    const current = callRef.current;
 
-    if (!currentCall) {
-      return;
-    }
-
-    if (currentCall.direction !== 'incoming') {
+    if (!current || current.direction !== 'incoming') {
       return;
     }
 
@@ -1266,33 +1111,44 @@ export function CallProvider({
 
     try {
       /*
-       * Get microphone/camera BEFORE sending ready.
-       * This guarantees the caller won't send an offer before
-       * our tracks are attached.
+       * Get media before READY.
        */
       const stream = await getMedia(
-        currentCall.media,
-        currentCall.media === 'video' ? facingMode : 'user',
+        current.media,
+        current.media === 'video'
+          ? facingMode
+          : 'user',
       );
 
-      attachLocalStream(stream, currentCall.media);
+      attachLocalStream(stream, current.media);
+
+      /*
+       * Now create the peer connection with our tracks.
+       */
+      createPeer(current);
 
       setCurrentStatus('connecting');
 
-      await updateCallStatus(currentCall.callId, 'connecting');
-
-      const pc = createPeerConnection(currentCall);
-
-      if (!pc) {
-        throw new Error('Could not initialize the call.');
-      }
-
-      await openChannel(currentCall.callId, currentCall);
+      await updateCallStatus(
+        current.callId,
+        'connecting',
+      );
 
       /*
-       * This tells the caller:
+       * Channel was already subscribed from the
+       * incoming-call listener.
        *
-       * "I accepted and I am subscribed. Send the offer."
+       * If for any reason it disappeared, reconnect.
+       */
+      await subscribeToCallChannel(
+        current.callId,
+        current,
+      );
+
+      /*
+       * Tell caller:
+       *
+       * "I accepted. My channel is ready. Send offer."
        */
       await channelRef.current?.send({
         type: 'broadcast',
@@ -1303,37 +1159,40 @@ export function CallProvider({
         },
       });
     } catch (err) {
-      console.error('[CallProvider] acceptCall failed:', err);
+      console.error(
+        '[calls] acceptCall failed',
+        err,
+      );
 
-      setError(getErrorMessage(err));
+      setError(errorMessage(err));
 
-      await updateCallStatus(currentCall.callId, 'failed', {
-        ended_at: new Date().toISOString(),
-      });
+      await updateCallStatus(
+        current.callId,
+        'failed',
+        {
+          ended_at: new Date().toISOString(),
+        },
+      );
 
-      await cleanupCall();
+      await cleanup();
     }
   }, [
     clearRingTimer,
     getMedia,
     facingMode,
     attachLocalStream,
-    createPeerConnection,
-    openChannel,
-    myId,
-    updateCallStatus,
-    cleanupCall,
+    createPeer,
     setCurrentStatus,
+    updateCallStatus,
+    subscribeToCallChannel,
+    myId,
+    cleanup,
   ]);
 
-  /* ------------------------------------------------------------
-   * Decline
-   * ---------------------------------------------------------- */
-
   const declineCall = useCallback(async () => {
-    const currentCall = callRef.current;
+    const current = callRef.current;
 
-    if (!currentCall) {
+    if (!current) {
       return;
     }
 
@@ -1350,35 +1209,35 @@ export function CallProvider({
       });
     } catch {}
 
-    await updateCallStatus(currentCall.callId, 'declined', {
-      ended_at: new Date().toISOString(),
-    });
+    await updateCallStatus(
+      current.callId,
+      'declined',
+      {
+        ended_at: new Date().toISOString(),
+      },
+    );
 
     setCurrentStatus('declined');
 
     window.setTimeout(() => {
-      void cleanupCall();
+      void cleanup();
     }, 900);
   }, [
     clearRingTimer,
     myId,
     updateCallStatus,
-    cleanupCall,
     setCurrentStatus,
+    cleanup,
   ]);
 
-  /* ------------------------------------------------------------
-   * End call
-   * ---------------------------------------------------------- */
-
   const endCall = useCallback(async () => {
-    const currentCall = callRef.current;
+    const current = callRef.current;
 
-    if (!currentCall || callEndingRef.current) {
+    if (!current || endingRef.current) {
       return;
     }
 
-    callEndingRef.current = true;
+    endingRef.current = true;
 
     clearRingTimer();
 
@@ -1393,26 +1252,26 @@ export function CallProvider({
       });
     } catch {}
 
-    await updateCallStatus(currentCall.callId, 'ended', {
-      ended_at: new Date().toISOString(),
-    });
+    await updateCallStatus(
+      current.callId,
+      'ended',
+      {
+        ended_at: new Date().toISOString(),
+      },
+    );
 
     setCurrentStatus('ended');
 
     window.setTimeout(() => {
-      void cleanupCall();
+      void cleanup();
     }, 500);
   }, [
     clearRingTimer,
     myId,
     updateCallStatus,
-    cleanupCall,
     setCurrentStatus,
+    cleanup,
   ]);
-
-  /* ------------------------------------------------------------
-   * Mic
-   * ---------------------------------------------------------- */
 
   const toggleMic = useCallback(() => {
     const stream = localStreamRef.current;
@@ -1427,18 +1286,14 @@ export function CallProvider({
       return;
     }
 
-    const nextEnabled = !tracks[0].enabled;
+    const enabled = !tracks[0].enabled;
 
     tracks.forEach((track) => {
-      track.enabled = nextEnabled;
+      track.enabled = enabled;
     });
 
-    setMicEnabled(nextEnabled);
+    setMicEnabled(enabled);
   }, []);
-
-  /* ------------------------------------------------------------
-   * Camera
-   * ---------------------------------------------------------- */
 
   const toggleCamera = useCallback(() => {
     const stream = localStreamRef.current;
@@ -1453,23 +1308,19 @@ export function CallProvider({
       return;
     }
 
-    const nextEnabled = !tracks[0].enabled;
+    const enabled = !tracks[0].enabled;
 
     tracks.forEach((track) => {
-      track.enabled = nextEnabled;
+      track.enabled = enabled;
     });
 
-    setCameraEnabled(nextEnabled);
+    setCameraEnabled(enabled);
   }, []);
 
-  /* ------------------------------------------------------------
-   * Switch front/back camera
-   * ---------------------------------------------------------- */
-
   const switchCamera = useCallback(async () => {
-    const currentCall = callRef.current;
+    const current = callRef.current;
 
-    if (!currentCall || currentCall.media !== 'video') {
+    if (!current || current.media !== 'video') {
       return;
     }
 
@@ -1479,60 +1330,62 @@ export function CallProvider({
       return;
     }
 
-    const videoTrack = stream.getVideoTracks()[0];
-
-    if (!videoTrack) {
-      return;
-    }
-
-    const nextFacingMode =
-      facingMode === 'user' ? 'environment' : 'user';
-
     try {
+      const nextMode =
+        facingMode === 'user'
+          ? 'environment'
+          : 'user';
+
       const nextStream = await getMedia(
         'video',
-        nextFacingMode,
+        nextMode,
       );
 
-      const nextTrack = nextStream.getVideoTracks()[0];
+      const nextTrack =
+        nextStream.getVideoTracks()[0];
 
       if (!nextTrack) {
         return;
       }
 
-      const pc = pcRef.current;
-
-      const sender = pc
+      const sender = pcRef.current
         ?.getSenders()
-        .find((item) => item.track?.kind === 'video');
+        .find(
+          (item) =>
+            item.track?.kind === 'video',
+        );
 
       if (sender) {
         await sender.replaceTrack(nextTrack);
       }
 
-      videoTrack.stop();
+      stream.getVideoTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
 
-      const audioTracks = stream.getAudioTracks();
-
-      const replacementStream = new MediaStream([
-        ...audioTracks,
+      const replacement = new MediaStream([
+        ...stream.getAudioTracks(),
         nextTrack,
       ]);
 
-      localStreamRef.current = replacementStream;
+      localStreamRef.current = replacement;
+      setLocalStream(replacement);
 
-      setLocalStream(replacementStream);
-      setFacingMode(nextFacingMode);
+      setFacingMode(nextMode);
       setCameraEnabled(true);
     } catch (err) {
-      console.warn('[CallProvider] Could not switch camera:', err);
+      console.warn(
+        '[calls] switch camera failed',
+        err,
+      );
     }
   }, [facingMode, getMedia]);
 
-  /* ------------------------------------------------------------
-   * Incoming calls
-   * ---------------------------------------------------------- */
-
+  /*
+   * Incoming-call listener.
+   */
   useEffect(() => {
     if (!myId) {
       return;
@@ -1540,7 +1393,7 @@ export function CallProvider({
 
     let cancelled = false;
 
-    const channel = supabase
+    const incomingChannel = supabase
       .channel(`incoming-calls:${myId}`)
       .on(
         'postgres_changes',
@@ -1564,49 +1417,34 @@ export function CallProvider({
             status: string;
           };
 
-          if (row.callee_id !== myId) {
-            return;
-          }
-
-          if (row.status !== 'ringing') {
+          if (
+            row.callee_id !== myId ||
+            row.status !== 'ringing'
+          ) {
             return;
           }
 
           /*
-           * If we are already handling a call, reject the new one.
+           * Already on another call.
            */
           if (callRef.current) {
-            const busyChannel = supabase.channel(`call:${row.id}`);
-
-            busyChannel.subscribe(async (subscriptionStatus) => {
-              if (subscriptionStatus === 'SUBSCRIBED') {
-                await busyChannel.send({
-                  type: 'broadcast',
-                  event: 'control',
-                  payload: {
-                    type: 'busy',
-                    from: myId,
-                  },
-                });
-
-                await supabase.removeChannel(busyChannel);
-              }
-            });
-
             return;
           }
 
-          const { data: caller } = await supabase
-            .from('profiles')
-            .select('id, full_text_name, username, avatar_url')
-            .eq('id', row.caller_id)
-            .maybeSingle();
+          const { data: caller } =
+            await supabase
+              .from('profiles')
+              .select(
+                'id, full_text_name, username, avatar_url',
+              )
+              .eq('id', row.caller_id)
+              .maybeSingle();
 
           if (cancelled) {
             return;
           }
 
-          const callerName =
+          const name =
             caller?.full_text_name ||
             caller?.username ||
             'Unknown user';
@@ -1615,16 +1453,10 @@ export function CallProvider({
             callId: row.id,
             conversationId: row.conversation_id,
             peerId: row.caller_id,
-            peerName: callerName,
+            peerName: name,
             peerAvatar: caller?.avatar_url ?? null,
             media: row.media,
             direction: 'incoming',
-          };
-
-          remoteUserRef.current = {
-            id: row.caller_id,
-            name: callerName,
-            avatar: caller?.avatar_url ?? null,
           };
 
           setCurrentCall(activeCall);
@@ -1632,17 +1464,19 @@ export function CallProvider({
           setError(null);
 
           /*
-           * Subscribe immediately so the caller can safely
-           * receive our ready/decline/bye signals.
+           * Subscribe immediately.
            *
-           * We DO NOT create a peer connection yet because
-           * we don't have local media until the user accepts.
+           * We intentionally do not create the RTCPeerConnection
+           * until Accept is pressed.
            */
           try {
-            await openIncomingChannelOnly(row.id);
+            await subscribeToCallChannel(
+              row.id,
+              activeCall,
+            );
           } catch (err) {
             console.error(
-              '[CallProvider] Incoming channel failed:',
+              '[calls] incoming channel failed',
               err,
             );
           }
@@ -1658,14 +1492,19 @@ export function CallProvider({
                 return;
               }
 
-              await updateCallStatus(row.id, 'missed', {
-                ended_at: new Date().toISOString(),
-              });
+              await updateCallStatus(
+                row.id,
+                'missed',
+                {
+                  ended_at:
+                    new Date().toISOString(),
+                },
+              );
 
               setCurrentStatus('missed');
 
               window.setTimeout(() => {
-                void cleanupCall();
+                void cleanup();
               }, 1200);
             })();
           }, RING_TIMEOUT);
@@ -1675,140 +1514,70 @@ export function CallProvider({
 
     return () => {
       cancelled = true;
-
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(
+        incomingChannel,
+      );
     };
   }, [
     myId,
+    subscribeToCallChannel,
     clearRingTimer,
     updateCallStatus,
-    cleanupCall,
     setCurrentCall,
     setCurrentStatus,
+    cleanup,
   ]);
 
   /*
-   * Incoming channel-only helper.
-   *
-   * This exists separately from openChannel because the incoming
-   * ringing UI must subscribe before the call is accepted.
+   * Browser/tab close.
    */
-  const openIncomingChannelOnly = useCallback(
-    async (callId: string) => {
-      if (channelRef.current) {
-        return channelRef.current;
-      }
-
-      const channel = supabase.channel(`call:${callId}`, {
-        config: {
-          broadcast: {
-            self: false,
-          },
-        },
-      });
-
-      channel
-        .on('broadcast', { event: 'signal' }, ({ payload }) => {
-          void handleSignal(payload);
-        })
-        .on('broadcast', { event: 'control' }, ({ payload }) => {
-          void handleControlSignal(payload);
-        });
-
-      channelRef.current = channel;
-
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-
-        const timeout = window.setTimeout(() => {
-          if (settled) {
-            return;
-          }
-
-          settled = true;
-          reject(new Error('Call signaling timed out.'));
-        }, 10_000);
-
-        channel.subscribe((subscriptionStatus) => {
-          if (subscriptionStatus === 'SUBSCRIBED') {
-            window.clearTimeout(timeout);
-
-            if (!settled) {
-              settled = true;
-              channelReadyRef.current = true;
-              resolve();
-            }
-
-            return;
-          }
-
-          if (
-            subscriptionStatus === 'CHANNEL_ERROR' ||
-            subscriptionStatus === 'TIMED_OUT'
-          ) {
-            window.clearTimeout(timeout);
-
-            if (!settled) {
-              settled = true;
-              reject(new Error('Call signaling failed.'));
-            }
-          }
-        });
-      });
-
-      return channel;
-    },
-    [handleSignal, myId],
-  );
-
-  /* ------------------------------------------------------------
-   * Browser/tab cleanup
-   * ---------------------------------------------------------- */
-
   useEffect(() => {
     const handlePageHide = () => {
-      const currentCall = callRef.current;
+      const current = callRef.current;
 
-      if (!currentCall) {
+      if (!current) {
         return;
       }
 
-      /*
-       * Best effort.
-       *
-       * The normal endCall path handles the normal case.
-       */
       try {
-        const body = JSON.stringify({
-          status: 'ended',
-        });
-
         navigator.sendBeacon?.(
-          `/calls/${currentCall.callId}/end`,
-          new Blob([body], {
-            type: 'application/json',
-          }),
+          `/calls/${current.callId}/end`,
+          new Blob(
+            [
+              JSON.stringify({
+                status: 'ended',
+              }),
+            ],
+            {
+              type: 'application/json',
+            },
+          ),
         );
       } catch {}
     };
 
-    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener(
+      'pagehide',
+      handlePageHide,
+    );
 
     return () => {
-      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener(
+        'pagehide',
+        handlePageHide,
+      );
     };
   }, []);
 
-  /* ------------------------------------------------------------
-   * Final unmount cleanup
-   * ---------------------------------------------------------- */
-
+  /*
+   * Unmount.
+   */
   useEffect(() => {
     return () => {
       mountedRef.current = false;
 
       clearRingTimer();
-      closePeerConnection();
+      closePeer();
       stopLocalMedia();
       clearRemoteMedia();
 
@@ -1822,7 +1591,7 @@ export function CallProvider({
     };
   }, [
     clearRingTimer,
-    closePeerConnection,
+    closePeer,
     stopLocalMedia,
     clearRemoteMedia,
   ]);
@@ -1831,21 +1600,16 @@ export function CallProvider({
     () => ({
       call,
       status,
-
       localStream,
       remoteStream,
-
       micEnabled,
       cameraEnabled,
       facingMode,
-
       error,
-
       startCall,
       acceptCall,
       declineCall,
       endCall,
-
       toggleMic,
       toggleCamera,
       switchCamera,
@@ -1876,12 +1640,12 @@ export function CallProvider({
   );
 }
 
-export function useCall(): CallContextValue {
+export function useCall() {
   const context = useContext(CallContext);
 
   if (!context) {
     throw new Error(
-      'useCall must be used inside <CallProvider>.',
+      'useCall must be used inside CallProvider.',
     );
   }
 
