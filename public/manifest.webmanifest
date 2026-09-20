@@ -1,0 +1,27 @@
+{
+  "name": "enotes — Your thoughts deserve a place that feels like you",
+  "short_name": "enotes",
+  "description": "An artistic, interactive, highly customizable online journal.",
+  "id": "/",
+  "start_url": "/feed",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFF7F8",
+  "theme_color": "#111111",
+  "categories": ["social", "productivity", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
