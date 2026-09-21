@@ -791,10 +791,31 @@ function VideoEditor() {
     updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: current + degrees } }, degrees < 0 ? 'Rotate counterclockwise' : 'Rotate clockwise');
   };
 
-  const reverseSelectedClip = () => {
-    if (!selectedClip) return;
-    updateClip(selectedClip.id, { reverse: !selectedClip.reverse }, selectedClip.reverse ? 'Disable reverse' : 'Reverse clip');
-    invalidateReversedCache(selectedClip.src); // rebuild from the un-trimmed source next render
+  const [preparingReverse, setPreparingReverse] = useState<string | null>(null);
+
+  const reverseSelectedClip = async () => {
+    if (!selectedClip || preparingReverse) return;
+
+    if (!selectedClip.reverse) {
+      setPlaying(false);
+      setPreparingReverse(selectedClip.id);
+      try {
+        await rendererRef.current.prepareReverseClip(selectedClip, (percent) => {
+          if (percent >= 100) notify('Reverse ready.');
+        });
+        updateClip(selectedClip.id, { reverse: true }, 'Reverse clip');
+        notify('Reverse applied.');
+      } catch (e) {
+        notify(e instanceof Error ? e.message : 'Could not prepare reverse playback.');
+      } finally {
+        setPreparingReverse(null);
+      }
+      return;
+    }
+
+    invalidateReversedCache(selectedClip.src);
+    updateClip(selectedClip.id, { reverse: false }, 'Disable reverse');
+    notify('Reverse disabled.');
   };
 
   const setNoiseReduction = (value: number) => {
@@ -2590,8 +2611,13 @@ function VideoEditor() {
               <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} aria-label="Mute clip audio" title="Mute/unmute original audio" className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
                 {selectedClip.muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
               </button>
-              <button onClick={reverseSelectedClip} className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${selectedClip.reverse ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`} title="Reverse playback">
-                {selectedClip.reverse ? 'Normal' : 'Reverse'}
+              <button
+                onClick={() => void reverseSelectedClip()}
+                disabled={preparingReverse === selectedClip.id}
+                className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:cursor-wait disabled:opacity-60 ${selectedClip.reverse ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
+                title={selectedClip.reverse ? 'Disable reverse playback' : 'Prepare and reverse playback'}
+              >
+                {preparingReverse === selectedClip.id ? 'Preparing…' : selectedClip.reverse ? 'Normal' : 'Reverse'}
               </button>
               <button onClick={() => moveClip(selectedClip.id, -1)} aria-label="Move clip left" title="Move clip left" className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><ArrowLeft className="h-3.5 w-3.5" /></button>
               <button onClick={() => moveClip(selectedClip.id, 1)} aria-label="Move clip right" title="Move clip right" className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><ArrowRight className="h-3.5 w-3.5" /></button>
