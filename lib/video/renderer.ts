@@ -281,7 +281,24 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
    ============================================================ */
 
 interface ReverseFrame { t: number; bmp: ImageBitmap | HTMLCanvasElement }
-interface ReverseCacheEntry { frames: ReverseFrame[]; builtAt: number }
+interface ReverseCacheEntry {
+  frames: ReverseFrame[];
+  builtAt: number;
+  src: string;
+  trimStart: number;
+  trimEnd: number;
+}
+function reverseCacheKey(src: string, trimStart: number, trimEnd: number): string {
+  return src + "::" + trimStart.toFixed(4) + "::" + trimEnd.toFixed(4);
+}
+function disposeReverseFrame(frame: ReverseFrame) {
+  const bmp = frame.bmp as ImageBitmap;
+  if (typeof bmp?.close === 'function') bmp.close();
+}
+function disposeReverseCacheEntry(entry: ReverseCacheEntry | undefined) {
+  if (!entry) return;
+  for (const frame of entry.frames) disposeReverseFrame(frame);
+}
 /* Frame width: 160px previews looked blocky the moment a reversed clip was
    exported (×7 upscale to a 1080p canvas). 400px survives a 1080p export
    acceptably while keeping memory bounded. */
@@ -294,10 +311,18 @@ const reverseCache = new Map<string, ReverseCacheEntry>();
 
 /** Invalidate the reversed-frame cache for a source (call on clip edit). */
 export function invalidateReversedCache(src?: string) {
-  if (src) reverseCache.delete(src);
-  else reverseCache.clear();
+  if (!src) {
+    reverseCache.forEach((entry) => disposeReverseCacheEntry(entry));
+    reverseCache.clear();
+    return;
+  }
+  for (const [key, entry] of reverseCache) {
+    if (entry.src === src) {
+      disposeReverseCacheEntry(entry);
+      reverseCache.delete(key);
+    }
+  }
 }
-
 function evictReverseCache() {
   while (reverseCache.size >= REVERSE_MAX_SOURCES) {
     let oldestKey = '';
@@ -306,20 +331,10 @@ function evictReverseCache() {
       if (entry.builtAt < oldestAt) { oldestAt = entry.builtAt; oldestKey = key; }
     });
     if (!oldestKey) break;
+    disposeReverseCacheEntry(reverseCache.get(oldestKey));
     reverseCache.delete(oldestKey);
   }
 }
-
-/**
- * A video element used ONLY by the reversed-frame cache build.
- *
- * Why not the shared loadVideo element: while the build walks the source
- * (hundreds of seeks over several seconds), the preview render loop is
- * simultaneously seeking/drawing that SAME element for the seek-path
- * fallback — the two fight and the preview shows torn/stale frames until
- * the build finishes. A detached element is invisible and owned solely by
- * the build; it is deliberately NOT put into videoCache.
- */
 async function loadDetachedVideo(src: string): Promise<HTMLVideoElement> {
   const video = document.createElement('video');
   video.crossOrigin = 'anonymous';
@@ -345,11 +360,15 @@ async function loadDetachedVideo(src: string): Promise<HTMLVideoElement> {
  * Returns [] when snapshotting isn't possible (decoder stalls); caller
  * falls back to the seek path.
  */
-async function buildReverseFrames(video: HTMLVideoElement, src: string, trimStart: number, trimEnd: number): Promise<ReverseFrame[]> {
+async function buildReverseFrames(
+  video: HTMLVideoElement,
+  trimStart: number,
+  trimEnd: number
+): Promise<ReverseFrame[]> {
   const from = Math.max(0, trimStart);
   const to = Math.max(from + 0.1, Math.min(trimEnd, video.duration || trimEnd));
   const span = to - from;
-  const STEP = Math.max(0.1, span / REVERSE_MAX_FRAMES);
+  const step = Math.max(0.1, span / REVERSE_MAX_FRAMES);
   const frames: ReverseFrame[] = [];
   const canvas = document.createElement('canvas');
   canvas.width = REVERSE_THUMB_W;
@@ -357,95 +376,89 @@ async function buildReverseFrames(video: HTMLVideoElement, src: string, trimStar
   const c2d = canvas.getContext('2d');
   if (!c2d) return [];
 
-  /* Capture strategy: PLAY through the trimmed range once and snapshot on a
-     timer, instead of seek-per-frame. Two reasons, both measured:
-     • Seeking fires `seeked` the moment the position moves, often BEFORE the
-       new frame is decoded — on slow/remote decodes that intermittently
-       captures the PREVIOUS frame or a black one, which showed up as black
-       gaps in reversed exports.
-     • Forward playback is the decoder's fast path; a full pass costs about
-       the trim duration and every snapshot is a fully-presented frame
-       (rVFC-confirmed when available, last-known-frame otherwise).
-     Frames are keyed on the forward timeline, so coverage beats exactness:
-     a dropped snapshot simply leaves the neighbors in charge. */
   const snapshot = async (t: number) => {
     c2d.drawImage(video, 0, 0, canvas.width, canvas.height);
-    let stored: ImageBitmap | HTMLCanvasElement = canvas;
     if (typeof createImageBitmap === 'function') {
-      try { stored = await createImageBitmap(canvas); } catch { stored = canvas; }
+      try { frames.push({ t, bmp: await createImageBitmap(canvas) }); return; } catch {}
     }
-    // canvas is re-drawn every step — copy when bitmap creation failed
-    if (stored === canvas) {
-      const copy = document.createElement('canvas');
-      copy.width = canvas.width; copy.height = canvas.height;
-      copy.getContext('2d')!.drawImage(canvas, 0, 0);
-      stored = copy;
-    }
-    frames.push({ t, bmp: stored });
+    const copy = document.createElement('canvas');
+    copy.width = canvas.width; copy.height = canvas.height;
+    copy.getContext('2d')!.drawImage(canvas, 0, 0);
+    frames.push({ t, bmp: copy });
   };
 
   video.pause();
   await seekAndWait(video, from);
-  if (video.readyState < 2) return []; // decoder gave up — no cache
+  if (video.readyState < 2) return [];
 
-  let raf = 0;
-  const t0 = performance.now();
-  let nextT = from;
+  const v = video as HTMLVideoElement & {
+    requestVideoFrameCallback?: (cb: (now: number, metadata: { mediaTime: number }) => void) => number;
+    cancelVideoFrameCallback?: (id: number) => void;
+  };
+  const hasRVFC = typeof v.requestVideoFrameCallback === 'function';
+
   await new Promise<void>((resolve) => {
-    const done = () => {
+    let nextSample = from;
+    let settled = false;
+    let timeoutId: number | null = null;
+    let callbackId: number | null = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId != null) window.clearTimeout(timeoutId);
+      if (callbackId != null) { try { v.cancelVideoFrameCallback?.(callbackId); } catch {} }
       video.pause();
-      if (raf) cancelAnimationFrame(raf);
       resolve();
     };
-    const advance = () => {
-      if (video.paused || video.ended || video.currentTime >= to - STEP / 2 || nextT > to + 1e-6) {
-        done();
+    const onFrame = async (_now: number, metadata: { mediaTime: number }) => {
+      if (settled) return;
+      const current = Number.isFinite(metadata.mediaTime) ? metadata.mediaTime : video.currentTime;
+      if (current >= nextSample - 0.001) {
+        await snapshot(Math.min(nextSample, to));
+        nextSample += step;
+      }
+      if (current >= to - 0.001 || nextSample > to + step * 0.5) {
+        await snapshot(to);
+        finish();
         return;
       }
-      if (video.currentTime >= nextT) {
-        void snapshot(Math.min(nextT, video.currentTime));
-        nextT += STEP;
-      }
+      if (hasRVFC) callbackId = v.requestVideoFrameCallback!(onFrame);
     };
-    type RVFC = { requestVideoFrameCallback?: (cb: () => void) => number };
-    const rvfc = video as unknown as RVFC;
-    if (typeof rvfc.requestVideoFrameCallback === 'function') {
-      const loopFrame = () => {
-        advance();
-        if (!video.paused && !video.ended && nextT <= to + 1e-6) rvfc.requestVideoFrameCallback!(loopFrame);
-      };
-      /* advance() snapshots synchronously-drawn current frame — good enough
-         here; the async bitmap conversion lands before the frame is consumed */
-      rvfc.requestVideoFrameCallback(loopFrame);
+    if (hasRVFC) {
+      callbackId = v.requestVideoFrameCallback!(onFrame);
     } else {
-      const rafTick = () => {
-        advance();
-        if (!video.paused && !video.ended && nextT <= to + 1e-6) raf = requestAnimationFrame(rafTick);
+      const tick = async () => {
+        if (settled) return;
+        const current = video.currentTime;
+        if (current >= nextSample - 0.001) {
+          await snapshot(Math.min(nextSample, to));
+          nextSample += step;
+        }
+        if (current >= to - 0.001 || nextSample > to + step * 0.5) {
+          await snapshot(to);
+          finish();
+          return;
+        }
+        window.requestAnimationFrame(() => void tick());
       };
-      raf = requestAnimationFrame(rafTick);
+      window.requestAnimationFrame(() => void tick());
     }
-    video.addEventListener('ended', done, { once: true });
-    void video.play().catch(() => {});
-    /* safety: never hang the build — bounded by the playthrough itself */
-    window.setTimeout(done, ((span / Math.max(0.25, video.playbackRate)) + 6) * 1000);
+    timeoutId = window.setTimeout(() => finish(), Math.max(15000, (span + 8) * 1000));
+    void video.play().catch(() => finish());
   });
 
-  /* Playthrough done (or safety-timed-out). Fill any grid slots the pass
-     missed — usually the very end — with cheap targeted seeks so reversed
-     playback never shows a stale gap at the boundary. */
-  for (let t = from; t <= to + 1e-6; t += STEP) {
-    if (frames.some((f) => Math.abs(f.t - t) < STEP / 2)) continue;
-    await seekAndWait(video, Math.min(t, to));
-    if (video.readyState < 2) break;
-    snapshot(Math.min(t, to));
+  if (!frames.length || frames[0].t > from + step * 0.5) {
+    await seekAndWait(video, from);
+    await snapshot(from);
   }
+  if (frames[frames.length - 1]?.t < to - step * 0.5) {
+    await seekAndWait(video, to);
+    await snapshot(to);
+  }
+  frames.sort((x, y) => x.t - y.t);
   return frames;
 }
 
-/**
- * Nearest cached frame for source time t. Cache frames are keyed on the
- * FORWARD timeline, so for reversed playback the visual time maps directly.
- */
 function nearestReverseFrame(entry: ReverseCacheEntry, t: number): ReverseFrame | null {
   const frames = entry.frames;
   if (!frames.length) return null;
@@ -817,6 +830,48 @@ export class VideoRenderer {
   /** Sources whose reversed-frame cache is currently being built (one build at a time per source). */
   private reverseCacheBuilding = new Set<string>();
 
+  /**
+   * Prepare a reversed clip before the editor switches it on.
+   */
+  async prepareReverseClip(
+    clip: VideoClip,
+    onProgress?: (percent: number) => void
+  ): Promise<void> {
+    if (!clip.src || isPlaceholder(clip.src)) return;
+    const key = reverseCacheKey(clip.src, clip.trimStart, clip.trimEnd);
+    if (reverseCache.has(key)) { onProgress?.(100); return; }
+
+    if (this.reverseCacheBuilding.has(key)) {
+      for (let i = 0; i < 600; i++) {
+        if (!this.reverseCacheBuilding.has(key)) break;
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+        onProgress?.(Math.min(95, Math.round((i / 600) * 95)));
+      }
+      if (reverseCache.has(key)) onProgress?.(100);
+      return;
+    }
+
+    this.reverseCacheBuilding.add(key);
+    try {
+      onProgress?.(5);
+      const builder = await loadDetachedVideo(clip.src);
+      onProgress?.(20);
+      const frames = await buildReverseFrames(builder, clip.trimStart, clip.trimEnd);
+      if (!frames.length) throw new Error('The browser could not prepare reverse frames for this clip.');
+      evictReverseCache();
+      reverseCache.set(key, {
+        frames,
+        builtAt: Date.now(),
+        src: clip.src,
+        trimStart: clip.trimStart,
+        trimEnd: clip.trimEnd,
+      });
+      onProgress?.(100);
+    } finally {
+      this.reverseCacheBuilding.delete(key);
+    }
+  }
+
   /** Cancel the in-flight export (safe to call anytime). */
   cancelExport() {
     this.exportCancelled = true;
@@ -877,21 +932,28 @@ export class VideoRenderer {
              is pure memory hits at full frame rate. */
           let paintedFromCache = false;
           if (clip.reverse) {
-            let entry = reverseCache.get(clip.src);
-            if (!entry && !this.reverseCacheBuilding.has(clip.src)) {
-              this.reverseCacheBuilding.add(clip.src);
-              /* A DETACHED element is used for the build — seeking the shared
-                 loadVideo element here would fight the preview's own
-                 seek/play loop and tear frames until the build finished. */
+            const key = reverseCacheKey(clip.src, clip.trimStart, clip.trimEnd);
+            let entry = reverseCache.get(key);
+            if (!entry && !this.reverseCacheBuilding.has(key)) {
+              this.reverseCacheBuilding.add(key);
               loadDetachedVideo(clip.src)
-                .then((builder) => buildReverseFrames(builder, clip.src, clip.trimStart, clip.trimEnd))
+                .then((builder) => buildReverseFrames(builder, clip.trimStart, clip.trimEnd))
                 .then((frames) => {
-                  if (frames.length) { evictReverseCache(); reverseCache.set(clip.src, { frames, builtAt: Date.now() }); }
+                  if (frames.length) {
+                    evictReverseCache();
+                    reverseCache.set(key, {
+                      frames,
+                      builtAt: Date.now(),
+                      src: clip.src,
+                      trimStart: clip.trimStart,
+                      trimEnd: clip.trimEnd,
+                    });
+                  }
                 })
-                .catch(() => { /* fall back to seek path silently */ })
-                .finally(() => this.reverseCacheBuilding.delete(clip.src));
+                .catch(() => {})
+                .finally(() => this.reverseCacheBuilding.delete(key));
             }
-            entry = reverseCache.get(clip.src);
+            entry = reverseCache.get(key);
             const frame = entry ? nearestReverseFrame(entry, sourceTime) : null;
             if (frame) {
               ctx.save();
@@ -1139,11 +1201,15 @@ export class VideoRenderer {
         onProgress?.({ phase: 'processing', percent: 4, message: 'Preparing reversed clips…' });
         for (const clip of reversedClips) {
           if (this.exportCancelled) throw new ExportCancelledError();
-          if (reverseCache.has(clip.src) || this.reverseCacheBuilding.has(clip.src)) continue;
           try {
-            const frames = await buildReverseFrames(await loadDetachedVideo(clip.src), clip.src, clip.trimStart, clip.trimEnd);
-            if (frames.length) { evictReverseCache(); reverseCache.set(clip.src, { frames, builtAt: Date.now() }); }
-          } catch { /* seek-path fallback for this source */ }
+            await this.prepareReverseClip(clip, (p) => {
+              onProgress?.({
+                phase: 'processing',
+                percent: Math.min(9, 4 + Math.round(p * 0.05)),
+                message: 'Preparing reverse: ' + Math.round(p) + '%',
+              });
+            });
+          } catch {}
         }
       }
 
