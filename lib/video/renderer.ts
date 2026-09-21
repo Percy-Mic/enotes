@@ -316,12 +316,18 @@ export function invalidateReversedCache(src?: string) {
     reverseCache.clear();
     return;
   }
-  for (const [key, entry] of reverseCache) {
+  const keysToDelete: string[] = [];
+
+  reverseCache.forEach((entry, key) => {
     if (entry.src === src) {
       disposeReverseCacheEntry(entry);
-      reverseCache.delete(key);
+      keysToDelete.push(key);
     }
-  }
+  });
+
+  keysToDelete.forEach((key) => {
+    reverseCache.delete(key);
+  });
 }
 function evictReverseCache() {
   while (reverseCache.size >= REVERSE_MAX_SOURCES) {
