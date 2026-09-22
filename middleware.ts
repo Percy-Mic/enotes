@@ -126,6 +126,6 @@ export const config = {
      * - Supabase Storage
      * - API routes
      */
-    '/((?!_next/static|_next/image|favicon.ico|storage/|api/|googlea8a22c5aff9efc8a\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|storage/|api/|sitemap\\.xml|robots\\.txt|googlea8a22c5aff9efc8a\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?)$).*)',
   ],
 };
