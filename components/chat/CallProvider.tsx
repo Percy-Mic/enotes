@@ -2241,12 +2241,10 @@ export function CallProvider({
           payload.new as CallRow;
 
         if (
-          row.callee_id !==
-            myId ||
-          row.status !==
+          row.callee_id !== myId ||
+          row.status !== 'ringing' ||
           row.metadata?.group_call === true ||
-          row.metadata?.group_call === 'true' ||
-            'ringing'
+          row.metadata?.group_call === 'true'
         ) {
           return;
         }
