@@ -107,7 +107,13 @@ export async function allNotificationsOff(userId: string): Promise<boolean> {
  * DATABASE_URL is available; otherwise they are left for the next run.
  */
 export async function sendToSubscriptions(
-  payload: { title: string; body: string; url?: string; tag?: string },
+  payload: {
+    title: string;
+    body: string;
+    url?: string;
+    tag?: string;
+    type?: 'default' | 'call';
+  },
   subs: PushTarget[]
 ): Promise<SendResult> {
   const configError = ensureVapidConfigured();
