@@ -462,6 +462,7 @@ export function CallProvider({
     async (
       media: CallMedia,
       mode: 'user' | 'environment' = 'user',
+      includeAudio = true,
     ) => {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error(
@@ -469,33 +470,49 @@ export function CallProvider({
         );
       }
 
-      return navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          channelCount: 1,
-        },
+      const audio = includeAudio
+        ? {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            channelCount: 1,
+          }
+        : false;
 
-        video:
-          media === 'video'
-            ? {
-                facingMode: {
-                  ideal: mode,
-                },
-                width: {
-                  ideal: 1280,
-                },
-                height: {
-                  ideal: 720,
-                },
-                frameRate: {
-                  ideal: 30,
-                  max: 30,
-                },
-              }
-            : false,
-      });
+      const video =
+        media === 'video'
+          ? {
+              facingMode: { ideal: mode as 'user' | 'environment' },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30, max: 30 },
+            }
+          : false;
+
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          audio,
+          video,
+        });
+      } catch (firstError) {
+        /*
+         * Do not retry permission/device errors. A second permission prompt
+         * makes mobile browsers look broken. Only relax camera constraints
+         * when the browser rejects the requested camera configuration.
+         */
+        if (
+          media !== 'video' ||
+          firstError instanceof DOMException &&
+          !['OverconstrainedError', 'NotFoundError'].includes(firstError.name)
+        ) {
+          throw firstError;
+        }
+
+        return navigator.mediaDevices.getUserMedia({
+          audio,
+          video: { facingMode: { ideal: mode as 'user' | 'environment' } },
+        });
+      }
     },
     [],
   );
@@ -2118,6 +2135,7 @@ export function CallProvider({
           await getMedia(
             'video',
             nextMode,
+            false,
           );
 
         const nextTrack =
