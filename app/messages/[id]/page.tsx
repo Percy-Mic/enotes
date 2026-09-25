@@ -18,7 +18,7 @@ import MediaGallery from '@/components/chat/MediaGallery';
 import ForwardSheet from '@/components/chat/ForwardSheet';
 import ReportDialog from '@/components/social/ReportDialog';
 import { useCall } from '@/components/chat/CallProvider';
-import GroupCallOverlay from '@/components/chat/GroupCallOverlay';
+import { useGroupCall } from '@/components/chat/GroupCallProvider';
 
 const PAGE_SIZE = 30;
 const ICON_MAX_BYTES = 5 * 1024 * 1024;
@@ -75,6 +75,7 @@ function ChatRoom() {
   const conversationId = params?.id as string;
 
   const { startCall } = useCall();
+  const { startGroupCall } = useGroupCall();
 
   const [me, setMe] = useState<string | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
