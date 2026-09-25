@@ -587,11 +587,14 @@ export default function GroupCallOverlay({
         } catch (e) {
           console.warn('[enotes group call] signaling error', e);
         }
-      })
-      .subscribe();
+      });
 
     channelRef.current = channel;
 
+    // Subscribe exactly once. The previous implementation called
+    // channel.subscribe() twice, which can leave Realtime in a race where
+    // send() falls back to REST and signaling messages are not delivered
+    // through the intended Broadcast channel.
     channelReadyRef.current = new Promise<void>((resolve, reject) => {
       let settled = false;
 
