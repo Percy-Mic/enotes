@@ -15,11 +15,21 @@ export interface GroupCallMember {
   } | null;
 }
 
+export interface GroupCallInvite {
+  callId: string;
+  from: string;
+  conversationId: string;
+  media: 'audio' | 'video';
+  callerName: string;
+  callerAvatar: string | null;
+}
+
 interface GroupCallOverlayProps {
   conversationId: string;
   myId: string | null;
   members: GroupCallMember[];
   enabled: boolean;
+  initialIncoming?: GroupCallInvite | null;
   startWhenOpened?: boolean;
   onClose?: () => void;
 }
@@ -73,6 +83,7 @@ export default function GroupCallOverlay({
   members,
   enabled,
   startWhenOpened = false,
+  initialIncoming = null,
   onClose,
 }: GroupCallOverlayProps) {
   const [active, setActive] = useState<{ callId: string; hostId: string } | null>(null);
@@ -96,6 +107,38 @@ export default function GroupCallOverlay({
   useEffect(() => {
     setCallMembers(members);
   }, [members]);
+
+  useEffect(() => {
+    if (!enabled || !conversationId || callMembers.length > 0) return;
+
+    let cancelled = false;
+    void supabase
+      .from('conversation_members')
+      .select('user_id, profiles!conversation_members_user_id_fkey(id, full_text_name, username, avatar_url)')
+      .eq('conversation_id', conversationId)
+      .then(({ data, error: memberError }) => {
+        if (cancelled || memberError) return;
+        const next = ((data || []) as any[]).map((row) => ({
+          user_id: row.user_id,
+          profile: row.profiles || null,
+        })) as GroupCallMember[];
+        setCallMembers(next);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [callMembers.length, conversationId, enabled]);
+
+  useEffect(() => {
+    if (!initialIncoming) return;
+    setIncoming({
+      type: 'invite',
+      callId: initialIncoming.callId,
+      from: initialIncoming.from,
+      to: myId ?? undefined,
+    });
+  }, [initialIncoming, myId]);
 
   const memberMap = useMemo(
     () => new Map(callMembers.map((member) => [member.user_id, member])),
@@ -238,22 +281,7 @@ export default function GroupCallOverlay({
     try {
       setError(null);
 
-      let targets = callMembers.filter((member) => member.user_id !== myId);
-      if (targets.length === 0) {
-        const { data } = await supabase
-          .from('conversation_members')
-          .select('user_id, profiles!conversation_members_user_id_fkey(id, full_text_name, username, avatar_url)')
-          .eq('conversation_id', conversationId);
-
-        targets = ((data || []) as any[])
-          .map((row) => ({
-            user_id: row.user_id,
-            profile: row.profiles || null,
-          }))
-          .filter((member) => member.user_id !== myId) as GroupCallMember[];
-
-        setCallMembers(targets.concat([{ user_id: myId }]));
-      }
+      const targets = callMembers.filter((member) => member.user_id !== myId);
 
       if (targets.length === 0) {
         setError('This group has no other members to call.');
@@ -261,11 +289,21 @@ export default function GroupCallOverlay({
       }
 
       await getMedia();
-      const callId = crypto.randomUUID();
-      setActive({ callId, hostId: myId });
-      activeRef.current = { callId, hostId: myId };
 
-      await send({ type: 'invite', callId });
+      const { data: callId, error: createError } = await supabase.rpc('create_group_call', {
+        p_conversation_id: conversationId,
+        p_media: 'video',
+      });
+
+      if (createError || !callId) {
+        throw createError ?? new Error('Could not create the group video call.');
+      }
+
+      const activeCall = { callId: String(callId), hostId: myId };
+      setActive(activeCall);
+      activeRef.current = activeCall;
+
+      await send({ type: 'invite', callId: String(callId) });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the group video call.');
     } finally {
@@ -282,6 +320,14 @@ export default function GroupCallOverlay({
     try {
       setError(null);
       await getMedia();
+
+      const { error: responseError } = await supabase.rpc('respond_group_call', {
+        p_call_id: call.callId,
+        p_action: 'join',
+      });
+
+      if (responseError) throw responseError;
+
       setActive({ callId: call.callId, hostId: call.from });
       activeRef.current = { callId: call.callId, hostId: call.from };
       setIncoming(null);
@@ -295,6 +341,14 @@ export default function GroupCallOverlay({
 
   const declineIncoming = useCallback(async () => {
     if (!incoming) return;
+
+    try {
+      await supabase.rpc('respond_group_call', {
+        p_call_id: incoming.callId,
+        p_action: 'decline',
+      });
+    } catch {}
+
     await send({ type: 'leave', callId: incoming.callId, to: incoming.from });
     setIncoming(null);
   }, [incoming, send]);
@@ -386,7 +440,19 @@ export default function GroupCallOverlay({
       return;
     }
     endingRef.current = true;
-    void send({ type: 'leave', callId: activeRef.current.callId });
+
+    const current = activeRef.current;
+    if (current.hostId === myId) {
+      void supabase.rpc('end_group_call', { p_call_id: current.callId });
+      void send({ type: 'end', callId: current.callId });
+    } else {
+      void supabase.rpc('respond_group_call', {
+        p_call_id: current.callId,
+        p_action: 'leave',
+      });
+      void send({ type: 'leave', callId: current.callId });
+    }
+
     cleanup(false);
     onClose?.();
   }, [cleanup, onClose, send]);

@@ -2133,18 +2133,21 @@ export function CallProvider({
     const restoreRingingCall = async () => {
       if (callRef.current) return;
 
-      const { data: row, error: restoreError } = await supabase
+      const { data: rows, error: restoreError } = await supabase
         .from('calls')
-        .select('id, conversation_id, caller_id, callee_id, media, status, started_at')
+        .select('id, conversation_id, caller_id, callee_id, media, status, started_at, metadata')
         .eq('callee_id', myId)
         .eq('status', 'ringing')
         .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
+
+      const row = ((rows || []) as CallRow[]).find(
+        (candidate) => candidate.metadata?.group_call !== true && candidate.metadata?.group_call !== 'true',
+      );
 
       if (restoreError || !row || cancelled || callRef.current) return;
 
-      const startedAt = new Date(row.started_at).getTime();
+      const startedAt = new Date(row.started_at || '').getTime();
       const elapsed = Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
 
       if (elapsed >= CALL_RING_TIMEOUT_MS) {
@@ -2238,10 +2241,10 @@ export function CallProvider({
           payload.new as CallRow;
 
         if (
-          row.callee_id !==
-            myId ||
-          row.status !==
-            'ringing'
+          row.callee_id !== myId ||
+          row.status !== 'ringing' ||
+          row.metadata?.group_call === true ||
+          row.metadata?.group_call === 'true'
         ) {
           return;
         }

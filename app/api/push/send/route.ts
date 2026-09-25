@@ -28,6 +28,7 @@ interface SendBody {
   body?: string;
   url?: string;
   tag?: string;
+  type?: 'default' | 'call';
   targets?: unknown;
 }
 
@@ -57,7 +58,7 @@ export async function POST(req: Request) {
 
   /* Respect the recipient's notification preferences: when every notify_*
      setting is off, push stays silent (parity with the Edge Function). */
-  if (targets.length > 0 && (await allNotificationsOff(body.userId))) {
+  if (body.type !== 'call' && targets.length > 0 && (await allNotificationsOff(body.userId))) {
     return NextResponse.json({ delivered: 0, removed: 0, skipped: 'all notification preferences off' });
   }
 
@@ -67,6 +68,7 @@ export async function POST(req: Request) {
       body: typeof body.body === 'string' ? body.body.slice(0, 2000) : '',
       url: typeof body.url === 'string' && body.url.startsWith('/') ? body.url : '/notifications',
       tag: typeof body.tag === 'string' ? body.tag.slice(0, 128) : undefined,
+      type: body.type === 'call' ? 'call' : 'default',
     },
     targets
   );

@@ -18,7 +18,7 @@ import MediaGallery from '@/components/chat/MediaGallery';
 import ForwardSheet from '@/components/chat/ForwardSheet';
 import ReportDialog from '@/components/social/ReportDialog';
 import { useCall } from '@/components/chat/CallProvider';
-import GroupCallOverlay from '@/components/chat/GroupCallOverlay';
+import { useGroupCall } from '@/components/chat/GroupCallProvider';
 
 const PAGE_SIZE = 30;
 const ICON_MAX_BYTES = 5 * 1024 * 1024;
@@ -75,6 +75,7 @@ function ChatRoom() {
   const conversationId = params?.id as string;
 
   const { startCall } = useCall();
+  const { startGroupCall } = useGroupCall();
 
   const [me, setMe] = useState<string | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -83,7 +84,6 @@ function ChatRoom() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasOlder, setHasOlder] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
-  const [showGroupCall, setShowGroupCall] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [showMedia, setShowMedia] = useState(false);
@@ -893,8 +893,7 @@ function ChatRoom() {
         {conversation?.is_group && (
           <button
             onClick={() => {
-              setShowGroupCall(true);
-              void loadMembers();
+              startGroupCall(conversationId);
             }}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#6B6B6B] transition hover:bg-gray-100"
             aria-label="Start group video call"
@@ -1016,16 +1015,6 @@ function ChatRoom() {
         onCancelReply={() => setReplyingTo(null)}
         onSend={handleSendWithReply}
         onTyping={sendTyping}
-      />
-
-      {/* members sheet */}
-      <GroupCallOverlay
-        conversationId={conversationId}
-        myId={me}
-        members={groupMembers}
-        enabled={conversation?.is_group === true}
-        startWhenOpened={showGroupCall}
-        onClose={() => setShowGroupCall(false)}
       />
 
       {showMembers && conversation?.is_group && (
