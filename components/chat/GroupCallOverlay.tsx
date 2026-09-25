@@ -104,7 +104,6 @@ export default function GroupCallOverlay({
   const endingRef = useRef(false);
   const startingRef = useRef(false);
   const channelReadyRef = useRef<Promise<void> | null>(null);
-  const recoveringActiveRef = useRef(false);
   const restartingPeersRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -174,7 +173,19 @@ export default function GroupCallOverlay({
 
   const send = useCallback(async (payload: Omit<Signal, 'from'>) => {
     if (!myId || !channelRef.current) return;
-    await channelRef.current.send({
+
+    if (channelReadyRef.current) {
+      try {
+        await channelReadyRef.current;
+      } catch {
+        return;
+      }
+    }
+
+    const channel = channelRef.current;
+    if (!channel) return;
+
+    await channel.send({
       type: 'broadcast',
       event: 'group-call',
       payload: { ...payload, from: myId },
@@ -669,89 +680,6 @@ export default function GroupCallOverlay({
     cleanup(false);
     onClose?.();
   }, [cleanup, onClose, send]);
-
-  useEffect(() => {
-    if (
-      startWhenOpened ||
-      initialIncoming ||
-      !enabled ||
-      !conversationId ||
-      !myId ||
-      activeRef.current ||
-      recoveringActiveRef.current
-    ) {
-      return;
-    }
-
-    let cancelled = false;
-    recoveringActiveRef.current = true;
-
-    void (async () => {
-      try {
-        const { data, error: lookupError } = await supabase.rpc(
-          'get_my_active_group_call',
-          { p_conversation_id: conversationId },
-        );
-
-        if (lookupError || cancelled) return;
-
-        const row = Array.isArray(data) ? data[0] : data;
-        if (!row?.call_id || cancelled) return;
-
-        const isHost = String(row.host_id) === myId;
-
-        if (!isHost) {
-          const { error: joinError } = await supabase.rpc('respond_group_call', {
-            p_call_id: row.call_id,
-            p_action: 'join',
-          });
-
-          if (joinError) throw joinError;
-        }
-
-        await getMedia();
-
-        if (cancelled) return;
-
-        const restored = {
-          callId: String(row.call_id),
-          hostId: String(row.host_id),
-        };
-
-        setActive(restored);
-        activeRef.current = restored;
-
-        if (channelReadyRef.current) {
-          await channelReadyRef.current;
-        }
-
-        await send(
-          isHost
-            ? { type: 'invite', callId: restored.callId }
-            : { type: 'accept', callId: restored.callId, to: restored.hostId },
-        );
-      } catch (restoreError) {
-        if (!cancelled) {
-          console.warn('[enotes group call] active-session restore failed:', restoreError);
-        }
-      } finally {
-        recoveringActiveRef.current = false;
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      recoveringActiveRef.current = false;
-    };
-  }, [
-    conversationId,
-    enabled,
-    getMedia,
-    initialIncoming,
-    myId,
-    send,
-    startWhenOpened,
-  ]);
 
   useEffect(() => {
     if (!startWhenOpened || !enabled || !myId || activeRef.current) return;
