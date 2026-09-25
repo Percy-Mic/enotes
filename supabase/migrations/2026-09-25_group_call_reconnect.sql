@@ -39,8 +39,7 @@ begin
     on cp.call_id = c.id
    and cp.user_id = v_user_id
    and cp.status in ('invited', 'ringing', 'joined')
-  where c.caller_id = v_user_id
-    and c.conversation_id = p_conversation_id
+  where c.conversation_id = p_conversation_id
     and c.metadata ->> 'group_call' = 'true'
     and c.status in ('ringing', 'connecting', 'connected', 'reconnecting')
   order by c.started_at desc
