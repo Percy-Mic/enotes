@@ -310,10 +310,33 @@ export default function GroupCallOverlay({
 
       await getMedia();
 
-      const { data: callId, error: createError } = await supabase.rpc('create_group_call', {
+      let { data: callId, error: createError } = await supabase.rpc('create_group_call', {
         p_conversation_id: conversationId,
         p_media: 'video',
       });
+
+      /*
+       * A browser can disappear without running cleanup (mobile OS
+       * suspension, tab crash, force-close). In that case the durable
+       * calls row can survive even though there is no live WebRTC session.
+       *
+       * Recover only calls older than 90 seconds, then retry once. A
+       * genuinely active call remains protected and still reports the
+       * original error.
+       */
+      if (createError?.code === 'P0001' && createError.message === 'You already have an active group call.') {
+        const { data: recovered, error: recoveryError } = await supabase.rpc(
+          'recover_stale_group_call',
+          { p_conversation_id: conversationId },
+        );
+
+        if (!recoveryError && recovered === true) {
+          ({ data: callId, error: createError } = await supabase.rpc('create_group_call', {
+            p_conversation_id: conversationId,
+            p_media: 'video',
+          }));
+        }
+      }
 
       if (createError || !callId) {
         if (createError) {
