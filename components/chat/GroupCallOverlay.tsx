@@ -497,7 +497,15 @@ export default function GroupCallOverlay({
   useEffect(() => {
     if (!enabled || !conversationId || !myId) return;
 
-    const channel = supabase.channel(`group-call-${conversationId}`);
+    const channel = supabase.channel(`group-call-${conversationId}`, {
+      config: {
+        private: true,
+        broadcast: {
+          self: false,
+          ack: true,
+        },
+      },
+    });
     channel
       .on('broadcast', { event: 'group-call' }, async ({ payload }) => {
         const signal = payload as Signal;
