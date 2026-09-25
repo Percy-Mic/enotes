@@ -393,16 +393,17 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
                   ))}
                 </span>
               )}
-
-              <button
-                onClick={() => {
-                  setReplyTo(replyTo === comment.id ? null : comment.id);
-                  setReplyDraft('');
-                }}
-                className="text-[11px] font-semibold text-[#6B6B6B] hover:underline"
-              >
-                Reply
-              </button>
+              {depth === 0 && (
+                <button
+                  onClick={() => {
+                    setReplyTo(replyTo === comment.id ? null : comment.id);
+                    setReplyDraft('');
+                  }}
+                  className="text-[11px] font-semibold text-[#6B6B6B] hover:underline"
+                >
+                  Reply
+                </button>
+              )}
 
               {myId && (
                 <details className="relative">
@@ -443,8 +444,13 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
                       )
                       .maybeSingle();
                     if (data && !error) {
-                      setComments((list) => [...list, data as unknown as Comment]);
                       onCountChange?.(1);
+
+                      setRepliesOpen((prev) => {
+                        const next = new Set(prev);
+                        next.add(comment.id);
+                        return next;
+                      });
                       if (myId) {
                         /* notify the parent author + post author (once each) */
                         if (comment.author_id !== myId) notify(comment.author_id, myId, 'comment_reply', 'replied to your comment', postId);
@@ -580,7 +586,7 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
               <Smile className="h-4.5 w-4.5" />
             </button>
             {showEmoji && (
-              <div className="absolute bottom-12 left-0 z-30">
+              <div className="absolute bottom-12 left-0 z-40 h-[min(70dvh,520px)] w-[min(92vw,360px)] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl">
                 <EmojiPicker onPick={(e) => { setDraft((d) => d + e); setShowEmoji(false); }} />
               </div>
             )}
@@ -599,7 +605,7 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
               GIF
             </button>
             {showGif && (
-              <div className="absolute bottom-12 left-0 z-30">
+              <div className="absolute bottom-12 left-0 z-40 h-[min(70dvh,520px)] w-[min(92vw,360px)] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl">
                 <GifPicker onPick={(g) => { setGifUrl(g.url); setShowGif(false); }} />
               </div>
             )}
