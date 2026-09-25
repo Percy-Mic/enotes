@@ -430,7 +430,7 @@ export default function GroupCallOverlay({
 
       nextVideoTrack.enabled = cameraEnabled;
 
-      for (const peer of peersRef.current.values()) {
+      for (const peer of Array.from(peersRef.current.values())) {
         const sender = peer.getSenders().find(
           (item) => item.track?.kind === 'video',
         );
