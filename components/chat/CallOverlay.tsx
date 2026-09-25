@@ -112,6 +112,73 @@ export default function CallOverlay() {
     status === 'ended' ||
     status === 'failed';
 
+  if (incoming) {
+    return (
+      <div
+        className="fixed inset-0 z-[240] flex items-start justify-center bg-black/45 p-4 pt-[max(5rem,env(safe-area-inset-top)+1.5rem)] backdrop-blur-sm"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Incoming ${call.media} call from ${call.peerName}`}
+      >
+        <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-[#151113] text-white shadow-2xl ring-1 ring-white/15">
+          <div className="flex items-center gap-3 border-b border-white/10 px-5 py-4">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/15">
+              {showVideo ? (
+                <Camera className="h-5 w-5 text-emerald-300" />
+              ) : (
+                <Phone className="h-5 w-5 text-emerald-300" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium uppercase tracking-wide text-white/45">Incoming call</p>
+              <p className="truncate text-base font-semibold">{call.peerName}</p>
+            </div>
+            <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase text-white/60">
+              {call.media}
+            </span>
+          </div>
+
+          <div className="px-5 py-5 text-center">
+            <Avatar
+              src={call.peerAvatar}
+              name={call.peerName}
+              size={82}
+              className="mx-auto !h-20 !w-20 !text-2xl"
+            />
+            <p className="mt-4 text-sm text-white/60">
+              {showVideo ? 'They are inviting you to a video call.' : 'They are calling you.'}
+            </p>
+
+            {error && (
+              <p className="mt-3 rounded-xl bg-red-500/15 px-3 py-2 text-xs text-red-200">
+                {error}
+              </p>
+            )}
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => void declineCall()}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-red-500/15 px-4 font-semibold text-red-200 transition hover:bg-red-500/25 active:scale-[0.98]"
+              >
+                <PhoneOff className="h-4 w-4" />
+                Decline
+              </button>
+              <button
+                type="button"
+                onClick={() => void acceptCall()}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-4 font-semibold text-white transition hover:bg-emerald-400 active:scale-[0.98]"
+              >
+                <Phone className="h-4 w-4" />
+                Answer
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="fixed inset-0 z-[140] flex min-h-[100dvh] flex-col overflow-hidden bg-[#0D0A0C] text-white"
