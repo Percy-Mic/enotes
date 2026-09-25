@@ -52,6 +52,9 @@ export function GroupCallProvider({
   const [myId, setMyId] = useState<string | null>(suppliedMyId ?? null);
   const [pending, setPending] = useState<PendingRow | null>(null);
   const [outgoingConversationId, setOutgoingConversationId] = useState<string | null>(null);
+  // A restored call is not a new call. Keep it separate from explicit
+  // user-started calls so opening the app can never trigger create_group_call.
+  const [restoredConversationId, setRestoredConversationId] = useState<string | null>(null);
   const loadInFlightRef = useRef(false);
   const restoredActiveRef = useRef(false);
   // Prevent a missing optional recovery RPC from being called every 2.5s.
@@ -113,7 +116,7 @@ export function GroupCallProvider({
         if (!outgoingConversationId) {
           restoredActiveRef.current = true;
           setPending(null);
-          setOutgoingConversationId(active.conversation_id);
+          setRestoredConversationId(active.conversation_id);
           return;
         }
       }
@@ -181,11 +184,13 @@ export function GroupCallProvider({
 
   const startGroupCall = useCallback((conversationId: string) => {
     setPending(null);
+    setRestoredConversationId(null);
     restoredActiveRef.current = false;
     setOutgoingConversationId(conversationId);
   }, []);
 
-  const activeConversationId = outgoingConversationId ?? pending?.conversation_id ?? null;
+  const activeConversationId =
+    outgoingConversationId ?? restoredConversationId ?? pending?.conversation_id ?? null;
 
   const incomingInvite = useMemo<GroupCallInvite | null>(() => {
     if (!pending) return null;
@@ -215,6 +220,7 @@ export function GroupCallProvider({
 
   const closeOverlay = useCallback(() => {
     setOutgoingConversationId(null);
+    setRestoredConversationId(null);
     void loadPending();
   }, [loadPending]);
 
@@ -235,6 +241,8 @@ export function GroupCallProvider({
           myId={myId}
           members={members}
           enabled
+          // Only an explicit Start button sets outgoingConversationId.
+          // Restored calls must mount without calling startCall().
           startWhenOpened={Boolean(outgoingConversationId)}
           initialIncoming={
             pending?.conversation_id === activeConversationId
