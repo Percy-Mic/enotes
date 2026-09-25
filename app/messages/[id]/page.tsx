@@ -18,6 +18,7 @@ import MediaGallery from '@/components/chat/MediaGallery';
 import ForwardSheet from '@/components/chat/ForwardSheet';
 import ReportDialog from '@/components/social/ReportDialog';
 import { useCall } from '@/components/chat/CallProvider';
+import GroupCallOverlay from '@/components/chat/GroupCallOverlay';
 
 const PAGE_SIZE = 30;
 const ICON_MAX_BYTES = 5 * 1024 * 1024;
@@ -82,6 +83,7 @@ function ChatRoom() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasOlder, setHasOlder] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
+  const [showGroupCall, setShowGroupCall] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [showMedia, setShowMedia] = useState(false);
@@ -145,6 +147,10 @@ function ChatRoom() {
       ? conversation.title || 'Group chat'
       : otherMember?.full_text_name || otherMember?.username || 'Conversation'
     : '…';
+
+  useEffect(() => {
+    if (conversation?.is_group) void loadMembers();
+  }, [conversation?.is_group, loadMembers]);
 
   /* creator + admins may rename / change icon / manage roles (DB enforces too) */
   const amGroupAdmin = conversation?.is_group === true && (conversation.created_by === me || myRole === 'admin' || myRole === 'moderator');
@@ -998,6 +1004,17 @@ function ChatRoom() {
       />
 
       {/* members sheet */}
+      <GroupCallOverlay
+        conversationId={conversationId}
+        myId={me}
+        members={groupMembers}
+        enabled={conversation?.is_group === true}
+      />
+
+      {showGroupCall && conversation?.is_group && (
+        <div className="fixed inset-0 z-[205] bg-transparent" onClick={() => setShowGroupCall(false)} aria-hidden="true" />
+      )}
+
       {showMembers && conversation?.is_group && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={() => setShowMembers(false)}>
           <div className="max-h-[75dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Group members">
