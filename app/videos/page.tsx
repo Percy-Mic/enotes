@@ -115,12 +115,12 @@ export default function VideosPage() {
         let nextIndex = activeIndex;
         let bestRatio = ratios.get(activeIndex) ?? 0;
 
-        for (const [index, ratio] of ratios) {
+        ratios.forEach((ratio, index) => {
           if (ratio > bestRatio) {
             bestRatio = ratio;
             nextIndex = index;
           }
-        }
+        });
 
         if (bestRatio >= 0.55 && nextIndex !== activeIndex) {
           setActiveIndex(nextIndex);
