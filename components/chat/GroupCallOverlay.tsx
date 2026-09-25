@@ -316,7 +316,7 @@ export default function GroupCallOverlay({
       channelRef.current = null;
       cleanup(false);
     };
-  }, [cleanup, closePeer, conversationId, createPeer, enabled, incoming, makeOffer, myId, send]);
+  }, [cleanup, closePeer, conversationId, createPeer, enabled, makeOffer, myId, send]);
 
   const leave = useCallback(() => {
     if (!activeRef.current) return;
