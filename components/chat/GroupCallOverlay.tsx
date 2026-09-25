@@ -82,6 +82,7 @@ export default function GroupCallOverlay({
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [callMembers, setCallMembers] = useState<GroupCallMember[]>(members);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const peersRef = useRef(new Map<string, RTCPeerConnection>());
@@ -89,9 +90,13 @@ export default function GroupCallOverlay({
   const activeRef = useRef<typeof active>(null);
   const endingRef = useRef(false);
 
+  useEffect(() => {
+    setCallMembers(members);
+  }, [members]);
+
   const memberMap = useMemo(
-    () => new Map(members.map((member) => [member.user_id, member])),
-    [members],
+    () => new Map(callMembers.map((member) => [member.user_id, member])),
+    [callMembers],
   );
 
   useEffect(() => {
@@ -205,20 +210,43 @@ export default function GroupCallOverlay({
   }, []);
 
   const startCall = useCallback(async () => {
-    if (!myId || activeRef.current || members.filter((m) => m.user_id !== myId).length === 0) return;
+    if (!myId || activeRef.current) return;
+
     try {
       setError(null);
-      const stream = await getMedia();
+
+      let targets = callMembers.filter((member) => member.user_id !== myId);
+      if (targets.length === 0) {
+        const { data } = await supabase
+          .from('conversation_members')
+          .select('user_id, profiles!conversation_members_user_id_fkey(id, full_text_name, username, avatar_url)')
+          .eq('conversation_id', conversationId);
+
+        targets = ((data || []) as any[])
+          .map((row) => ({
+            user_id: row.user_id,
+            profile: row.profiles || null,
+          }))
+          .filter((member) => member.user_id !== myId) as GroupCallMember[];
+
+        setCallMembers(targets.concat([{ user_id: myId }]));
+      }
+
+      if (targets.length === 0) {
+        setError('This group has no other members to call.');
+        return;
+      }
+
+      await getMedia();
       const callId = crypto.randomUUID();
       setActive({ callId, hostId: myId });
       activeRef.current = { callId, hostId: myId };
 
       await send({ type: 'invite', callId });
-      void stream;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the group video call.');
     }
-  }, [getMedia, members, myId, send]);
+  }, [callMembers, conversationId, getMedia, myId, send]);
 
   const acceptIncoming = useCallback(async () => {
     const call = incoming;
