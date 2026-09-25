@@ -57,7 +57,7 @@ export async function POST(req: Request) {
 
   /* Respect the recipient's notification preferences: when every notify_*
      setting is off, push stays silent (parity with the Edge Function). */
-  if (targets.length > 0 && (await allNotificationsOff(body.userId))) {
+  if (body.type !== 'call' && targets.length > 0 && (await allNotificationsOff(body.userId))) {
     return NextResponse.json({ delivered: 0, removed: 0, skipped: 'all notification preferences off' });
   }
 
