@@ -34,6 +34,7 @@ self.addEventListener('push', (event) => {
   }
 
   const title = data.title || 'enotes';
+  const isCall = data.type === 'call';
   const options = {
     body: data.body || '',
     icon: data.icon || '/icon.svg',
