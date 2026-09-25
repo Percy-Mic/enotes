@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CameraOff, Mic, MicOff, PhoneOff, Video, VideoOff, X } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Video, VideoOff, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ICE_SERVERS } from '@/lib/calls/config';
 
