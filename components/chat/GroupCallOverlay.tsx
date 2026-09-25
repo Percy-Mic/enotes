@@ -91,6 +91,7 @@ export default function GroupCallOverlay({
   const localRef = useRef<MediaStream | null>(null);
   const activeRef = useRef<typeof active>(null);
   const endingRef = useRef(false);
+  const startingRef = useRef(false);
 
   useEffect(() => {
     setCallMembers(members);
@@ -195,15 +196,31 @@ export default function GroupCallOverlay({
   }, [myId, send, stopLocal]);
 
   const getMedia = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      video: {
-        facingMode: 'user',
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        frameRate: { ideal: 30, max: 30 },
-      },
-    });
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Camera and microphone access is not available in this browser.');
+    }
+
+    let stream: MediaStream;
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: {
+          facingMode: { ideal: 'user' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30, max: 30 },
+        },
+      });
+    } catch {
+      // Some mobile browsers reject the preferred resolution even though the
+      // camera itself is available. Retry with a minimal camera constraint.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: { facingMode: 'user' },
+      });
+    }
+
     localRef.current = stream;
     setLocalStream(stream);
     setMicEnabled(stream.getAudioTracks().some((track) => track.enabled));
@@ -214,7 +231,9 @@ export default function GroupCallOverlay({
   }, []);
 
   const startCall = useCallback(async () => {
-    if (!myId || activeRef.current) return;
+    if (!myId || activeRef.current || startingRef.current) return;
+
+    startingRef.current = true;
 
     try {
       setError(null);
@@ -249,12 +268,17 @@ export default function GroupCallOverlay({
       await send({ type: 'invite', callId });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the group video call.');
+    } finally {
+      startingRef.current = false;
     }
   }, [callMembers, conversationId, getMedia, myId, send]);
 
   const acceptIncoming = useCallback(async () => {
     const call = incoming;
-    if (!call || !myId) return;
+    if (!call || !myId || startingRef.current) return;
+
+    startingRef.current = true;
+
     try {
       setError(null);
       await getMedia();
@@ -264,6 +288,8 @@ export default function GroupCallOverlay({
       await send({ type: 'accept', callId: call.callId, to: call.from });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not join the group video call.');
+    } finally {
+      startingRef.current = false;
     }
   }, [getMedia, incoming, myId, send]);
 
