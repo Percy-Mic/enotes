@@ -53,6 +53,7 @@ export function GroupCallProvider({
   const [pending, setPending] = useState<PendingRow | null>(null);
   const [outgoingConversationId, setOutgoingConversationId] = useState<string | null>(null);
   const loadInFlightRef = useRef(false);
+  const restoredActiveRef = useRef(false);
 
   useEffect(() => {
     if (suppliedMyId !== undefined) {
@@ -75,6 +76,28 @@ export function GroupCallProvider({
     loadInFlightRef.current = true;
 
     try {
+      const { data: activeRows, error: activeError } = await supabase.rpc(
+        'get_my_active_group_calls',
+      );
+
+      if (!activeError && Array.isArray(activeRows) && activeRows.length > 0) {
+        const active = activeRows[0] as {
+          call_id: string;
+          conversation_id: string;
+          host_id: string;
+          media: 'audio' | 'video';
+          status: string;
+          role: string;
+        };
+
+        if (!outgoingConversationId) {
+          restoredActiveRef.current = true;
+          setPending(null);
+          setOutgoingConversationId(active.conversation_id);
+          return;
+        }
+      }
+
       const { data, error } = await supabase.rpc('get_pending_group_calls');
       if (error) {
         console.warn('[enotes group call] pending-call lookup failed:', error.message);
@@ -138,6 +161,7 @@ export function GroupCallProvider({
 
   const startGroupCall = useCallback((conversationId: string) => {
     setPending(null);
+    restoredActiveRef.current = false;
     setOutgoingConversationId(conversationId);
   }, []);
 
