@@ -210,6 +210,9 @@ export function CallProvider({
   const applyingAnswerRef =
     useRef(false);
 
+  const restartingIceRef =
+    useRef(false);
+
   const setCurrentCall = useCallback(
     (value: ActiveCall | null) => {
       callRef.current = value;
@@ -614,6 +617,53 @@ export function CallProvider({
     [myId],
   );
 
+  const restartIce = useCallback(
+    async (reason = 'network_changed') => {
+      const current = callRef.current;
+      const peer = peerRef.current;
+
+      if (
+        !current ||
+        !peer ||
+        current.direction !== 'outgoing' ||
+        peer.connectionState === 'closed' ||
+        restartingIceRef.current ||
+        peer.signalingState !== 'stable'
+      ) {
+        return;
+      }
+
+      restartingIceRef.current = true;
+
+      try {
+        setCurrentStatus('reconnecting');
+        await updateCallStatus(current.callId, 'reconnecting', {
+          connection_state: 'reconnecting',
+        });
+
+        peer.restartIce();
+        const offer = await peer.createOffer({ iceRestart: true });
+        await peer.setLocalDescription(offer);
+
+        await sendSignal({
+          type: 'offer',
+          sdp: peer.localDescription?.sdp ?? offer.sdp,
+          iceRestart: true,
+          reason,
+        });
+
+        await recordCallEvent(current.callId, 'ice_restart_requested', {
+          reason,
+        });
+      } catch (restartError) {
+        console.warn('[enotes calls] ICE restart failed:', restartError);
+      } finally {
+        restartingIceRef.current = false;
+      }
+    },
+    [recordCallEvent, sendSignal, setCurrentStatus, updateCallStatus],
+  );
+
   const createPeer = useCallback(
     (callData: ActiveCall) => {
       if (peerRef.current) {
@@ -821,6 +871,14 @@ export function CallProvider({
             setCurrentStatus(
               'reconnecting',
             );
+
+            if (callData.direction === 'outgoing') {
+              void restartIce('ice_failed');
+            } else {
+              void sendControl({
+                type: 'restart-request',
+              });
+            }
           }
         };
 
@@ -834,8 +892,31 @@ export function CallProvider({
       setCurrentStatus,
       updateCallStatus,
       updateParticipant,
+      restartIce,
+      sendControl,
     ],
   );
+
+  useEffect(() => {
+    if (!call || (status !== 'connected' && status !== 'reconnecting')) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      const peer = peerRef.current;
+      if (!peer || peer.connectionState === 'closed') return;
+
+      if (peer.iceConnectionState === 'failed') {
+        if (call.direction === 'outgoing') {
+          void restartIce('periodic_ice_failure_check');
+        } else {
+          void sendControl({ type: 'restart-request' });
+        }
+      }
+    }, 5000);
+
+    return () => window.clearInterval(timer);
+  }, [call, restartIce, sendControl, status]);
 
   const cleanup = useCallback(
     async () => {
@@ -1050,6 +1131,7 @@ export function CallProvider({
       myId,
       sendSignal,
       updateCallStatus,
+      restartIce,
     ],
   );
 
@@ -1063,6 +1145,13 @@ export function CallProvider({
         !payload ||
         payload.from === myId
       ) {
+        return;
+      }
+
+      if (payload.type === 'restart-request') {
+        if (current.direction === 'outgoing') {
+          await restartIce('remote_requested');
+        }
         return;
       }
 
@@ -1262,6 +1351,7 @@ export function CallProvider({
       setCurrentStatus,
       updateCallStatus,
       updateParticipant,
+      restartIce,
     ],
   );
 
