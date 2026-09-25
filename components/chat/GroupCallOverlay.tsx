@@ -20,6 +20,8 @@ interface GroupCallOverlayProps {
   myId: string | null;
   members: GroupCallMember[];
   enabled: boolean;
+  startWhenOpened?: boolean;
+  onClose?: () => void;
 }
 
 type Signal = {
@@ -70,6 +72,8 @@ export default function GroupCallOverlay({
   myId,
   members,
   enabled,
+  startWhenOpened = false,
+  onClose,
 }: GroupCallOverlayProps) {
   const [active, setActive] = useState<{ callId: string; hostId: string } | null>(null);
   const [incoming, setIncoming] = useState<Signal | null>(null);
@@ -319,11 +323,20 @@ export default function GroupCallOverlay({
   }, [cleanup, closePeer, conversationId, createPeer, enabled, makeOffer, myId, send]);
 
   const leave = useCallback(() => {
-    if (!activeRef.current) return;
+    if (!activeRef.current) {
+      onClose?.();
+      return;
+    }
     endingRef.current = true;
     void send({ type: 'leave', callId: activeRef.current.callId });
     cleanup(false);
-  }, [cleanup, send]);
+    onClose?.();
+  }, [cleanup, onClose, send]);
+
+  useEffect(() => {
+    if (!startWhenOpened || !enabled || !myId || activeRef.current) return;
+    void startCall();
+  }, [enabled, myId, startCall, startWhenOpened]);
 
   const toggleMic = () => {
     const next = !micEnabled;
