@@ -197,8 +197,9 @@ export function GroupCallProvider({
           myId={myId}
           members={members}
           enabled
-          // Only an explicit Start button may start a call. An incoming
-          // invitation only renders the Join/Decline prompt.
+          // Start only when the user explicitly clicked the group video
+          // button. Incoming invitations never auto-join.
+          startWhenOpened={Boolean(outgoingConversationId)}
           initialIncoming={
             pending?.conversation_id === activeConversationId
               ? incomingInvite
