@@ -44,6 +44,43 @@ export default function FeedPage() {
   const [linkUrl, setLinkUrl] = useState('');
   const [linkPreview, setLinkPreview] = useState('');
 
+  /* Close transient composer drawers when focus moves away. */
+  useEffect(() => {
+    if (!showEmoji && !showGif) return;
+
+    const closePickers = () => {
+      setShowEmoji(false);
+      setShowGif(false);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (composerPickerRef.current && target && composerPickerRef.current.contains(target)) return;
+      closePickers();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closePickers();
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('scroll', closePickers, true);
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scroll', closePickers, true);
+    };
+  }, [showEmoji, showGif]);
+
+  useEffect(() => {
+    if (!composerOpen) {
+      setShowEmoji(false);
+      setShowGif(false);
+    }
+  }, [composerOpen]);
+
   /* default visibility from user settings */
   const { settings: mySettings } = useUserSettings(me?.id || null);
   useEffect(() => {
@@ -55,6 +92,7 @@ export default function FeedPage() {
   const [mediaPreview, setMediaPreview] = useState<string>('');
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
+  const composerPickerRef = useRef<HTMLDivElement>(null);
 
   /* Stories */
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>([]);
@@ -549,8 +587,16 @@ export default function FeedPage() {
                     <Smile className="h-4 w-4" />
                   </button>
                   {showEmoji && (
-                    <div className="fixed inset-x-2 bottom-2 z-50 flex justify-center sm:absolute sm:inset-x-auto sm:bottom-11 sm:left-0 sm:block">
-                      <EmojiPicker onPick={(emoji) => { setDraft((d) => d + emoji); }} />
+                    <div ref={composerPickerRef} className="fixed inset-x-2 bottom-20 z-[100] mx-auto flex h-[min(70dvh,520px)] w-[calc(100vw-1rem)] max-w-[360px] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl sm:absolute sm:bottom-11 sm:left-0 sm:right-auto sm:inset-x-auto sm:mx-0">
+                      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#F0EAEC] px-3">
+                        <span className="text-xs font-bold text-[#6B6B6B]">Emoji</span>
+                        <button type="button" onClick={() => setShowEmoji(false)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Close emoji picker">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-hidden">
+                        <EmojiPicker onPick={(emoji) => { setDraft((d) => d + emoji); setShowEmoji(false); }} />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -565,8 +611,16 @@ export default function FeedPage() {
                     GIF
                   </button>
                   {showGif && (
-                    <div className="fixed inset-x-2 bottom-2 z-50 flex justify-center sm:absolute sm:inset-x-auto sm:bottom-11 sm:left-0 sm:block">
-                      <GifPicker onPick={(gif) => { setGifItem(gif); setShowGif(false); }} />
+                    <div ref={composerPickerRef} className="fixed inset-x-2 bottom-20 z-[100] mx-auto flex h-[min(70dvh,520px)] w-[calc(100vw-1rem)] max-w-[360px] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl sm:absolute sm:bottom-11 sm:left-0 sm:right-auto sm:inset-x-auto sm:mx-0">
+                      <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#F0EAEC] px-3">
+                        <span className="text-xs font-bold text-[#6B6B6B]">GIFs</span>
+                        <button type="button" onClick={() => setShowGif(false)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Close GIF picker">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="min-h-0 flex-1 overflow-hidden">
+                        <GifPicker onPick={(gif) => { setGifItem(gif); setShowGif(false); }} />
+                      </div>
                     </div>
                   )}
                 </div>
