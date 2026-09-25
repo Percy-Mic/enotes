@@ -382,8 +382,8 @@ create or replace function public.notify_call_push()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
-as $$
+set search_path = ''
+as $
 declare
   endpoint text;
   secret text;
@@ -463,8 +463,8 @@ create or replace function public.notify_group_call_push()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
-as $$
+set search_path = ''
+as $
 declare
   endpoint text;
   secret text;
