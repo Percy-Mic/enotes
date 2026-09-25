@@ -54,7 +54,7 @@ create index if not exists idx_call_events_call_created
 -- Remove any older overloads left behind by an earlier version of this migration.
 -- PostgREST can reject RPC calls when multiple overloads match the named
 -- arguments, so keep exactly one public create_group_call signature.
-do $
+do $$
 declare
   r record;
 begin
@@ -67,7 +67,7 @@ begin
     execute 'drop function if exists ' || r.identity::text;
   end loop;
 end;
-$;
+$$;
 
 -- Group calls use calls.callee_id as the host for compatibility with
 -- the existing 1:1 calls schema. metadata.group_call distinguishes them.
