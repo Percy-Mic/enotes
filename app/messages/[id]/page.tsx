@@ -896,8 +896,8 @@ function ChatRoom() {
               startGroupCall(conversationId);
             }}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#6B6B6B] transition hover:bg-gray-100"
-            aria-label="Start group video call"
-            title="Start group video call"
+            aria-label="Invite group to video call"
+            title="Invite group to video call"
           >
             <Video className="h-5 w-5" />
           </button>
