@@ -196,7 +196,7 @@ begin
             'username', mp.username,
             'avatar_url', mp.avatar_url
           )
-          order by cm.joined_at nulls last, cm.created_at
+          order by cm.joined_at nulls last
         )
         from public.conversation_members cm
         join public.profiles mp on mp.id = cm.user_id
