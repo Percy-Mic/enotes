@@ -99,36 +99,55 @@ export default function VideosPage() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && entry.intersectionRatio > 0.6) {
-            const index = Number((entry.target as HTMLElement).dataset.index);
-            if (!Number.isNaN(index)) {
-              setActiveIndex(index);
-            }
+        let bestIndex = activeIndex;
+        let bestRatio = 0;
+
+        for (const entry of entries) {
+          const index = Number((entry.target as HTMLElement).dataset.index);
+          if (Number.isNaN(index)) continue;
+          if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
+            bestRatio = entry.intersectionRatio;
+            bestIndex = index;
           }
-        });
+        }
+
+        if (bestRatio >= 0.55 && bestIndex !== activeIndex) {
+          setActiveIndex(bestIndex);
+        }
       },
-      { root: container, threshold: [0.6] },
+      {
+        root: container,
+        threshold: [0.15, 0.35, 0.55, 0.75, 0.9],
+      },
     );
 
     const items = container.querySelectorAll('[data-index]');
     items.forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [videos]);
+  }, [videos, activeIndex]);
 
-  /* Play / pause based on active index */
+  /* Only the most visible video may play. Videos are muted so mobile browsers
+     can actually autoplay; tapping a video still lets the user pause/resume. */
   useEffect(() => {
-    videoRefs.current.forEach((video, i) => {
-      if (!video) return;
-      if (i === activeIndex) {
-        video.play().catch(() => {
-          /* autoplay blocked until first interaction — that's fine */
-        });
-      } else {
-        video.pause();
-        video.currentTime = 0;
-      }
-    });
+    const syncPlayback = () => {
+      videoRefs.current.forEach((video, i) => {
+        if (!video) return;
+
+        if (i === activeIndex && document.visibilityState === 'visible') {
+          video.muted = true;
+          void video.play().catch(() => undefined);
+        } else {
+          video.pause();
+          if (i !== activeIndex) video.currentTime = 0;
+        }
+      });
+    };
+
+    syncPlayback();
+
+    const onVisibility = () => syncPlayback();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [activeIndex]);
 
   const toggleLike = useCallback(
@@ -306,13 +325,16 @@ export default function VideosPage() {
                   }}
                   src={post.media_url || ''}
                   loop
-                  muted={false}
+                  muted={true}
                   playsInline
                   preload={isActive ? 'auto' : 'metadata'}
                   onEnded={() => scrollBy(1)}
+                  onCanPlay={(e) => {
+                    if (i === activeIndex) void e.currentTarget.play().catch(() => undefined);
+                  }}
                   onClick={(e) => {
                     const v = e.currentTarget;
-                    if (v.paused) v.play();
+                    if (v.paused) void v.play().catch(() => undefined);
                     else v.pause();
                   }}
                   className="h-full w-full object-contain sm:w-auto sm:max-w-[min(100dvh*0.5625,100vw)]"
