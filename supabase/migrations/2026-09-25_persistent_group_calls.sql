@@ -426,7 +426,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   endpoint text;
   secret text;
@@ -507,7 +507,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   endpoint text;
   secret text;
