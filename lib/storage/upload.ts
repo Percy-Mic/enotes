@@ -144,7 +144,39 @@ export function uploadFileWithProgress(
             reject(new Error(msg));
           }
         };
-        xhr.onerror = () => reject(new Error('Network error during upload.'));
+        xhr.onerror = () => {
+          /* XHR uploads can fail on some mobile browsers because of CORS,
+             network handoffs, or privacy filters even though the Supabase
+             client itself can upload successfully. Retry through supabase-js
+             with a fresh path so a partially-created object cannot collide. */
+          const retryPath = userId + '/' + crypto.randomUUID() + '.' + ext;
+          setTimeout(async () => {
+            try {
+              onProgress(8);
+              const { error: retryError } = await supabase.storage
+                .from(context)
+                .upload(retryPath, file, { upsert: false, contentType: file.type });
+
+              if (retryError) throw retryError;
+
+              const isPrivate = context === 'journal-media' || context === 'chat-media';
+              if (isPrivate) {
+                const { data, error } = await supabase.storage
+                  .from(context)
+                  .createSignedUrl(retryPath, 60 * 60 * 24 * 7);
+                if (error || !data) throw error || new Error('Could not create file URL.');
+                onProgress(100);
+                resolve({ url: data.signedUrl, path: retryPath, bucket: context, isPrivate });
+              } else {
+                const { data } = supabase.storage.from(context).getPublicUrl(retryPath);
+                onProgress(100);
+                resolve({ url: data.publicUrl, path: retryPath, bucket: context, isPrivate });
+              }
+            } catch (retryError) {
+              reject(retryError instanceof Error ? retryError : new Error('Network error during upload.'));
+            }
+          }, 0);
+        };
         xhr.send(file);
       } catch (e) {
         reject(e instanceof Error ? e : new Error('Upload failed.'));
