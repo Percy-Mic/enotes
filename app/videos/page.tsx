@@ -94,9 +94,11 @@ export default function VideosPage() {
     })();
   }, [router]);
 
-  /* Track every video's visibility and activate whichever item is most visible.
-     This keeps autoplay/auto-stop consistent even when several entries change
-     during a fast swipe on mobile. */
+  /* Scroll-driven autoplay:
+     - the most visible video becomes active
+     - the active video starts automatically
+     - videos leaving the viewport are paused and reset
+     - adjacent videos are preloaded for fast swipes */
   useEffect(() => {
     const container = containerRef.current;
     if (!container || videos.length === 0) return;
@@ -104,35 +106,58 @@ export default function VideosPage() {
     const ratios = intersectionRatiosRef.current;
     ratios.clear();
 
+    const getMostVisibleIndex = () => {
+      const containerRect = container.getBoundingClientRect();
+      let bestIndex = activeIndex;
+      let bestRatio = 0;
+
+      container.querySelectorAll<HTMLElement>('[data-index]').forEach((section) => {
+        const rect = section.getBoundingClientRect();
+        const visibleTop = Math.max(rect.top, containerRect.top);
+        const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
+        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+        const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
+        const index = Number(section.dataset.index);
+
+        if (!Number.isNaN(index)) {
+          ratios.set(index, ratio);
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestIndex = index;
+          }
+        }
+      });
+
+      return { bestIndex, bestRatio };
+    };
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const index = Number((entry.target as HTMLElement).dataset.index);
-          if (Number.isNaN(index)) continue;
-          ratios.set(index, entry.isIntersecting ? entry.intersectionRatio : 0);
+          if (!Number.isNaN(index)) {
+            ratios.set(index, entry.isIntersecting ? entry.intersectionRatio : 0);
+          }
         }
 
-        let nextIndex = activeIndex;
-        let bestRatio = ratios.get(activeIndex) ?? 0;
-
-        ratios.forEach((ratio, index) => {
-          if (ratio > bestRatio) {
-            bestRatio = ratio;
-            nextIndex = index;
-          }
-        });
-
-        if (bestRatio >= 0.55 && nextIndex !== activeIndex) {
-          setActiveIndex(nextIndex);
+        const { bestIndex, bestRatio } = getMostVisibleIndex();
+        if (bestRatio >= 0.5 && bestIndex !== activeIndex) {
+          setActiveIndex(bestIndex);
         }
       },
       {
         root: container,
-        threshold: [0, 0.15, 0.35, 0.55, 0.75, 0.9, 1],
+        threshold: [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1],
       },
     );
 
     container.querySelectorAll<HTMLElement>('[data-index]').forEach((el) => observer.observe(el));
+
+    requestAnimationFrame(() => {
+      const { bestIndex } = getMostVisibleIndex();
+      if (bestIndex !== activeIndex) setActiveIndex(bestIndex);
+    });
+
     return () => observer.disconnect();
   }, [videos, activeIndex]);
 
@@ -364,10 +389,18 @@ export default function VideosPage() {
                   loop
                   muted={!isActive || !soundEnabled}
                   playsInline
-                  preload={isActive ? 'auto' : 'metadata'}
+                  autoPlay
+                  preload={isActive || Math.abs(i - activeIndex) <= 1 ? 'auto' : 'metadata'}
                   onEnded={() => scrollBy(1)}
+                  onLoadedData={(e) => {
+                    if (i === activeIndex && document.visibilityState === 'visible') {
+                      void e.currentTarget.play().catch(() => undefined);
+                    }
+                  }}
                   onCanPlay={(e) => {
-                    if (i === activeIndex) void e.currentTarget.play().catch(() => undefined);
+                    if (i === activeIndex && document.visibilityState === 'visible') {
+                      void e.currentTarget.play().catch(() => undefined);
+                    }
                   }}
                   onClick={(e) => {
                     const v = e.currentTarget;
