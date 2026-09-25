@@ -73,18 +73,67 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
   const mentionField = useRef<'draft' | 'reply'>('draft');
   const mentionQuerySeq = useRef(0);
   const listRef = useRef<HTMLDivElement>(null);
+  const pickerHostRef = useRef<HTMLDivElement>(null);
+  const pickerIdRef = useRef(`comment-picker-${Math.random().toString(36).slice(2)}`);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setMyId(user?.id || null));
   }, []);
 
-  /* tap/click outside closes the reaction picker */
+  /* Close transient UI when focus moves away, Escape is pressed, or the page scrolls. */
   useEffect(() => {
-    if (!reactionFor) return;
-    const close = () => setReactionFor(null);
-    document.addEventListener('pointerdown', close);
-    return () => document.removeEventListener('pointerdown', close);
-  }, [reactionFor]);
+    if (!reactionFor && !showEmoji && !showGif) return;
+
+    const closeTransient = () => {
+      setReactionFor(null);
+      setShowEmoji(false);
+      setShowGif(false);
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (pickerHostRef.current && target && pickerHostRef.current.contains(target)) return;
+      closeTransient();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeTransient();
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('scroll', closeTransient, true);
+
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scroll', closeTransient, true);
+    };
+  }, [reactionFor, showEmoji, showGif]);
+
+  /* Only one GIF/emoji drawer should remain open across recursively-rendered threads. */
+  useEffect(() => {
+    const onPickerOpen = (event: Event) => {
+      const custom = event as CustomEvent<string>;
+      if (custom.detail === pickerIdRef.current) return;
+      setShowEmoji(false);
+      setShowGif(false);
+    };
+    window.addEventListener('enotes:comment-picker-open', onPickerOpen);
+    return () => window.removeEventListener('enotes:comment-picker-open', onPickerOpen);
+  }, []);
+
+  const openPicker = (picker: 'emoji' | 'gif') => {
+    window.dispatchEvent(new CustomEvent('enotes:comment-picker-open', { detail: pickerIdRef.current }));
+    setReactionFor(null);
+    if (picker === 'emoji') {
+      setShowEmoji((v) => !v);
+      setShowGif(false);
+    } else {
+      setShowGif((v) => !v);
+      setShowEmoji(false);
+    }
+  };
 
   /* @-autocomplete: suggest profiles while the text ends with a partial @handle */
   const trackMentions = (text: string, field: 'draft' | 'reply') => {
@@ -393,17 +442,15 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
                   ))}
                 </span>
               )}
-              {depth === 0 && (
-                <button
-                  onClick={() => {
-                    setReplyTo(replyTo === comment.id ? null : comment.id);
-                    setReplyDraft('');
-                  }}
-                  className="text-[11px] font-semibold text-[#6B6B6B] hover:underline"
-                >
-                  Reply
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setReplyTo(replyTo === comment.id ? null : comment.id);
+                  setReplyDraft('');
+                }}
+                className="text-[11px] font-semibold text-[#6B6B6B] hover:underline"
+              >
+                Reply
+              </button>
 
               {myId && (
                 <details className="relative">
@@ -481,23 +528,27 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
               </form>
             )}
 
-            {/* Nested replies (depth 1 only — deeper collapses to flat) */}
-            {depth === 0 && (
-              <>
-                <button
-                  onClick={() => openReplies(comment)}
-                  className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-[#6B6B6B] hover:underline"
-                >
-                  <ChevronDown className={`h-3.5 w-3.5 transition ${repliesOpen.has(comment.id) ? 'rotate-180' : ''}`} />
-                  {repliesOpen.has(comment.id) ? 'Hide replies' : 'View replies'}
-                </button>
-                {repliesOpen.has(comment.id) && (
-                  <div className="mt-2 border-l-2 border-[#F0EAEC] pl-3">
-                    <CommentThread postId={postId} parentComment={comment} depth={1} onCountChange={onCountChange} />
-                  </div>
-                )}
-              </>
-            )}
+            {/* Recursive replies: every reply can have its own replies. */}
+            <>
+              <button
+                onClick={() => openReplies(comment)}
+                className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-[#6B6B6B] hover:underline"
+              >
+                <ChevronDown className={`h-3.5 w-3.5 transition ${repliesOpen.has(comment.id) ? 'rotate-180' : ''}`} />
+                {repliesOpen.has(comment.id) ? 'Hide replies' : 'View replies'}
+              </button>
+              {repliesOpen.has(comment.id) && (
+                <div className="mt-2 border-l-2 border-[#F0EAEC] pl-3">
+                  <CommentThread
+                    postId={postId}
+                    postAuthorId={postAuthorId}
+                    parentComment={comment}
+                    depth={depth + 1}
+                    onCountChange={onCountChange}
+                  />
+                </div>
+              )}
+            </>
           </div>
         </div>
       </li>
@@ -572,41 +623,51 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
           </div>
         )}
         <div className="flex items-center gap-2">
-          <div className="relative">
+          <div ref={pickerHostRef} className="contents">
             <button
               type="button"
-              onClick={() => {
-                setShowEmoji((v) => !v);
-                setShowGif(false);
-              }}
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#E8E2E4] text-[#6B6B6B] transition hover:bg-gray-50"
+              onClick={() => openPicker('emoji')}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#E8E2E4] text-[#6B6B6B] transition hover:bg-gray-50"
               aria-label="Add emoji"
               aria-expanded={showEmoji}
             >
               <Smile className="h-4.5 w-4.5" />
             </button>
-            {showEmoji && (
-              <div className="absolute bottom-12 left-0 z-40 h-[min(70dvh,520px)] w-[min(92vw,360px)] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl">
-                <EmojiPicker onPick={(e) => { setDraft((d) => d + e); setShowEmoji(false); }} />
-              </div>
-            )}
-          </div>
-          <div className="relative">
             <button
               type="button"
-              onClick={() => {
-                setShowGif((v) => !v);
-                setShowEmoji(false);
-              }}
-              className="flex h-10 items-center justify-center rounded-full border border-[#E8E2E4] px-3 text-xs font-bold text-[#6B6B6B] transition hover:bg-gray-50"
+              onClick={() => openPicker('gif')}
+              className="flex h-10 shrink-0 items-center justify-center rounded-full border border-[#E8E2E4] px-3 text-xs font-bold text-[#6B6B6B] transition hover:bg-gray-50"
               aria-label="Add GIF"
               aria-expanded={showGif}
             >
               GIF
             </button>
+
+            {showEmoji && (
+              <div className="fixed inset-x-2 bottom-20 z-[100] mx-auto flex h-[min(70dvh,520px)] w-[calc(100vw-1rem)] max-w-[360px] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl sm:absolute sm:bottom-12 sm:left-0 sm:right-auto sm:inset-x-auto sm:mx-0">
+                <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#F0EAEC] px-3">
+                  <span className="text-xs font-bold text-[#6B6B6B]">Emoji</span>
+                  <button type="button" onClick={() => setShowEmoji(false)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Close emoji picker">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <EmojiPicker onPick={(e) => { setDraft((d) => d + e); setShowEmoji(false); }} />
+                </div>
+              </div>
+            )}
+
             {showGif && (
-              <div className="absolute bottom-12 left-0 z-40 h-[min(70dvh,520px)] w-[min(92vw,360px)] max-w-[calc(100vw-1rem)] overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl">
-                <GifPicker onPick={(g) => { setGifUrl(g.url); setShowGif(false); }} />
+              <div className="fixed inset-x-2 bottom-20 z-[100] mx-auto flex h-[min(70dvh,520px)] w-[calc(100vw-1rem)] max-w-[360px] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-2xl sm:absolute sm:bottom-12 sm:left-0 sm:right-auto sm:inset-x-auto sm:mx-0">
+                <div className="flex h-11 shrink-0 items-center justify-between border-b border-[#F0EAEC] px-3">
+                  <span className="text-xs font-bold text-[#6B6B6B]">GIFs</span>
+                  <button type="button" onClick={() => setShowGif(false)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Close GIF picker">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <GifPicker onPick={(g) => { setGifUrl(g.url); setShowGif(false); }} />
+                </div>
               </div>
             )}
           </div>
