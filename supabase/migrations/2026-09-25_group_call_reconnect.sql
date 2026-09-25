@@ -93,4 +93,72 @@ $$;
 revoke execute on function public.get_my_active_group_calls() from public, anon;
 grant execute on function public.get_my_active_group_calls() to authenticated;
 
+-- ============================================================
+-- PRIVATE WEBRTC SIGNALING CHANNELS
+--
+-- SDP/ICE signaling is ephemeral and must only be available to users who
+-- are participants in the corresponding DM or group conversation.
+-- ============================================================
+
+drop policy if exists "enotes call signaling read" on realtime.messages;
+drop policy if exists "enotes call signaling send" on realtime.messages;
+
+create policy "enotes call signaling read"
+on realtime.messages
+for select
+to authenticated
+using (
+  realtime.messages.extension = 'broadcast'
+  and (
+    (
+      realtime.topic() like 'group-call-%'
+      and exists (
+        select 1
+        from public.conversation_members cm
+        where cm.user_id = (select auth.uid())
+          and cm.conversation_id::text = substring(realtime.topic() from 12)
+      )
+    )
+    or
+    (
+      realtime.topic() like 'call:%'
+      and exists (
+        select 1
+        from public.calls c
+        where c.id::text = substring(realtime.topic() from 6)
+          and (c.caller_id = (select auth.uid()) or c.callee_id = (select auth.uid()))
+      )
+    )
+  )
+);
+
+create policy "enotes call signaling send"
+on realtime.messages
+for insert
+to authenticated
+with check (
+  realtime.messages.extension = 'broadcast'
+  and (
+    (
+      realtime.topic() like 'group-call-%'
+      and exists (
+        select 1
+        from public.conversation_members cm
+        where cm.user_id = (select auth.uid())
+          and cm.conversation_id::text = substring(realtime.topic() from 12)
+      )
+    )
+    or
+    (
+      realtime.topic() like 'call:%'
+      and exists (
+        select 1
+        from public.calls c
+        where c.id::text = substring(realtime.topic() from 6)
+          and (c.caller_id = (select auth.uid()) or c.callee_id = (select auth.uid()))
+      )
+    )
+  )
+);
+
 notify pgrst, 'reload schema';
