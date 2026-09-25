@@ -52,14 +52,7 @@ export function GroupCallProvider({
   const [myId, setMyId] = useState<string | null>(suppliedMyId ?? null);
   const [pending, setPending] = useState<PendingRow | null>(null);
   const [outgoingConversationId, setOutgoingConversationId] = useState<string | null>(null);
-  // A restored call is not a new call. Keep it separate from explicit
-  // user-started calls so opening the app can never trigger create_group_call.
-  const [restoredConversationId, setRestoredConversationId] = useState<string | null>(null);
   const loadInFlightRef = useRef(false);
-  const restoredActiveRef = useRef(false);
-  // Prevent a missing optional recovery RPC from being called every 2.5s.
-  // The repair migration adds it back; a full page reload re-checks it.
-  const activeRecoveryRpcAvailableRef = useRef(true);
 
   useEffect(() => {
     if (suppliedMyId !== undefined) {
@@ -82,45 +75,8 @@ export function GroupCallProvider({
     loadInFlightRef.current = true;
 
     try {
-      let activeRows: unknown = null;
-
-      if (activeRecoveryRpcAvailableRef.current) {
-        const { data, error: activeError } = await supabase.rpc(
-          'get_my_active_group_calls',
-        );
-
-        if (activeError) {
-          // PostgREST 404 means the recovery migration has not reached this
-          // Supabase project yet. Do not hammer the RPC on every poll.
-          if (activeError.code === 'PGRST202' || activeError.message?.includes('404')) {
-            activeRecoveryRpcAvailableRef.current = false;
-            console.warn(
-              '[enotes group call] active-session recovery RPC is unavailable. Apply the latest group-call migration to Supabase.',
-            );
-          }
-        } else {
-          activeRows = data;
-        }
-      }
-
-      if (Array.isArray(activeRows) && activeRows.length > 0) {
-        const active = activeRows[0] as {
-          call_id: string;
-          conversation_id: string;
-          host_id: string;
-          media: 'audio' | 'video';
-          status: string;
-          role: string;
-        };
-
-        if (!outgoingConversationId) {
-          restoredActiveRef.current = true;
-          setPending(null);
-          setRestoredConversationId(active.conversation_id);
-          return;
-        }
-      }
-
+      // This lookup is intentionally invitation-only. It never restores,
+      // joins, creates, or reopens an existing call.
       const { data, error } = await supabase.rpc('get_pending_group_calls');
       if (error) {
         console.warn('[enotes group call] pending-call lookup failed:', error.message);
@@ -184,13 +140,14 @@ export function GroupCallProvider({
 
   const startGroupCall = useCallback((conversationId: string) => {
     setPending(null);
-    setRestoredConversationId(null);
-    restoredActiveRef.current = false;
     setOutgoingConversationId(conversationId);
   }, []);
 
+  // An overlay is opened automatically only to show an incoming invitation.
+  // It can never use that invitation to start or join the call without the
+  // recipient explicitly pressing "Join call".
   const activeConversationId =
-    outgoingConversationId ?? restoredConversationId ?? pending?.conversation_id ?? null;
+    outgoingConversationId ?? pending?.conversation_id ?? null;
 
   const incomingInvite = useMemo<GroupCallInvite | null>(() => {
     if (!pending) return null;
@@ -220,9 +177,8 @@ export function GroupCallProvider({
 
   const closeOverlay = useCallback(() => {
     setOutgoingConversationId(null);
-    setRestoredConversationId(null);
-    void loadPending();
-  }, [loadPending]);
+    setPending(null);
+  }, []);
 
   const enabled = Boolean(myId && activeConversationId);
 
@@ -241,9 +197,8 @@ export function GroupCallProvider({
           myId={myId}
           members={members}
           enabled
-          // Only an explicit Start button sets outgoingConversationId.
-          // Restored calls must mount without calling startCall().
-          startWhenOpened={Boolean(outgoingConversationId)}
+          // Only an explicit Start button may start a call. An incoming
+          // invitation only renders the Join/Decline prompt.
           initialIncoming={
             pending?.conversation_id === activeConversationId
               ? incomingInvite
