@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ChevronLeft, ChevronRight, Heart, MessageCircle, Radio, Send, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Heart, MessageCircle, Radio, Send, Users, Volume2, VolumeX } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { Post } from '@/types/social';
 import Avatar from '@/components/social/Avatar';
@@ -48,8 +48,10 @@ export default function VideosPage() {
 
   /* Only the active video plays; others show their first frame */
   const [activeIndex, setActiveIndex] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+  const intersectionRatiosRef = useRef(new Map<number, number>());
 
   useEffect(() => {
     (async () => {
@@ -92,53 +94,72 @@ export default function VideosPage() {
     })();
   }, [router]);
 
-  /* Mark the video in view as active using scroll position */
+  /* Track every video's visibility and activate whichever item is most visible.
+     This keeps autoplay/auto-stop consistent even when several entries change
+     during a fast swipe on mobile. */
   useEffect(() => {
     const container = containerRef.current;
     if (!container || videos.length === 0) return;
 
+    const ratios = intersectionRatiosRef.current;
+    ratios.clear();
+
     const observer = new IntersectionObserver(
       (entries) => {
-        let bestIndex = activeIndex;
-        let bestRatio = 0;
-
         for (const entry of entries) {
           const index = Number((entry.target as HTMLElement).dataset.index);
           if (Number.isNaN(index)) continue;
-          if (entry.isIntersecting && entry.intersectionRatio > bestRatio) {
-            bestRatio = entry.intersectionRatio;
-            bestIndex = index;
+          ratios.set(index, entry.isIntersecting ? entry.intersectionRatio : 0);
+        }
+
+        let nextIndex = activeIndex;
+        let bestRatio = ratios.get(activeIndex) ?? 0;
+
+        for (const [index, ratio] of ratios) {
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            nextIndex = index;
           }
         }
 
-        if (bestRatio >= 0.55 && bestIndex !== activeIndex) {
-          setActiveIndex(bestIndex);
+        if (bestRatio >= 0.55 && nextIndex !== activeIndex) {
+          setActiveIndex(nextIndex);
         }
       },
       {
         root: container,
-        threshold: [0.15, 0.35, 0.55, 0.75, 0.9],
+        threshold: [0, 0.15, 0.35, 0.55, 0.75, 0.9, 1],
       },
     );
 
-    const items = container.querySelectorAll('[data-index]');
-    items.forEach((el) => observer.observe(el));
+    container.querySelectorAll<HTMLElement>('[data-index]').forEach((el) => observer.observe(el));
     return () => observer.disconnect();
   }, [videos, activeIndex]);
 
-  /* Only the most visible video may play. Videos are muted so mobile browsers
-     can actually autoplay; tapping a video still lets the user pause/resume. */
+  /* Exactly one video is allowed to play. Autoplay starts muted because
+     browsers commonly block audible autoplay; the user can enable sound
+     with the speaker button. Videos leaving the active slot are paused and
+     reset to the beginning. */
   useEffect(() => {
     const syncPlayback = () => {
       videoRefs.current.forEach((video, i) => {
         if (!video) return;
 
-        if (i === activeIndex && document.visibilityState === 'visible') {
-          video.muted = true;
-          void video.play().catch(() => undefined);
+        const shouldPlay = i === activeIndex && document.visibilityState === 'visible';
+        if (shouldPlay) {
+          video.muted = !soundEnabled;
+          void video.play().catch(() => {
+            /* If the browser blocks audible autoplay, fall back to muted
+               playback rather than leaving the feed frozen. */
+            video.muted = true;
+            void video.play().catch(() => undefined);
+          });
         } else {
           video.pause();
-          if (i !== activeIndex) video.currentTime = 0;
+          if (i !== activeIndex) {
+            video.currentTime = 0;
+            video.muted = true;
+          }
         }
       });
     };
@@ -148,6 +169,22 @@ export default function VideosPage() {
     const onVisibility = () => syncPlayback();
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [activeIndex, soundEnabled]);
+
+  const toggleSound = useCallback(() => {
+    const video = videoRefs.current[activeIndex];
+    if (!video) return;
+
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    setSoundEnabled(!nextMuted);
+
+    if (!nextMuted) {
+      void video.play().catch(() => {
+        video.muted = true;
+        setSoundEnabled(false);
+      });
+    }
   }, [activeIndex]);
 
   const toggleLike = useCallback(
@@ -325,7 +362,7 @@ export default function VideosPage() {
                   }}
                   src={post.media_url || ''}
                   loop
-                  muted={true}
+                  muted={!isActive || !soundEnabled}
                   playsInline
                   preload={isActive ? 'auto' : 'metadata'}
                   onEnded={() => scrollBy(1)}
@@ -346,6 +383,14 @@ export default function VideosPage() {
 
                 {/* Right rail */}
                 <div className="absolute bottom-24 right-3 flex flex-col items-center gap-5">
+                  <button
+                    onClick={toggleSound}
+                    className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur transition hover:bg-white/25"
+                    aria-label={soundEnabled ? 'Mute video' : 'Unmute video'}
+                    title={soundEnabled ? 'Mute video' : 'Unmute video'}
+                  >
+                    {soundEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+                  </button>
                   <button
                     onClick={() => toggleLike(post.id)}
                     className="flex flex-col items-center gap-1"
