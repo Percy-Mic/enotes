@@ -50,6 +50,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  if (event.action === 'dismiss') return;
   const target = toUrl((event.notification.data && event.notification.data.url) || '/notifications');
 
   event.waitUntil(
