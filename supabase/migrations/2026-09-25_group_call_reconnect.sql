@@ -84,7 +84,7 @@ begin
   join public.call_participants cp
     on cp.call_id = c.id
    and cp.user_id = v_user_id
-   and cp.status in ('invited', 'ringing', 'joined')
+   and cp.status = 'joined'
   where c.metadata ->> 'group_call' = 'true'
     and c.status in ('ringing', 'connecting', 'connected', 'reconnecting')
   order by c.started_at desc;
