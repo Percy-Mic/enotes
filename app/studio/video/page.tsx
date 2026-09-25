@@ -64,7 +64,7 @@ interface EditorDoc {
   project: VideoProject;
 }
 
-const TOOLS = ['media', 'text', 'stickers', 'audio', 'look', 'export'] as const;
+const TOOLS = ['media', 'text', 'stickers', 'audio', 'motion', 'look', 'export'] as const;
 type Tool = (typeof TOOLS)[number];
 
 const TOOL_LABELS: Record<Tool, string> = {
@@ -72,7 +72,8 @@ const TOOL_LABELS: Record<Tool, string> = {
   text: 'Text',
   stickers: 'Stickers',
   audio: 'Audio',
-  look: 'Filters',
+  motion: 'Motion',
+  look: 'Effects',
   export: 'Export',
 };
 
@@ -2937,6 +2938,52 @@ function VideoEditor() {
           </div>
         )}
 
+        {tool === 'motion' && (
+          <div className="space-y-3">
+            <div className="rounded-xl border border-[#E5798F]/30 bg-[#E5798F]/10 p-3">
+              <p className="text-sm font-bold text-white">Motion & keyframes</p>
+              <p className="mt-1 text-[11px] leading-5 text-white/55">
+                AE-inspired layer animation: move the playhead, change a property, then add a keyframe.
+                The same project model drives preview and export.
+              </p>
+            </div>
+
+            {selectedElement ? (
+              <ElementInspector
+                el={selectedElement}
+                duration={duration}
+                playhead={playhead}
+                updateElement={updateElement}
+                onChange={(patch, label, key) => updateElement(selectedElement.id, patch, label, key)}
+                onDuplicate={() => duplicateElement(selectedElement)}
+                onDelete={() => deleteElement(selectedElement.id)}
+                onCrop={startElementCrop}
+              />
+            ) : selectedClip ? (
+              <div className="space-y-3 rounded-xl bg-white/5 p-3">
+                <p className="text-xs font-semibold text-white/70">Selected video layer</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Slider label="X" min={-project.canvas.width} max={project.canvas.width} value={selectedClip.transform.offset_x}
+                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: v } }, 'Move X', `mx-${selectedClip.id}`)} />
+                  <Slider label="Y" min={-project.canvas.height} max={project.canvas.height} value={selectedClip.transform.offset_y}
+                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_y: v } }, 'Move Y', `my-${selectedClip.id}`)} />
+                  <Slider label="Scale" min={0.1} max={3} step={0.01} value={selectedClip.transform.scale}
+                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: v } }, 'Scale clip', `ms-${selectedClip.id}`)} />
+                  <Slider label="Rotation" min={-180} max={180} value={selectedClip.transform.rotation}
+                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: v } }, 'Rotate clip', `mr-${selectedClip.id}`)} />
+                </div>
+                <p className="text-[10px] text-white/40">
+                  Overlay layers support captured keyframes. Main clips use the same timeline and transform values for deterministic preview/export.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl bg-white/5 p-5 text-center text-xs text-white/45">
+                Select a video, text, image, sticker, or overlay layer to edit motion.
+              </div>
+            )}
+          </div>
+        )}
+
         {tool === 'look' && (
           <div className="space-y-4">
             {selectedClip ? (
@@ -3274,7 +3321,7 @@ function VideoEditor() {
 
       {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
       <nav
-        className="sticky bottom-0 z-40 grid grid-cols-6 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+        className="sticky bottom-0 z-40 grid grid-cols-7 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
         aria-label="Editor tools"
       >
         {(
@@ -3283,6 +3330,7 @@ function VideoEditor() {
             ['text', <Type key="t" className="h-5 w-5" />],
             ['stickers', <Smile key="s" className="h-5 w-5" />],
             ['audio', <Music key="m" className="h-5 w-5" />],
+            ['motion', <Sparkles key="mo" className="h-5 w-5" />],
             ['look', <Sticker key="l" className="h-5 w-5" />],
             ['export', <Upload key="e" className="h-5 w-5" />],
           ] as [Tool, React.ReactNode][]

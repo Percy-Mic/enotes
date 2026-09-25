@@ -673,8 +673,19 @@ export default function FeedPage() {
 
         {/* Error */}
         {error && (
-          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-            {error} — make sure you ran both social migration SQL files in Supabase.
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <p className="font-semibold">Could not complete that action.</p>
+            <p className="mt-1 break-words">{error}</p>
+            {(error.toLowerCase().includes('relation') ||
+              error.toLowerCase().includes('column') ||
+              error.toLowerCase().includes('permission') ||
+              error.toLowerCase().includes('row-level security') ||
+              error.toLowerCase().includes('bucket')) && (
+              <p className="mt-2 text-xs text-red-600">
+                If this is a fresh Supabase project, apply the social/storage migrations and verify the
+                <code className="mx-1 rounded bg-red-100 px-1">post-media</code> storage bucket and its RLS policies.
+              </p>
+            )}
           </div>
         )}
 
