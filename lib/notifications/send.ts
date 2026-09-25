@@ -126,6 +126,7 @@ export async function sendToSubscriptions(
     body: payload.body || '',
     url: payload.url || '/notifications',
     tag: payload.tag,
+    type: payload.type || 'default',
   });
 
   let delivered = 0;
