@@ -51,6 +51,24 @@ create index if not exists idx_call_events_call_created
   on public.call_events (call_id, created_at desc);
 
 
+-- Remove any older overloads left behind by an earlier version of this migration.
+-- PostgREST can reject RPC calls when multiple overloads match the named
+-- arguments, so keep exactly one public create_group_call signature.
+do $
+declare
+  r record;
+begin
+  for r in
+    select oid::regprocedure as identity
+      from pg_proc
+     where pronamespace = 'public'::regnamespace
+       and proname = 'create_group_call'
+  loop
+    execute 'drop function if exists ' || r.identity::text;
+  end loop;
+end;
+$;
+
 -- Group calls use calls.callee_id as the host for compatibility with
 -- the existing 1:1 calls schema. metadata.group_call distinguishes them.
 create or replace function public.create_group_call(
@@ -623,3 +641,6 @@ create index if not exists idx_calls_group_active
 
 create index if not exists idx_call_participants_user_status
   on public.call_participants (user_id, status, created_at desc);
+
+-- Ask PostgREST to reload its schema cache after the RPC definitions change.
+notify pgrst, 'reload schema';

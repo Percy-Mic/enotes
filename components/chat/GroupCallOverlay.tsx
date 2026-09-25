@@ -296,7 +296,20 @@ export default function GroupCallOverlay({
       });
 
       if (createError || !callId) {
-        throw createError ?? new Error('Could not create the group video call.');
+        if (createError) {
+          console.error('[enotes group call] create_group_call failed', {
+            code: createError.code,
+            message: createError.message,
+            details: createError.details,
+            hint: createError.hint,
+          });
+        }
+        const diagnostic = createError
+          ? [createError.message, createError.hint, createError.details]
+              .filter(Boolean)
+              .join(' — ')
+          : 'The database did not return a call id.';
+        throw new Error(diagnostic || 'Could not create the group video call.');
       }
 
       const activeCall = { callId: String(callId), hostId: myId };
