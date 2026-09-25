@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Mic, MicOff, PhoneOff, Video, VideoOff, X } from 'lucide-react';
+import { Camera, Mic, MicOff, PhoneOff, RefreshCw, Video, VideoOff, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ICE_SERVERS } from '@/lib/calls/config';
 
@@ -81,6 +81,8 @@ export default function GroupCallOverlay({
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [micEnabled, setMicEnabled] = useState(true);
   const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
+  const [switchingCamera, setSwitchingCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [callMembers, setCallMembers] = useState<GroupCallMember[]>(members);
 
@@ -206,6 +208,8 @@ export default function GroupCallOverlay({
     setLocalStream(stream);
     setMicEnabled(stream.getAudioTracks().some((track) => track.enabled));
     setCameraEnabled(stream.getVideoTracks().some((track) => track.enabled));
+    const facing = stream.getVideoTracks()[0]?.getSettings().facingMode;
+    if (facing === 'environment' || facing === 'user') setCameraFacing(facing);
     return stream;
   }, []);
 
@@ -378,6 +382,94 @@ export default function GroupCallOverlay({
     setCameraEnabled(next);
   };
 
+  const switchCamera = useCallback(async () => {
+    if (switchingCamera || !localRef.current) return;
+
+    const currentVideoTrack = localRef.current.getVideoTracks()[0];
+    if (!currentVideoTrack) {
+      setError('No camera track is available to switch.');
+      return;
+    }
+
+    const nextFacing: 'user' | 'environment' =
+      cameraFacing === 'user' ? 'environment' : 'user';
+
+    setSwitchingCamera(true);
+    setError(null);
+
+    try {
+      let cameraStream: MediaStream;
+
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { exact: nextFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, max: 30 },
+          },
+        });
+      } catch {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: nextFacing,
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+            frameRate: { ideal: 30, max: 30 },
+          },
+        });
+      }
+
+      const nextVideoTrack = cameraStream.getVideoTracks()[0];
+      if (!nextVideoTrack) {
+        cameraStream.getTracks().forEach((track) => track.stop());
+        throw new Error('The selected camera could not be opened.');
+      }
+
+      nextVideoTrack.enabled = cameraEnabled;
+
+      for (const peer of Array.from(peersRef.current.values())) {
+        const sender = peer.getSenders().find(
+          (item) => item.track?.kind === 'video',
+        );
+
+        if (sender) {
+          await sender.replaceTrack(nextVideoTrack);
+        } else {
+          peer.addTrack(nextVideoTrack, localRef.current);
+        }
+      }
+
+      const audioTracks = localRef.current.getAudioTracks();
+      const nextLocalStream = new MediaStream([
+        ...audioTracks,
+        nextVideoTrack,
+      ]);
+
+      localRef.current = nextLocalStream;
+      setLocalStream(nextLocalStream);
+
+      try { currentVideoTrack.stop(); } catch {}
+
+      const actualFacing = nextVideoTrack.getSettings().facingMode;
+      setCameraFacing(
+        actualFacing === 'environment' || actualFacing === 'user'
+          ? actualFacing
+          : nextFacing,
+      );
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not switch to the other camera.',
+      );
+    } finally {
+      setSwitchingCamera(false);
+    }
+  }, [cameraEnabled, cameraFacing, switchingCamera]);
+
   if (!enabled || !myId) return null;
 
   const remoteEntries = Object.entries(remoteStreams);
@@ -441,6 +533,19 @@ export default function GroupCallOverlay({
             </button>
             <button onClick={toggleCamera} className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10" aria-label={cameraEnabled ? 'Turn camera off' : 'Turn camera on'}>
               {cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={() => void switchCamera()}
+              disabled={switchingCamera}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 disabled:cursor-wait disabled:opacity-50"
+              aria-label={switchingCamera ? 'Switching camera' : 'Switch camera'}
+              title={switchingCamera ? 'Switching camera…' : 'Switch camera'}
+            >
+              {switchingCamera ? (
+                <RefreshCw className="h-5 w-5 animate-spin" />
+              ) : (
+                <Camera className="h-5 w-5" />
+              )}
             </button>
             <button onClick={leave} className="flex h-14 w-14 items-center justify-center rounded-full bg-red-600" aria-label="Leave call">
               <PhoneOff className="h-6 w-6" />
