@@ -8,6 +8,49 @@
 
 create extension if not exists pg_net;
 
+-- Compatibility layer for the current enotes schema. These objects/columns
+-- are added only when they do not already exist, so this migration can be
+-- applied to both the older call schema and newer deployments.
+
+alter table public.calls
+  add column if not exists ringing_at timestamptz,
+  add column if not exists connection_state text,
+  add column if not exists metadata jsonb not null default '{}'::jsonb,
+  add column if not exists missed_at timestamptz,
+  add column if not exists end_reason text,
+  add column if not exists ended_by uuid,
+  add column if not exists updated_at timestamptz not null default timezone('utc', now());
+
+create table if not exists public.call_participants (
+  call_id uuid not null references public.calls(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null default 'participant',
+  status text not null default 'invited',
+  joined_at timestamptz,
+  left_at timestamptz,
+  muted boolean not null default false,
+  camera_enabled boolean not null default false,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  primary key (call_id, user_id)
+);
+
+create table if not exists public.call_events (
+  id uuid primary key default gen_random_uuid(),
+  call_id uuid not null references public.calls(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete set null,
+  event_type text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists idx_call_participants_user_status
+  on public.call_participants (user_id, status, created_at desc);
+
+create index if not exists idx_call_events_call_created
+  on public.call_events (call_id, created_at desc);
+
+
 -- Group calls use calls.callee_id as the host for compatibility with
 -- the existing 1:1 calls schema. metadata.group_call distinguishes them.
 create or replace function public.create_group_call(

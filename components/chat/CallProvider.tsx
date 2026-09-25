@@ -89,6 +89,7 @@ interface CallRow {
   media: CallMedia;
   status: string;
   started_at?: string;
+  metadata?: Record<string, unknown> | null;
 }
 
 interface ProfileRow {
