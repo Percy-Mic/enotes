@@ -2221,8 +2221,6 @@ export function CallProvider({
       }, Math.max(1000, CALL_RING_TIMEOUT_MS - elapsed));
     };
 
-    void restoreRingingCall();
-
     channel.on(
       'postgres_changes',
       {
@@ -2559,6 +2557,11 @@ export function CallProvider({
 
     channel.subscribe(
       (state, subscribeError) => {
+        if (state === 'SUBSCRIBED') {
+          void restoreRingingCall();
+          return;
+        }
+
         if (
           state ===
             'CHANNEL_ERROR' ||
