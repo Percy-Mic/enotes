@@ -94,11 +94,11 @@ export default function VideosPage() {
     })();
   }, [router]);
 
-  /* Scroll-driven autoplay:
-     - the most visible video becomes active
+  /* Match the feed's AutoVideo behavior:
+     - a video must be at least 60% visible before it becomes active
      - the active video starts automatically
-     - videos leaving the viewport are paused and reset
-     - adjacent videos are preloaded for fast swipes */
+     - as soon as it drops below 60% visibility it pauses and rewinds
+     - only one video is allowed to play at a time */
   useEffect(() => {
     const container = containerRef.current;
     if (!container || videos.length === 0) return;
@@ -106,7 +106,15 @@ export default function VideosPage() {
     const ratios = intersectionRatiosRef.current;
     ratios.clear();
 
-    const getMostVisibleIndex = () => {
+    const pauseAndReset = (index: number) => {
+      const video = videoRefs.current[index];
+      if (!video) return;
+      video.pause();
+      video.currentTime = 0;
+      video.muted = true;
+    };
+
+    const getVisibility = () => {
       const containerRect = container.getBoundingClientRect();
       let bestIndex = activeIndex;
       let bestRatio = 0;
@@ -131,40 +139,56 @@ export default function VideosPage() {
       return { bestIndex, bestRatio };
     };
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const index = Number((entry.target as HTMLElement).dataset.index);
-          if (!Number.isNaN(index)) {
-            ratios.set(index, entry.isIntersecting ? entry.intersectionRatio : 0);
-          }
-        }
+    const syncVisibleVideo = () => {
+      const { bestIndex, bestRatio } = getVisibility();
 
-        const { bestIndex, bestRatio } = getMostVisibleIndex();
-        if (bestRatio >= 0.5 && bestIndex !== activeIndex) {
+      videoRefs.current.forEach((video, index) => {
+        if (!video) return;
+
+        if (index !== bestIndex || ratios.get(index)! < 0.6) {
+          pauseAndReset(index);
+        }
+      });
+
+      if (bestRatio >= 0.6) {
+        if (bestIndex !== activeIndex) {
           setActiveIndex(bestIndex);
         }
-      },
-      {
-        root: container,
-        threshold: [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1],
-      },
+
+        const video = videoRefs.current[bestIndex];
+        if (video && document.visibilityState === 'visible') {
+          video.muted = !soundEnabled;
+          void video.play().catch(() => {
+            video.muted = true;
+            void video.play().catch(() => undefined);
+          });
+        }
+      } else {
+        pauseAndReset(activeIndex);
+      }
+    };
+
+    const observer = new IntersectionObserver(
+      () => syncVisibleVideo(),
+      { root: container, threshold: [0, 0.1, 0.25, 0.5, 0.6, 0.75, 0.9, 1] },
     );
 
     container.querySelectorAll<HTMLElement>('[data-index]').forEach((el) => observer.observe(el));
 
-    requestAnimationFrame(() => {
-      const { bestIndex } = getMostVisibleIndex();
-      if (bestIndex !== activeIndex) setActiveIndex(bestIndex);
-    });
+    requestAnimationFrame(syncVisibleVideo);
 
-    return () => observer.disconnect();
-  }, [videos, activeIndex]);
+    const onScroll = () => syncVisibleVideo();
+    container.addEventListener('scroll', onScroll, { passive: true });
 
-  /* Exactly one video is allowed to play. Autoplay starts muted because
-     browsers commonly block audible autoplay; the user can enable sound
-     with the speaker button. Videos leaving the active slot are paused and
-     reset to the beginning. */
+    return () => {
+      observer.disconnect();
+      container.removeEventListener('scroll', onScroll);
+      videoRefs.current.forEach((_, index) => pauseAndReset(index));
+    };
+  }, [videos, activeIndex, soundEnabled]);
+
+  /* Keep playback in sync when the tab is backgrounded or restored.
+     Visibility/scroll eligibility is handled by the feed-style observer above. */
   useEffect(() => {
     const syncPlayback = () => {
       videoRefs.current.forEach((video, i) => {
@@ -392,12 +416,14 @@ export default function VideosPage() {
                   autoPlay
                   preload={isActive || Math.abs(i - activeIndex) <= 1 ? 'auto' : 'metadata'}
                   onLoadedData={(e) => {
-                    if (i === activeIndex && document.visibilityState === 'visible') {
+                    if (i === activeIndex && intersectionRatiosRef.current.get(i)! >= 0.6 && document.visibilityState === 'visible') {
+                      e.currentTarget.muted = !soundEnabled;
                       void e.currentTarget.play().catch(() => undefined);
                     }
                   }}
                   onCanPlay={(e) => {
-                    if (i === activeIndex && document.visibilityState === 'visible') {
+                    if (i === activeIndex && intersectionRatiosRef.current.get(i)! >= 0.6 && document.visibilityState === 'visible') {
+                      e.currentTarget.muted = !soundEnabled;
                       void e.currentTarget.play().catch(() => undefined);
                     }
                   }}
