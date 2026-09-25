@@ -88,6 +88,7 @@ interface CallRow {
   callee_id: string;
   media: CallMedia;
   status: string;
+  started_at?: string;
 }
 
 interface ProfileRow {
@@ -2125,6 +2126,102 @@ export function CallProvider({
 
     incomingChannelRef.current =
       channel;
+
+    // Restore a ringing call that was created while this browser/app was
+    // closed or backgrounded. Realtime cannot deliver an INSERT that happened
+    // before this page subscribed, so the database is the recovery path.
+    const restoreRingingCall = async () => {
+      if (callRef.current) return;
+
+      const { data: row, error: restoreError } = await supabase
+        .from('calls')
+        .select('id, conversation_id, caller_id, callee_id, media, status, started_at')
+        .eq('callee_id', myId)
+        .eq('status', 'ringing')
+        .order('started_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (restoreError || !row || cancelled || callRef.current) return;
+
+      const startedAt = new Date(row.started_at).getTime();
+      const elapsed = Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
+
+      if (elapsed >= CALL_RING_TIMEOUT_MS) {
+        await supabase
+          .from('calls')
+          .update({
+            status: 'missed',
+            missed_at: new Date().toISOString(),
+            ended_at: new Date().toISOString(),
+            end_reason: 'no_answer',
+          })
+          .eq('id', row.id)
+          .eq('callee_id', myId)
+          .eq('status', 'ringing');
+        return;
+      }
+
+      const { data: caller } = await supabase
+        .from('profiles')
+        .select('id, full_text_name, username, avatar_url')
+        .eq('id', row.caller_id)
+        .maybeSingle();
+
+      if (cancelled || callRef.current) return;
+
+      const profile = caller as ProfileRow | null;
+      const restoredCall: ActiveCall = {
+        callId: row.id,
+        conversationId: row.conversation_id,
+        peerId: row.caller_id,
+        peerName: profile?.full_text_name || profile?.username || 'Unknown user',
+        peerAvatar: profile?.avatar_url ?? null,
+        media: row.media === 'audio' ? 'audio' : 'video',
+        direction: 'incoming',
+      };
+
+      setCurrentCall(restoredCall);
+      setCurrentStatus('ringing');
+      setError(null);
+
+      try {
+        await subscribeToCallChannel(row.id);
+        await updateParticipant(row.id, {
+          role: 'callee',
+          status: 'ringing',
+          camera_enabled: row.media === 'video',
+        });
+      } catch (restoreChannelError) {
+        console.error('[enotes calls] restored incoming channel failed:', restoreChannelError);
+        if (mountedRef.current) {
+          setError(getErrorMessage(restoreChannelError));
+        }
+      }
+
+      clearRingTimer();
+      ringTimerRef.current = setTimeout(() => {
+        void (async () => {
+          const current = callRef.current;
+          if (!current || current.callId !== row.id || statusRef.current !== 'ringing') return;
+
+          await updateCallStatus(row.id, 'missed', {
+            ended_at: new Date().toISOString(),
+            missed_at: new Date().toISOString(),
+            end_reason: 'no_answer',
+          });
+
+          await recordCallEvent(row.id, 'call_missed');
+          setCurrentStatus('missed');
+
+          window.setTimeout(() => {
+            void cleanup();
+          }, 1200);
+        })();
+      }, Math.max(1000, CALL_RING_TIMEOUT_MS - elapsed));
+    };
+
+    void restoreRingingCall();
 
     channel.on(
       'postgres_changes',
