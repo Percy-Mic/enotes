@@ -104,6 +104,7 @@ export default function GroupCallOverlay({
   const endingRef = useRef(false);
   const startingRef = useRef(false);
   const channelReadyRef = useRef<Promise<void> | null>(null);
+  const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const restartingPeersRef = useRef(new Set<string>());
 
   useEffect(() => {
@@ -199,6 +200,7 @@ export default function GroupCallOverlay({
     peer.ontrack = null;
     try { peer.close(); } catch {}
     peersRef.current.delete(remoteId);
+    pendingIceRef.current.delete(remoteId);
     setRemoteStreams((current) => {
       if (!current[remoteId]) return current;
       const next = { ...current };
@@ -299,6 +301,7 @@ export default function GroupCallOverlay({
       try { peer.close(); } catch {}
     });
     peersRef.current.clear();
+    pendingIceRef.current.clear();
     stopLocal();
     setRemoteStreams({});
     setActive(null);
@@ -350,7 +353,32 @@ export default function GroupCallOverlay({
     try {
       setError(null);
 
-      const targets = callMembers.filter((member) => member.user_id !== myId);
+      let membersForCall = callMembers;
+
+      // On the first render of an outgoing call, the provider may not have
+      // loaded the group members yet. Fetch them here before deciding that
+      // there is nobody to call. This prevents the video button from opening
+      // a "no other members" state simply because the async member query has
+      // not finished.
+      if (membersForCall.length === 0) {
+        const { data: memberRows, error: memberError } = await supabase
+          .from('conversation_members')
+          .select(
+            'user_id, profiles!conversation_members_user_id_fkey(id, full_text_name, username, avatar_url)',
+          )
+          .eq('conversation_id', conversationId);
+
+        if (memberError) throw memberError;
+
+        membersForCall = ((memberRows || []) as any[]).map((row) => ({
+          user_id: row.user_id,
+          profile: row.profiles || null,
+        })) as GroupCallMember[];
+
+        setCallMembers(membersForCall);
+      }
+
+      const targets = membersForCall.filter((member) => member.user_id !== myId);
 
       if (targets.length === 0) {
         setError('This group has no other members to call.');
@@ -538,6 +566,18 @@ export default function GroupCallOverlay({
             if (!activeRef.current || activeRef.current.callId !== signal.callId || !signal.sdp) return;
             const peer = createPeer(signal.from);
             await peer.setRemoteDescription(signal.sdp);
+
+            // ICE candidates can arrive before the SDP offer. Flush any
+            // candidates that were queued while the peer had no remote
+            // description yet.
+            const queued = pendingIceRef.current.get(signal.from) || [];
+            pendingIceRef.current.delete(signal.from);
+            for (const candidate of queued) {
+              try {
+                await peer.addIceCandidate(candidate);
+              } catch {}
+            }
+
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
             await send({ type: 'answer', callId: signal.callId, to: signal.from, sdp: answer });
@@ -580,10 +620,26 @@ export default function GroupCallOverlay({
           }
 
           if (signal.type === 'ice') {
+            if (!activeRef.current || activeRef.current.callId !== signal.callId || !signal.candidate) return;
+
             const peer = peersRef.current.get(signal.from);
-            if (peer && signal.candidate) {
-              try { await peer.addIceCandidate(signal.candidate); } catch {}
+            if (!peer) {
+              const queued = pendingIceRef.current.get(signal.from) || [];
+              queued.push(signal.candidate);
+              pendingIceRef.current.set(signal.from, queued);
+              return;
             }
+
+            if (!peer.remoteDescription) {
+              const queued = pendingIceRef.current.get(signal.from) || [];
+              queued.push(signal.candidate);
+              pendingIceRef.current.set(signal.from, queued);
+              return;
+            }
+
+            try {
+              await peer.addIceCandidate(signal.candidate);
+            } catch {}
             return;
           }
 
