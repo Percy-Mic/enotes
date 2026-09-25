@@ -33,6 +33,6 @@ export const ICE_SERVERS: RTCConfiguration = {
   iceCandidatePoolSize: 10,
 };
 
-export const CALL_RING_TIMEOUT_MS = 30_000;
+export const CALL_RING_TIMEOUT_MS = 60_000;
 
 export const CALL_SIGNAL_TIMEOUT_MS = 15_000;

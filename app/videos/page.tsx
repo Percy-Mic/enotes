@@ -391,7 +391,6 @@ export default function VideosPage() {
                   playsInline
                   autoPlay
                   preload={isActive || Math.abs(i - activeIndex) <= 1 ? 'auto' : 'metadata'}
-                  onEnded={() => scrollBy(1)}
                   onLoadedData={(e) => {
                     if (i === activeIndex && document.visibilityState === 'visible') {
                       void e.currentTarget.play().catch(() => undefined);
