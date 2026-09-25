@@ -82,6 +82,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <CallProvider myId={myId}>
+      <GroupCallProvider myId={myId}>
       <AlertProvider>
       {showNav && <AppNav />}
       {/* plain div (pages render their own <main>). Mobile: bottom runway so
@@ -106,6 +107,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {showNav && showAside && <NotesAside />}
       <CallOverlay />
       </AlertProvider>
+    </GroupCallProvider>
     </CallProvider>
   );
 }
