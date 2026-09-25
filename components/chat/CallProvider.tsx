@@ -2133,7 +2133,7 @@ export function CallProvider({
     const restoreRingingCall = async () => {
       if (callRef.current) return;
 
-      const { data: row, error: restoreError } = await supabase
+      const { data: rows, error: restoreError } = await supabase
         .from('calls')
         .select('id, conversation_id, caller_id, callee_id, media, status, started_at, metadata')
         .eq('callee_id', myId)
