@@ -149,6 +149,26 @@ export default function GroupCallOverlay({
     activeRef.current = active;
   }, [active]);
 
+  // Keep the durable host session alive while the browser is actually
+  // connected. If the tab crashes/closes, the database stops receiving
+  // heartbeats and create_group_call can recover the stale session.
+  useEffect(() => {
+    if (!active || active.hostId !== myId) return;
+
+    const heartbeat = () => {
+      void supabase.rpc('touch_group_call', {
+        p_call_id: active.callId,
+      });
+    };
+
+    heartbeat();
+    const timer = window.setInterval(heartbeat, 20_000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [active, myId]);
+
   const send = useCallback(async (payload: Omit<Signal, 'from'>) => {
     if (!myId || !channelRef.current) return;
     await channelRef.current.send({
@@ -437,10 +457,25 @@ export default function GroupCallOverlay({
     channelRef.current = channel;
 
     return () => {
-      if (activeRef.current && !endingRef.current) {
+      const current = activeRef.current;
+
+      if (current && !endingRef.current) {
         endingRef.current = true;
-        void send({ type: 'leave', callId: activeRef.current.callId });
+
+        if (current.hostId === myId) {
+          void supabase.rpc('end_group_call', {
+            p_call_id: current.callId,
+          });
+          void send({ type: 'end', callId: current.callId });
+        } else {
+          void supabase.rpc('respond_group_call', {
+            p_call_id: current.callId,
+            p_action: 'leave',
+          });
+          void send({ type: 'leave', callId: current.callId });
+        }
       }
+
       supabase.removeChannel(channel);
       channelRef.current = null;
       cleanup(false);
