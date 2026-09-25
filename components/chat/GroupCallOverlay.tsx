@@ -325,6 +325,37 @@ export default function GroupCallOverlay({
        * original error.
        */
       if (createError?.code === 'P0001' && createError.message === 'You already have an active group call.') {
+        /*
+         * The durable call may still be genuinely active while this page was
+         * refreshed/navigated away from the overlay. Reattach to that call
+         * before attempting stale-session recovery.
+         */
+        const { data: existingRows, error: existingError } = await supabase.rpc(
+          'get_my_active_group_call',
+          { p_conversation_id: conversationId },
+        );
+
+        const existing = Array.isArray(existingRows) ? existingRows[0] : existingRows;
+
+        if (!existingError && existing?.call_id) {
+          const activeCall = {
+            callId: String(existing.call_id),
+            hostId: String(existing.host_id || myId),
+          };
+
+          setActive(activeCall);
+          activeRef.current = activeCall;
+          setError(null);
+
+          await send({ type: 'invite', callId: activeCall.callId });
+          return;
+        }
+
+        /*
+         * If there is no reconnectable call in this conversation, recover a
+         * host session that has been abandoned for more than 90 seconds and
+         * retry creating the call once.
+         */
         const { data: recovered, error: recoveryError } = await supabase.rpc(
           'recover_stale_group_call',
           { p_conversation_id: conversationId },
