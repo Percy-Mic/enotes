@@ -148,10 +148,6 @@ function ChatRoom() {
       : otherMember?.full_text_name || otherMember?.username || 'Conversation'
     : '…';
 
-  useEffect(() => {
-    if (conversation?.is_group) void loadMembers();
-  }, [conversation?.is_group, loadMembers]);
-
   /* creator + admins may rename / change icon / manage roles (DB enforces too) */
   const amGroupAdmin = conversation?.is_group === true && (conversation.created_by === me || myRole === 'admin' || myRole === 'moderator');
 
@@ -183,6 +179,10 @@ function ChatRoom() {
       setMyRole(mine?.user_id === conversation?.created_by ? 'creator' : mine?.role || 'member');
     }
   }, [conversationId, conversation?.created_by]);
+
+  useEffect(() => {
+    if (conversation?.is_group) void loadMembers();
+  }, [conversation?.is_group, loadMembers]);
 
   useEffect(() => {
     let active = true;
