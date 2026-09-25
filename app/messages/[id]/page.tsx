@@ -1009,11 +1009,9 @@ function ChatRoom() {
         myId={me}
         members={groupMembers}
         enabled={conversation?.is_group === true}
+        startWhenOpened={showGroupCall}
+        onClose={() => setShowGroupCall(false)}
       />
-
-      {showGroupCall && conversation?.is_group && (
-        <div className="fixed inset-0 z-[205] bg-transparent" onClick={() => setShowGroupCall(false)} aria-hidden="true" />
-      )}
 
       {showMembers && conversation?.is_group && (
         <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 sm:items-center sm:p-4" onClick={() => setShowMembers(false)}>
