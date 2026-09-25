@@ -40,6 +40,15 @@ self.addEventListener('push', (event) => {
     icon: data.icon || '/icon.svg',
     badge: '/icon.svg',
     tag: data.tag || undefined, // replaces instead of stacking duplicates
+    requireInteraction: isCall,
+    vibrate: isCall ? [300, 100, 300, 100, 600] : undefined,
+    actions: isCall
+      ? [
+          { action: 'answer', title: 'Open call' },
+          { action: 'dismiss', title: 'Dismiss' },
+        ]
+      : undefined,
+    data: { url: data.url || '/notifications', type: data.type || 'default' },
     data: { url: data.url || '/notifications' },
     renotify: Boolean(data.tag),
   };
