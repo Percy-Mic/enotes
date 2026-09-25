@@ -2244,6 +2244,8 @@ export function CallProvider({
           row.callee_id !==
             myId ||
           row.status !==
+          row.metadata?.group_call === true ||
+          row.metadata?.group_call === 'true' ||
             'ringing'
         ) {
           return;
