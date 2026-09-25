@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { supabase } from '@/lib/supabase/client';
 import { CallProvider } from '@/components/chat/CallProvider';
+import { GroupCallProvider } from '@/components/chat/GroupCallProvider';
 import CallOverlay from '@/components/chat/CallOverlay';
 import AppNav from '@/components/social/AppNav';
 import NotesAside from '@/components/notes/NotesAside';
