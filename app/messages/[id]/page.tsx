@@ -84,7 +84,6 @@ function ChatRoom() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasOlder, setHasOlder] = useState(false);
   const [showMembers, setShowMembers] = useState(false);
-  const [showGroupCall, setShowGroupCall] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [showMedia, setShowMedia] = useState(false);
@@ -894,8 +893,7 @@ function ChatRoom() {
         {conversation?.is_group && (
           <button
             onClick={() => {
-              setShowGroupCall(true);
-              void loadMembers();
+              startGroupCall(conversationId);
             }}
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#6B6B6B] transition hover:bg-gray-100"
             aria-label="Start group video call"
@@ -1017,16 +1015,6 @@ function ChatRoom() {
         onCancelReply={() => setReplyingTo(null)}
         onSend={handleSendWithReply}
         onTyping={sendTyping}
-      />
-
-      {/* members sheet */}
-      <GroupCallOverlay
-        conversationId={conversationId}
-        myId={me}
-        members={groupMembers}
-        enabled={conversation?.is_group === true}
-        startWhenOpened={showGroupCall}
-        onClose={() => setShowGroupCall(false)}
       />
 
       {showMembers && conversation?.is_group && (
