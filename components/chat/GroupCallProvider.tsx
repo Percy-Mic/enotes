@@ -54,6 +54,9 @@ export function GroupCallProvider({
   const [outgoingConversationId, setOutgoingConversationId] = useState<string | null>(null);
   const loadInFlightRef = useRef(false);
   const restoredActiveRef = useRef(false);
+  // Prevent a missing optional recovery RPC from being called every 2.5s.
+  // The repair migration adds it back; a full page reload re-checks it.
+  const activeRecoveryRpcAvailableRef = useRef(true);
 
   useEffect(() => {
     if (suppliedMyId !== undefined) {
@@ -76,11 +79,28 @@ export function GroupCallProvider({
     loadInFlightRef.current = true;
 
     try {
-      const { data: activeRows, error: activeError } = await supabase.rpc(
-        'get_my_active_group_calls',
-      );
+      let activeRows: unknown = null;
 
-      if (!activeError && Array.isArray(activeRows) && activeRows.length > 0) {
+      if (activeRecoveryRpcAvailableRef.current) {
+        const { data, error: activeError } = await supabase.rpc(
+          'get_my_active_group_calls',
+        );
+
+        if (activeError) {
+          // PostgREST 404 means the recovery migration has not reached this
+          // Supabase project yet. Do not hammer the RPC on every poll.
+          if (activeError.code === 'PGRST202' || activeError.message?.includes('404')) {
+            activeRecoveryRpcAvailableRef.current = false;
+            console.warn(
+              '[enotes group call] active-session recovery RPC is unavailable. Apply the latest group-call migration to Supabase.',
+            );
+          }
+        } else {
+          activeRows = data;
+        }
+      }
+
+      if (Array.isArray(activeRows) && activeRows.length > 0) {
         const active = activeRows[0] as {
           call_id: string;
           conversation_id: string;
