@@ -103,6 +103,8 @@ export default function GroupCallOverlay({
   const activeRef = useRef<typeof active>(null);
   const endingRef = useRef(false);
   const startingRef = useRef(false);
+  const channelReadyRef = useRef<Promise<void> | null>(null);
+  const recoveringActiveRef = useRef(false);
 
   useEffect(() => {
     setCallMembers(members);
@@ -390,6 +392,10 @@ export default function GroupCallOverlay({
       setActive(activeCall);
       activeRef.current = activeCall;
 
+      if (channelReadyRef.current) {
+        await channelReadyRef.current;
+      }
+
       await send({ type: 'invite', callId: String(callId) });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the group video call.');
@@ -418,6 +424,11 @@ export default function GroupCallOverlay({
       setActive({ callId: call.callId, hostId: call.from });
       activeRef.current = { callId: call.callId, hostId: call.from };
       setIncoming(null);
+
+      if (channelReadyRef.current) {
+        await channelReadyRef.current;
+      }
+
       await send({ type: 'accept', callId: call.callId, to: call.from });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not join the group video call.');
@@ -510,6 +521,31 @@ export default function GroupCallOverlay({
 
     channelRef.current = channel;
 
+    channelReadyRef.current = new Promise<void>((resolve, reject) => {
+      let settled = false;
+
+      channel.subscribe((status, subscribeError) => {
+        if (status === 'SUBSCRIBED') {
+          if (!settled) {
+            settled = true;
+            resolve();
+          }
+          return;
+        }
+
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (!settled) {
+            settled = true;
+            reject(
+              subscribeError instanceof Error
+                ? subscribeError
+                : new Error('The group call signaling channel could not be opened.'),
+            );
+          }
+        }
+      });
+    });
+
     return () => {
       const current = activeRef.current;
 
@@ -532,6 +568,7 @@ export default function GroupCallOverlay({
 
       supabase.removeChannel(channel);
       channelRef.current = null;
+      channelReadyRef.current = null;
       cleanup(false);
     };
   }, [cleanup, closePeer, conversationId, createPeer, enabled, makeOffer, myId, send]);
@@ -558,6 +595,89 @@ export default function GroupCallOverlay({
     cleanup(false);
     onClose?.();
   }, [cleanup, onClose, send]);
+
+  useEffect(() => {
+    if (
+      startWhenOpened ||
+      initialIncoming ||
+      !enabled ||
+      !conversationId ||
+      !myId ||
+      activeRef.current ||
+      recoveringActiveRef.current
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    recoveringActiveRef.current = true;
+
+    void (async () => {
+      try {
+        const { data, error: lookupError } = await supabase.rpc(
+          'get_my_active_group_call',
+          { p_conversation_id: conversationId },
+        );
+
+        if (lookupError || cancelled) return;
+
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row?.call_id || cancelled) return;
+
+        const isHost = String(row.host_id) === myId;
+
+        if (!isHost) {
+          const { error: joinError } = await supabase.rpc('respond_group_call', {
+            p_call_id: row.call_id,
+            p_action: 'join',
+          });
+
+          if (joinError) throw joinError;
+        }
+
+        await getMedia();
+
+        if (cancelled) return;
+
+        const restored = {
+          callId: String(row.call_id),
+          hostId: String(row.host_id),
+        };
+
+        setActive(restored);
+        activeRef.current = restored;
+
+        if (channelReadyRef.current) {
+          await channelReadyRef.current;
+        }
+
+        await send(
+          isHost
+            ? { type: 'invite', callId: restored.callId }
+            : { type: 'accept', callId: restored.callId, to: restored.hostId },
+        );
+      } catch (restoreError) {
+        if (!cancelled) {
+          console.warn('[enotes group call] active-session restore failed:', restoreError);
+        }
+      } finally {
+        recoveringActiveRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      recoveringActiveRef.current = false;
+    };
+  }, [
+    conversationId,
+    enabled,
+    getMedia,
+    initialIncoming,
+    myId,
+    send,
+    startWhenOpened,
+  ]);
 
   useEffect(() => {
     if (!startWhenOpened || !enabled || !myId || activeRef.current) return;
