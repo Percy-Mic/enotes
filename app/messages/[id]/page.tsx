@@ -877,7 +877,8 @@ function ChatRoom() {
           ) : null}
         </div>
 
-        {/* call buttons (DMs only — group calls need an SFU; not faked) */}
+        {/* Call actions: DMs use the existing 1:1 call provider; groups use the
+            in-app WebRTC group-call overlay. */}
         {!conversation?.is_group && otherMember && (
           <>
             <button onClick={startAudioCall} className="flex h-10 w-10 items-center justify-center rounded-full text-[#6B6B6B] transition hover:bg-gray-100" aria-label="Voice call">
@@ -887,6 +888,20 @@ function ChatRoom() {
               <Video className="h-5 w-5" />
             </button>
           </>
+        )}
+
+        {conversation?.is_group && (
+          <button
+            onClick={() => {
+              setShowGroupCall(true);
+              void loadMembers();
+            }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#6B6B6B] transition hover:bg-gray-100"
+            aria-label="Start group video call"
+            title="Start group video call"
+          >
+            <Video className="h-5 w-5" />
+          </button>
         )}
 
         {/* menu */}
