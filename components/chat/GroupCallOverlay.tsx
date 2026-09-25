@@ -266,7 +266,7 @@ export default function GroupCallOverlay({
     };
 
     return peer;
-  }, [closePeer, send]);
+  }, [closePeer, myId, send]);
 
   const stopLocal = useCallback(() => {
     localRef.current?.getTracks().forEach((track) => {
