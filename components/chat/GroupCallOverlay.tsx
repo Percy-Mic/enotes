@@ -35,7 +35,7 @@ interface GroupCallOverlayProps {
 }
 
 type Signal = {
-  type: 'invite' | 'accept' | 'offer' | 'answer' | 'ice' | 'leave' | 'end';
+  type: 'invite' | 'accept' | 'offer' | 'answer' | 'ice' | 'leave' | 'end' | 'restart-request';
   callId: string;
   from: string;
   to?: string;
@@ -105,6 +105,7 @@ export default function GroupCallOverlay({
   const startingRef = useRef(false);
   const channelReadyRef = useRef<Promise<void> | null>(null);
   const recoveringActiveRef = useRef(false);
+  const restartingPeersRef = useRef(new Set<string>());
 
   useEffect(() => {
     setCallMembers(members);
@@ -224,7 +225,42 @@ export default function GroupCallOverlay({
     };
 
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === 'failed' || peer.connectionState === 'closed') {
+      if (peer.connectionState === 'failed') {
+        const current = activeRef.current;
+
+        if (current && current.hostId === myId && !restartingPeersRef.current.has(remoteId)) {
+          restartingPeersRef.current.add(remoteId);
+
+          void (async () => {
+            try {
+              if (peer.signalingState !== 'stable') return;
+
+              peer.restartIce();
+              const offer = await peer.createOffer({ iceRestart: true });
+              await peer.setLocalDescription(offer);
+
+              await send({
+                type: 'offer',
+                callId: current.callId,
+                to: remoteId,
+                sdp: offer,
+              });
+            } catch (restartError) {
+              console.warn('[enotes group call] ICE restart failed:', restartError);
+            } finally {
+              restartingPeersRef.current.delete(remoteId);
+            }
+          })();
+        } else if (current && current.hostId !== myId) {
+          void send({
+            type: 'restart-request',
+            callId: current.callId,
+            to: current.hostId,
+          });
+        }
+      }
+
+      if (peer.connectionState === 'closed') {
         closePeer(remoteId);
       }
     };
@@ -493,6 +529,33 @@ export default function GroupCallOverlay({
             const peer = peersRef.current.get(signal.from);
             if (peer && signal.sdp && !peer.currentRemoteDescription) {
               await peer.setRemoteDescription(signal.sdp);
+            }
+            return;
+          }
+
+          if (signal.type === 'restart-request') {
+            if (activeRef.current?.hostId !== myId) return;
+
+            const peer = peersRef.current.get(signal.from);
+            const current = activeRef.current;
+            if (!peer || !current || peer.signalingState !== 'stable') return;
+            if (restartingPeersRef.current.has(signal.from)) return;
+
+            restartingPeersRef.current.add(signal.from);
+            try {
+              peer.restartIce();
+              const offer = await peer.createOffer({ iceRestart: true });
+              await peer.setLocalDescription(offer);
+              await send({
+                type: 'offer',
+                callId: current.callId,
+                to: signal.from,
+                sdp: offer,
+              });
+            } catch (restartError) {
+              console.warn('[enotes group call] requested ICE restart failed:', restartError);
+            } finally {
+              restartingPeersRef.current.delete(signal.from);
             }
             return;
           }
