@@ -10,7 +10,6 @@ export default function robots(): MetadataRoute.Robots {
         allow: '/',
         disallow: [
           '/dashboard',
-          '/feed',
           '/messages',
           '/settings',
           '/notes/',
