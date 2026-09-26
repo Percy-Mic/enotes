@@ -115,7 +115,13 @@ export async function sendToSubscriptions(
     body: string;
     url?: string;
     tag?: string;
-    type?: 'default' | 'call';
+    type?: 'default' | 'message' | 'call';
+    icon?: string;
+    badge?: string;
+    notificationId?: string;
+    conversationId?: string;
+    senderId?: string;
+    senderName?: string;
   },
   subs: PushTarget[]
 ): Promise<SendResult> {
@@ -130,6 +136,12 @@ export async function sendToSubscriptions(
     url: payload.url || '/notifications',
     tag: payload.tag,
     type: payload.type || 'default',
+    icon: payload.icon || '/icon.svg',
+    badge: payload.badge || '/icon.svg',
+    notificationId: payload.notificationId || null,
+    conversationId: payload.conversationId || null,
+    senderId: payload.senderId || null,
+    senderName: payload.senderName || null,
   });
 
   let delivered = 0;
