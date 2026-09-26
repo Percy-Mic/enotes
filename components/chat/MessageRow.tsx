@@ -194,16 +194,16 @@ export default function MessageRow({
                 return (
                   <div className="min-w-[240px] max-w-[320px] p-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#3F6238] text-white">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white" style={{ background: theme.accent }}>
                         <Video className="h-5 w-5" />
                       </div>
                       <div className="min-w-0">
                         <p className="font-semibold">Group video call</p>
-                        <p className="text-xs opacity-60">The call is still available.</p>
+                        <p className="text-xs opacity-70">The call is still available.</p>
                       </div>
                     </div>
                     {onJoinGroupCall && (
-                      <button onClick={() => onJoinGroupCall(call.conversationId!, call.callId!, call.hostId!)} className="mt-3 w-full rounded-xl bg-[#3F6238] px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110">
+                      <button onClick={() => onJoinGroupCall(call.conversationId!, call.callId!, call.hostId!)} className="mt-3 w-full rounded-xl px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110" style={{ background: theme.accent }}>
                         Return to call
                       </button>
                     )}
