@@ -99,6 +99,7 @@ declare
   secret text;
   payload jsonb;
   caller_name text;
+  caller_avatar text;
   group_title text;
   target_url text;
   call_row public.calls%rowtype;
@@ -136,8 +137,8 @@ begin
     nullif(p.full_text_name, ''),
     nullif(p.username, ''),
     'Someone'
-  )
-    into caller_name
+  ), p.avatar_url
+    into caller_name, caller_avatar
     from public.profiles p
    where p.id = call_row.caller_id;
 
@@ -165,6 +166,7 @@ begin
     'conversationId', call_row.conversation_id::text,
     'senderId', call_row.caller_id::text,
     'senderName', caller_name,
+    'icon', caller_avatar,
     'targets',
       coalesce(
         (
