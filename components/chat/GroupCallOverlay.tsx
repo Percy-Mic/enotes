@@ -838,6 +838,8 @@ export default function GroupCallOverlay({
       return;
     }
 
+    const currentSettings = currentVideoTrack.getSettings();
+    const currentDeviceId = currentSettings.deviceId || '';
     const nextFacing: 'user' | 'environment' =
       cameraFacing === 'user' ? 'environment' : 'user';
 
@@ -845,28 +847,92 @@ export default function GroupCallOverlay({
     setError(null);
 
     try {
-      let cameraStream: MediaStream;
+      /*
+       * Mobile browsers are inconsistent with:
+       *   facingMode: { exact: 'environment' }
+       *
+       * Some phones expose the cameras only through deviceId, and some
+       * browsers will reject a second getUserMedia call while the current
+       * camera track is still active. We therefore:
+       *
+       * 1. enumerate the cameras while permission is already granted;
+       * 2. prefer a camera whose label identifies the requested side;
+       * 3. fall back to facingMode when labels are unavailable;
+       * 4. release the current camera before opening the replacement;
+       * 5. replace the WebRTC sender tracks without recreating the call.
+       */
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      let cameras = devices.filter((device) => device.kind === 'videoinput');
 
+      const normalize = (value: string) => value.toLowerCase().replace(/[\\s_-]+/g, ' ');
+
+      const labeledTarget = cameras.find((device) => {
+        if (!device.deviceId || device.deviceId === currentDeviceId) return false;
+
+        const label = normalize(device.label);
+        const wantsBack = nextFacing === 'environment';
+
+        const looksBack =
+          /back|rear|environment|world|main|wide|ultra wide|telephoto/.test(label);
+        const looksFront =
+          /front|user|face|selfie|facetime/.test(label);
+
+        return wantsBack ? looksBack : looksFront;
+      });
+
+      const differentCamera = cameras.find(
+        (device) => device.deviceId && device.deviceId !== currentDeviceId,
+      );
+
+      const targetDeviceId =
+        labeledTarget?.deviceId ||
+        (cameras.length > 1 ? differentCamera?.deviceId : undefined);
+
+      const audioTracks = localRef.current.getAudioTracks();
+
+      // Release the current camera first. This is required by several
+      // Android/iOS browsers before another physical camera can be opened.
       try {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: { exact: nextFacing },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30, max: 30 },
-          },
-        });
-      } catch {
-        cameraStream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: nextFacing,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            frameRate: { ideal: 30, max: 30 },
-          },
-        });
+        currentVideoTrack.stop();
+      } catch {}
+
+      let cameraStream: MediaStream | null = null;
+
+      if (targetDeviceId) {
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              deviceId: { exact: targetDeviceId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+          });
+        } catch {
+          cameraStream = null;
+        }
+      }
+
+      if (!cameraStream) {
+        try {
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              facingMode: { ideal: nextFacing },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30, max: 30 },
+            },
+          });
+        } catch {
+          // Some browsers need a completely unconstrained camera request
+          // after releasing the previous track.
+          cameraStream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: true,
+          });
+        }
       }
 
       const nextVideoTrack = cameraStream.getVideoTracks()[0];
@@ -877,6 +943,8 @@ export default function GroupCallOverlay({
 
       nextVideoTrack.enabled = cameraEnabled;
 
+      // Keep the existing peer connections. Only replace the outgoing
+      // video track, so switching cameras does not drop the call.
       for (const peer of Array.from(peersRef.current.values())) {
         const sender = peer.getSenders().find(
           (item) => item.track?.kind === 'video',
@@ -884,12 +952,9 @@ export default function GroupCallOverlay({
 
         if (sender) {
           await sender.replaceTrack(nextVideoTrack);
-        } else {
-          peer.addTrack(nextVideoTrack, localRef.current);
         }
       }
 
-      const audioTracks = localRef.current.getAudioTracks();
       const nextLocalStream = new MediaStream([
         ...audioTracks,
         nextVideoTrack,
@@ -898,20 +963,60 @@ export default function GroupCallOverlay({
       localRef.current = nextLocalStream;
       setLocalStream(nextLocalStream);
 
-      try { currentVideoTrack.stop(); } catch {}
-
       const actualFacing = nextVideoTrack.getSettings().facingMode;
+      const actualDeviceId = nextVideoTrack.getSettings().deviceId || '';
+
+      // Prefer the browser-reported facingMode. When it is absent, keep the
+      // requested side because we selected the alternate physical camera.
       setCameraFacing(
         actualFacing === 'environment' || actualFacing === 'user'
           ? actualFacing
           : nextFacing,
       );
+
+      // Keep the selected device information available for the next toggle.
+      if (actualDeviceId) {
+        // No state is needed: the next switch reads it from the active track.
+      }
     } catch (e) {
       setError(
         e instanceof Error
           ? e.message
-          : 'Could not switch to the other camera.',
+          : 'Could not switch between the front and back cameras.',
       );
+
+      // If opening the requested camera failed after releasing the old one,
+      // try to restore a working camera so the user is not left without video.
+      try {
+        const recovery = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: cameraFacing },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+        });
+        const recoveryTrack = recovery.getVideoTracks()[0];
+        if (recoveryTrack) {
+          recoveryTrack.enabled = cameraEnabled;
+          for (const peer of Array.from(peersRef.current.values())) {
+            const sender = peer.getSenders().find(
+              (item) => item.track?.kind === 'video',
+            );
+            if (sender) await sender.replaceTrack(recoveryTrack);
+          }
+          const recoveryStream = new MediaStream([
+            ...localRef.current.getAudioTracks(),
+            recoveryTrack,
+          ]);
+          localRef.current = recoveryStream;
+          setLocalStream(recoveryStream);
+        } else {
+          recovery.getTracks().forEach((track) => track.stop());
+        }
+      } catch {
+        // Keep the original error; the user can try the camera button again.
+      }
     } finally {
       setSwitchingCamera(false);
     }
