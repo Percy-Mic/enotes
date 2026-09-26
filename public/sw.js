@@ -1,9 +1,11 @@
-/* enotes service worker.
-   Responsibilities:
-   1. Web Push delivery when enotes is closed/backgrounded.
-   2. Notification click focus/open behavior.
-   3. Keep stale subscriptions harmless; the server removes dead endpoints.
-*/
+/* ============================================================
+   enotes Service Worker
+
+   Web Push is browser/device based, not page-login based.
+
+   Once a browser has an active push subscription, this worker
+   can display notifications while the user is logged out.
+   ============================================================ */
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -21,8 +23,18 @@ function toUrl(path) {
   }
 }
 
+function cleanBody(value) {
+  if (typeof value !== 'string') return '';
+
+  return value
+    .replace(/\\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+}
+
 self.addEventListener('push', (event) => {
   let data = {};
+
   try {
     data = event.data ? event.data.json() : {};
   } catch {
@@ -34,70 +46,244 @@ self.addEventListener('push', (event) => {
     };
   }
 
-  const title = data.title || 'enotes';
-  const isCall = data.type === 'call';
+  const type = data.type || 'default';
+  const isCall = type === 'call';
+  const isMessage = type === 'message';
 
-  const options = {
-    body: data.body || '',
-    icon: data.icon || '/icon.svg',
-    badge: data.badge || '/icon.svg',
-    tag: data.tag || undefined,
-    requireInteraction: isCall,
-    vibrate: isCall ? [300, 100, 300, 100, 600] : undefined,
-    actions: isCall
-      ? [
-          { action: 'answer', title: 'Open call' },
-          { action: 'dismiss', title: 'Dismiss' },
-        ]
-      : undefined,
-    data: {
-      url: data.url || '/notifications',
-      type: data.type || 'default',
-      callId: data.callId || null,
-    },
-    renotify: Boolean(data.tag),
-  };
+  const title =
+    data.title ||
+    (isMessage ? 'New message' : 'enotes');
 
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
-});
+  const body = cleanBody(data.body || '');
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
+  if (isMessage) {
+    const conversationId =
+      data.conversationId || null;
 
-  if (event.action === 'dismiss') return;
+    const targetUrl =
+      data.url ||
+      (
+        conversationId
+          ? '/messages/' + conversationId
+          : '/messages'
+      );
 
-  const target = toUrl(
-    (event.notification.data && event.notification.data.url) || '/notifications'
-  );
+    const tag =
+      data.tag ||
+      (
+        conversationId
+          ? 'message:conversation:' + conversationId
+          : 'message:' + Date.now()
+      );
 
-  event.waitUntil(
-    (async () => {
-      const clientList = await self.clients.matchAll({
-        type: 'window',
-        includeUncontrolled: true,
-      });
+    event.waitUntil(
+      self.registration.showNotification(
+        title,
+        {
+          body:
+            body ||
+            'You have a new message',
 
-      for (const client of clientList) {
-        if ('focus' in client) {
-          await client.focus();
-          if ('navigate' in client && client.url !== target) {
-            try {
-              await client.navigate(target);
-            } catch {
-              /* The app can still be opened/focused if navigation is blocked. */
-            }
-          }
-          return;
+          icon:
+            data.icon ||
+            '/icon.svg',
+
+          badge:
+            data.badge ||
+            '/icon.svg',
+
+          tag,
+
+          renotify: true,
+
+          requireInteraction: false,
+
+          data: {
+            url: targetUrl,
+            type: 'message',
+            conversationId,
+            notificationId:
+              data.notificationId || null,
+            senderId:
+              data.senderId || null,
+            senderName:
+              data.senderName || title,
+          },
         }
-      }
+      )
+    );
 
-      await self.clients.openWindow(target);
-    })()
+    return;
+  }
+
+  if (isCall) {
+    event.waitUntil(
+      self.registration.showNotification(
+        title,
+        {
+          body:
+            body ||
+            'Incoming call',
+
+          icon:
+            data.icon ||
+            '/icon.svg',
+
+          badge:
+            data.badge ||
+            '/icon.svg',
+
+          tag:
+            data.tag ||
+            (
+              data.callId
+                ? 'call:' + data.callId
+                : undefined
+            ),
+
+          requireInteraction: true,
+
+          vibrate: [
+            300,
+            100,
+            300,
+            100,
+            600,
+          ],
+
+          actions: [
+            {
+              action: 'answer',
+              title: 'Open call',
+            },
+            {
+              action: 'dismiss',
+              title: 'Dismiss',
+            },
+          ],
+
+          data: {
+            url:
+              data.url ||
+              '/notifications',
+
+            type: 'call',
+
+            callId:
+              data.callId ||
+              null,
+          },
+
+          renotify: true,
+        }
+      )
+    );
+
+    return;
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(
+      title,
+      {
+        body,
+
+        icon:
+          data.icon ||
+          '/icon.svg',
+
+        badge:
+          data.badge ||
+          '/icon.svg',
+
+        tag:
+          data.tag ||
+          undefined,
+
+        requireInteraction: false,
+
+        data: {
+          url:
+            data.url ||
+            '/notifications',
+
+          type,
+
+          notificationId:
+            data.notificationId ||
+            null,
+        },
+
+        renotify:
+          Boolean(data.tag),
+      }
+    )
   );
 });
 
-self.addEventListener('pushsubscriptionchange', (event) => {
-  event.waitUntil(Promise.resolve());
-});
+self.addEventListener(
+  'notificationclick',
+  (event) => {
+    event.notification.close();
+
+    if (event.action === 'dismiss') {
+      return;
+    }
+
+    const target =
+      toUrl(
+        (
+          event.notification.data &&
+          event.notification.data.url
+        ) ||
+        '/notifications'
+      );
+
+    event.waitUntil(
+      (async () => {
+        const clients =
+          await self.clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true,
+          });
+
+        for (const client of clients) {
+          if ('focus' in client) {
+            try {
+              await client.focus();
+            } catch {
+              /* Best effort. */
+            }
+
+            if (
+              'navigate' in client &&
+              client.url !== target
+            ) {
+              try {
+                await client.navigate(target);
+              } catch {
+                /* Browser may block navigation. */
+              }
+            }
+
+            return;
+          }
+        }
+
+        await self.clients.openWindow(target);
+      })()
+    );
+  }
+);
+
+self.addEventListener(
+  'pushsubscriptionchange',
+  (event) => {
+    /*
+     * Do not unsubscribe or delete anything here.
+     * The browser subscription is intentionally allowed to remain
+     * active when the user logs out.
+     */
+    event.waitUntil(Promise.resolve());
+  }
+);
