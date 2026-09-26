@@ -43,7 +43,6 @@ type Signal = {
   to?: string;
   sdp?: RTCSessionDescriptionInit;
   candidate?: RTCIceCandidateInit;
-  inviteKind?: 'new' | 'reinvite';
 };
 
 function nameFor(member: GroupCallMember | undefined) {
@@ -940,7 +939,6 @@ export default function GroupCallOverlay({
         type: 'invite',
         callId: activeRef.current.callId,
         to: userId,
-        inviteKind: 'reinvite',
       });
 
       setInviteOpen(false);
@@ -957,43 +955,22 @@ export default function GroupCallOverlay({
       {incoming && !active && (
         <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl bg-[#17231d] p-6 text-white shadow-2xl ring-1 ring-white/10">
-            <div className="relative mx-auto flex h-20 w-20 items-center justify-center">
-              <span className="absolute inset-0 animate-ping rounded-full bg-[#3F6238]/30" />
-              <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-[#3F6238] ring-4 ring-[#3F6238]/20">
-                {memberMap.get(incoming.from)?.profile?.avatar_url ? (
-                  <img
-                    src={memberMap.get(incoming.from)?.profile?.avatar_url || ''}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <Video className="h-7 w-7" />
-                )}
-              </div>
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#3F6238]">
+              <Video className="h-7 w-7" />
             </div>
-            <p className="mt-4 text-center text-xs font-semibold uppercase tracking-[0.18em] text-[#9fc89a]">
-              Incoming group call
-            </p>
-            <h2 className="mt-1 text-center text-xl font-bold">
-              {nameFor(memberMap.get(incoming.from))} invited you to a group video call
+            <h2 className="mt-4 text-center text-xl font-bold">
+              {nameFor(memberMap.get(incoming.from))} started a group video call
             </h2>
-            <p className="mt-2 text-center text-sm text-white/60">
-              {incoming.inviteKind === 'reinvite'
-                ? 'You can join the existing call without creating a new one.'
-                : 'Join the conversation live.'}
-            </p>
+            <p className="mt-1 text-center text-sm text-white/60">Join the conversation live.</p>
             {error && <p className="mt-3 rounded-xl bg-red-500/15 p-2 text-xs text-red-200">{error}</p>}
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button onClick={() => void declineIncoming()} className="rounded-2xl border border-white/15 px-4 py-3 font-semibold">
                 Decline
               </button>
-              <button onClick={() => void acceptIncoming()} className="rounded-2xl bg-[#3F6238] px-4 py-3 font-semibold shadow-lg shadow-[#3F6238]/20">
+              <button onClick={() => void acceptIncoming()} className="rounded-2xl bg-[#3F6238] px-4 py-3 font-semibold">
                 Join call
               </button>
             </div>
-            <p className="mt-3 text-center text-[11px] text-white/40">
-              Your camera and microphone will start only after you choose Join.
-            </p>
           </div>
         </div>
       )}
