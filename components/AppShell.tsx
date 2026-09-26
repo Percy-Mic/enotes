@@ -107,6 +107,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           viewers) and signed-out visitors. */}
       {showNav && showAside && <NotesAside />}
       <CallOverlay />
+      <PushNotificationGate userId={myId} />
       </AlertProvider>
     </GroupCallProvider>
     </CallProvider>
