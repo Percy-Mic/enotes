@@ -94,7 +94,7 @@ self.addEventListener('push', (event) => {
         tag: data.tag || (data.callId ? 'call:' + data.callId : undefined),
         requireInteraction: true, vibrate: [300, 100, 300, 100, 600],
         actions: [{ action: 'answer', title: 'Open call' }, { action: 'dismiss', title: 'Dismiss' }],
-        data: { url: data.url || '/notifications', type: 'call', callId: data.callId || null },
+        data: { url: data.url || '/notifications', type: 'call', callId: data.callId || null, conversationId: data.conversationId || null, senderId: data.senderId || null, senderName: data.senderName || title },
         renotify: true,
       });
       return;
