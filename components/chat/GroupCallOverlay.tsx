@@ -91,7 +91,7 @@ export default function GroupCallOverlay({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [micEnabled, setMicEnabled] = useState(true);
-  const [cameraEnabled, setCameraEnabled] = useState(true);\n  const [minimized, setMinimized] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(true);  const [minimized, setMinimized] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [switchingCamera, setSwitchingCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
