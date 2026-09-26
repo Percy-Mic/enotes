@@ -28,7 +28,13 @@ interface SendBody {
   body?: string;
   url?: string;
   tag?: string;
-  type?: 'default' | 'call';
+  type?: 'default' | 'message' | 'call';
+  icon?: string;
+  badge?: string;
+  notificationId?: string;
+  conversationId?: string | null;
+  senderId?: string | null;
+  senderName?: string | null;
   targets?: unknown;
 }
 
@@ -68,7 +74,13 @@ export async function POST(req: Request) {
       body: typeof body.body === 'string' ? body.body.slice(0, 2000) : '',
       url: typeof body.url === 'string' && body.url.startsWith('/') ? body.url : '/notifications',
       tag: typeof body.tag === 'string' ? body.tag.slice(0, 128) : undefined,
-      type: body.type === 'call' ? 'call' : 'default',
+      type: body.type === 'call' ? 'call' : body.type === 'message' ? 'message' : 'default',
+      icon: typeof body.icon === 'string' ? body.icon.slice(0, 2000) : '/icon.svg',
+      badge: typeof body.badge === 'string' ? body.badge.slice(0, 2000) : '/icon.svg',
+      notificationId: typeof body.notificationId === 'string' ? body.notificationId.slice(0, 128) : undefined,
+      conversationId: typeof body.conversationId === 'string' ? body.conversationId.slice(0, 128) : undefined,
+      senderId: typeof body.senderId === 'string' ? body.senderId.slice(0, 128) : undefined,
+      senderName: typeof body.senderName === 'string' ? body.senderName.slice(0, 200) : undefined,
     },
     targets
   );
