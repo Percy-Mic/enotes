@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Bell, BellOff, ChevronDown, Clock3 } from 'lucide-react';
+import { Bell, BellOff, ChevronDown, Clock3, X } from 'lucide-react';
 import {
   clearQuietMode,
   formatQuietRemaining,
@@ -9,6 +9,13 @@ import {
   setQuietMode,
   type QuietDuration,
 } from '@/lib/notifications/quiet';
+
+const OPTIONS = [
+  [30, '30 minutes'],
+  [60, '1 hour'],
+  [120, '2 hours'],
+  [0, 'Until I turn it off'],
+] as const;
 
 export default function NotificationQuietMode({ userId }: { userId: string | null }) {
   const [until, setUntil] = useState<number | null>(null);
@@ -43,7 +50,17 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
     };
   }, [userId]);
 
-  // When logged out, the entire control is removed from the DOM.
+  useEffect(() => {
+    if (!open) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open]);
+
   if (!userId) return null;
 
   const quiet = Boolean(until && until > Date.now());
@@ -60,86 +77,127 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
     setOpen(false);
   };
 
-  return (
-    <div
-      className="pointer-events-none fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-3 z-[390] md:bottom-4 md:right-4"
-      aria-hidden={false}
-    >
-      {open && (
-        <div className="pointer-events-auto absolute bottom-14 right-0 w-[250px] overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-2 shadow-[0_18px_50px_rgba(20,12,16,0.18)] backdrop-blur-xl">
-          <div className="px-3 pb-2 pt-2">
-            <p className="text-sm font-bold text-[#171315]">
-              {quiet ? 'Quiet mode is on' : 'Notification settings'}
-            </p>
-            <p className="mt-1 text-[11px] leading-4 text-[#766D71]">
-              {quiet
-                ? 'Notifications are paused for ' +
-                  formatQuietRemaining(until) +
-                  '.'
-                : 'Pause messages, calls, and in-app alerts while you watch.'}
-            </p>
-          </div>
+  const panelContent = (
+    <>
+      <div className="flex items-start justify-between gap-3 px-3 pb-2 pt-2">
+        <div>
+          <p className="text-sm font-bold text-[#171315]">
+            {quiet ? 'Quiet mode is on' : 'Notification settings'}
+          </p>
+          <p className="mt-1 text-[11px] leading-4 text-[#766D71]">
+            {quiet
+              ? 'Notifications are paused for ' + formatQuietRemaining(until) + '.'
+              : 'Pause messages, calls, and in-app alerts while you watch.'}
+          </p>
+        </div>
 
-          {quiet ? (
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          aria-label="Close notification settings"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#766D71] hover:bg-[#F8F3F5] hover:text-[#3C3538]"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {quiet ? (
+        <button
+          type="button"
+          onClick={() => void disable()}
+          className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-[#E5798F] hover:bg-[#FFF0F3]"
+        >
+          <Bell className="h-4 w-4" />
+          Turn notifications back on
+        </button>
+      ) : (
+        <div className="space-y-1">
+          {OPTIONS.map(([duration, label]) => (
             <button
+              key={label}
               type="button"
-              onClick={() => void disable()}
-              className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-[#E5798F] hover:bg-[#FFF0F3]"
+              onClick={() => void enable(duration)}
+              className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-[#3C3538] hover:bg-[#F8F3F5] active:bg-[#F3EAED]"
             >
-              <Bell className="h-4 w-4" />
-              Turn notifications back on
+              <Clock3 className="h-4 w-4 text-[#E5798F]" />
+              {label}
             </button>
-          ) : (
-            <div className="space-y-1">
-              {(
-                [
-                  [30, '30 minutes'],
-                  [60, '1 hour'],
-                  [120, '2 hours'],
-                  [0, 'Until I turn it off'],
-                ] as const
-              ).map(([duration, label]) => (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => void enable(duration)}
-                  className="flex min-h-10 w-full items-center gap-2 rounded-xl px-3 text-left text-xs font-semibold text-[#3C3538] hover:bg-[#F8F3F5]"
-                >
-                  <Clock3 className="h-4 w-4 text-[#E5798F]" />
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
+          ))}
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile: a modal-style bottom sheet positioned above the composer/bottom navigation. */}
+      {open && (
+        <div
+          className="fixed inset-0 z-[450] md:hidden"
+          role="presentation"
+          onClick={() => setOpen(false)}
+        >
+          <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px]" />
+
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Notification settings"
+            onClick={(event) => event.stopPropagation()}
+            className="absolute bottom-[calc(8.75rem+env(safe-area-inset-bottom))] left-2 right-2 max-h-[min(70vh,360px)] overflow-y-auto rounded-3xl border border-white/80 bg-white/95 p-2 shadow-[0_24px_70px_rgba(20,12,16,0.24)] backdrop-blur-2xl"
+          >
+            {panelContent}
+          </div>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={
-          quiet
-            ? 'Notification quiet mode is on'
-            : 'Notification settings'
-        }
-        title={quiet ? 'Quiet mode' : 'Notification settings'}
-        className={
-          'pointer-events-auto flex h-11 items-center gap-2 rounded-full border px-4 text-xs font-bold shadow-[0_12px_35px_rgba(20,12,16,0.16)] backdrop-blur-xl transition ' +
-          (quiet
-            ? 'border-[#F2C1CB] bg-[#FFF0F3] text-[#C85E76]'
-            : 'border-white/70 bg-white/90 text-[#4D4549] hover:bg-white')
-        }
-      >
-        {quiet ? (
-          <BellOff className="h-4 w-4" />
-        ) : (
-          <Bell className="h-4 w-4" />
+      {/* Desktop: keep the compact floating popover. */}
+      <div className="pointer-events-none fixed bottom-4 right-4 z-[390] hidden md:block">
+        {open && (
+          <div
+            role="dialog"
+            aria-label="Notification settings"
+            className="pointer-events-auto absolute bottom-14 right-0 w-[280px] overflow-hidden rounded-2xl border border-white/70 bg-white/95 p-2 shadow-[0_18px_50px_rgba(20,12,16,0.18)] backdrop-blur-xl"
+          >
+            {panelContent}
+          </div>
         )}
-        <span className="hidden sm:inline">
-          {quiet ? 'Quiet mode' : 'Notifications'}
-        </span>
-        <ChevronDown className="h-3.5 w-3.5" />
-      </button>
-    </div>
+
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-label={quiet ? 'Notification quiet mode is on' : 'Notification settings'}
+          title={quiet ? 'Quiet mode' : 'Notification settings'}
+          className={
+            'pointer-events-auto flex h-11 items-center gap-2 rounded-full border px-4 text-xs font-bold shadow-[0_12px_35px_rgba(20,12,16,0.16)] backdrop-blur-xl transition ' +
+            (quiet
+              ? 'border-[#F2C1CB] bg-[#FFF0F3] text-[#C85E76]'
+              : 'border-white/70 bg-white/90 text-[#4D4549] hover:bg-white')
+          }
+        >
+          {quiet ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+          <span>{quiet ? 'Quiet mode' : 'Notifications'}</span>
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      {/* Mobile trigger. It stays clear of the message composer and bottom navigation. */}
+      <div className="pointer-events-none fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-3 z-[390] md:hidden">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-label={quiet ? 'Notification quiet mode is on' : 'Notification settings'}
+          title={quiet ? 'Quiet mode' : 'Notification settings'}
+          className={
+            'pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border shadow-[0_12px_35px_rgba(20,12,16,0.16)] backdrop-blur-xl transition ' +
+            (quiet
+              ? 'border-[#F2C1CB] bg-[#FFF0F3] text-[#C85E76]'
+              : 'border-white/70 bg-white/90 text-[#4D4549]')
+          }
+        >
+          {quiet ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+        </button>
+      </div>
+    </>
   );
 }
