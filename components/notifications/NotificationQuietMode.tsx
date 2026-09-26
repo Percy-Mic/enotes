@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Bell, BellOff, ChevronDown, Clock3, X } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import {
   clearQuietMode,
   formatQuietRemaining,
@@ -18,6 +19,7 @@ const OPTIONS = [
 ] as const;
 
 export default function NotificationQuietMode({ userId }: { userId: string | null }) {
+  const pathname = usePathname() || '/';
   const [until, setUntil] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -128,9 +130,10 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
     </>
   );
 
+  const isChat = /^\/messages(?:\/|$)/.test(pathname);
+
   return (
     <>
-      {/* Mobile: a modal-style bottom sheet positioned above the composer/bottom navigation. */}
       {open && (
         <div
           className="fixed inset-0 z-[450] md:hidden"
@@ -138,7 +141,6 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
           onClick={() => setOpen(false)}
         >
           <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px]" />
-
           <div
             role="dialog"
             aria-modal="true"
@@ -151,7 +153,6 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
         </div>
       )}
 
-      {/* Desktop: keep the compact floating popover. */}
       <div className="pointer-events-none fixed bottom-4 right-4 z-[390] hidden md:block">
         {open && (
           <div
@@ -181,23 +182,24 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
         </button>
       </div>
 
-      {/* Mobile trigger. It stays clear of the message composer and bottom navigation. */}
-      <div className="pointer-events-none fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] right-3 z-[390] md:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          aria-label={quiet ? 'Notification quiet mode is on' : 'Notification settings'}
-          title={quiet ? 'Quiet mode' : 'Notification settings'}
-          className={
-            'pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border shadow-[0_12px_35px_rgba(20,12,16,0.16)] backdrop-blur-xl transition ' +
-            (quiet
-              ? 'border-[#F2C1CB] bg-[#FFF0F3] text-[#C85E76]'
-              : 'border-white/70 bg-white/90 text-[#4D4549]')
-          }
-        >
-          {quiet ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-        </button>
-      </div>
+      {!isChat && (
+        <div className="pointer-events-none fixed bottom-[calc(9.25rem+env(safe-area-inset-bottom))] right-3 z-[390] md:hidden">
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            aria-label={quiet ? 'Notification quiet mode is on' : 'Notification settings'}
+            title={quiet ? 'Quiet mode' : 'Notification settings'}
+            className={
+              'pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border shadow-[0_12px_35px_rgba(20,12,16,0.16)] backdrop-blur-xl transition ' +
+              (quiet
+                ? 'border-[#F2C1CB] bg-[#FFF0F3] text-[#C85E76]'
+                : 'border-white/70 bg-white/90 text-[#4D4549]')
+            }
+          >
+            {quiet ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+          </button>
+        </div>
+      )}
     </>
   );
 }
