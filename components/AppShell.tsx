@@ -9,6 +9,7 @@ import CallOverlay from '@/components/chat/CallOverlay';
 import AppNav from '@/components/social/AppNav';
 import NotesAside from '@/components/notes/NotesAside';
 import { AlertProvider } from '@/components/ui/Alert';
+import PushNotificationGate from '@/components/notifications/PushNotificationGate';
 
 /**
  * Routes that render their own chrome (fixed top bars, editors, viewers).
