@@ -1094,7 +1094,18 @@ export default function GroupCallOverlay({
 
           {error && <p className="mx-auto max-w-lg px-4 pb-2 text-center text-xs text-red-300">{error}</p>}
 
-          <footer className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-black/20 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:gap-3 sm:px-4 sm:py-4">
+          <footer className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-black/20 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:gap-3 sm:px-4 sm:py-4">            {active.hostId === myId && (
+              <button
+                onClick={() => setInviteOpen(true)}
+                className="flex h-12 min-w-12 items-center justify-center gap-2 rounded-full bg-white/10 px-3 text-white/90"
+                aria-label="Invite someone to the call"
+                title="Invite someone to the call"
+              >
+                <Users className="h-5 w-5" />
+                <span className="hidden text-xs font-semibold min-[380px]:inline">Invite</span>
+              </button>
+            )}
+
             <button onClick={toggleMic} className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10" aria-label={micEnabled ? 'Mute microphone' : 'Unmute microphone'}>
               {micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
             </button>
