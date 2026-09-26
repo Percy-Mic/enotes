@@ -106,6 +106,7 @@ export default function GroupCallOverlay({
   const channelReadyRef = useRef<Promise<void> | null>(null);
   const pendingIceRef = useRef(new Map<string, RTCIceCandidateInit[]>());
   const restartingPeersRef = useRef(new Set<string>());
+  const autoStartKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     setCallMembers(members);
@@ -401,7 +402,7 @@ export default function GroupCallOverlay({
        * genuinely active call remains protected and still reports the
        * original error.
        */
-      if (createError?.code === 'P0001' && createError.message === 'You already have an active group call.') {
+      if (createError?.code === 'P0001' || createError?.code === 'PT409' || createError?.code === 'PGRST') {
         /*
          * The durable call may still be genuinely active while this page was
          * refreshed/navigated away from the overlay. Reattach to that call
@@ -738,9 +739,22 @@ export default function GroupCallOverlay({
   }, [cleanup, onClose, send]);
 
   useEffect(() => {
-    if (!startWhenOpened || !enabled || !myId || activeRef.current) return;
+    if (!startWhenOpened) {
+      autoStartKeyRef.current = null;
+      return;
+    }
+
+    if (!enabled || !myId || activeRef.current) return;
+
+    // The provider can re-render while the member list and Realtime channel
+    // are loading. Start exactly once for this explicit Video Call action;
+    // never create a second database call just because state changed.
+    const key = `${conversationId}:outgoing`;
+    if (autoStartKeyRef.current === key) return;
+    autoStartKeyRef.current = key;
+
     void startCall();
-  }, [enabled, myId, startCall, startWhenOpened]);
+  }, [conversationId, enabled, myId, startCall, startWhenOpened]);
 
   const toggleMic = () => {
     const next = !micEnabled;
