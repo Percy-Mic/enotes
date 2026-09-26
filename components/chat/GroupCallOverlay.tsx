@@ -33,6 +33,7 @@ interface GroupCallOverlayProps {
   startWhenOpened?: boolean;
   onClose?: () => void;
   onAccepted?: (conversationId: string) => void;
+  resumeCall?: { callId: string; hostId: string } | null;
 }
 
 type Signal = {
@@ -89,6 +90,7 @@ export default function GroupCallOverlay({
   initialIncoming = null,
   onClose,
   onAccepted,
+  resumeCall = null,
 }: GroupCallOverlayProps) {
   const [active, setActive] = useState<{ callId: string; hostId: string } | null>(null);
   const [incoming, setIncoming] = useState<Signal | null>(null);
