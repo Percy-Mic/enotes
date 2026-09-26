@@ -481,12 +481,59 @@ export default function GroupCallOverlay({
       }
 
       await send({ type: 'invite', callId: String(callId) });
+
+      const { error: messageError } = await supabase.from('messages').insert({
+        conversation_id: conversationId,
+        sender_id: myId,
+        content: JSON.stringify({
+          callId: String(callId),
+          conversationId,
+          hostId: myId,
+          title: 'Group video call',
+        }),
+        message_type: 'call_invite',
+      });
+      if (messageError) {
+        console.warn('[enotes group call] could not post call card:', messageError.message);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start the group video call.');
     } finally {
       startingRef.current = false;
     }
   }, [callMembers, conversationId, getMedia, myId, send]);
+
+  const joinExistingCall = useCallback(async () => {
+    if (!resumeCall || !myId || startingRef.current || activeRef.current) return;
+
+    startingRef.current = true;
+    try {
+      setError(null);
+      await getMedia();
+
+      const { error: responseError } = await supabase.rpc('respond_group_call', {
+        p_call_id: resumeCall.callId,
+        p_action: 'join',
+      });
+      if (responseError) throw responseError;
+
+      const nextActive = { callId: resumeCall.callId, hostId: resumeCall.hostId };
+      setActive(nextActive);
+      activeRef.current = nextActive;
+
+      if (channelReadyRef.current) await channelReadyRef.current;
+      await send({ type: 'accept', callId: resumeCall.callId, to: resumeCall.hostId });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not return to the group video call.');
+    } finally {
+      startingRef.current = false;
+    }
+  }, [getMedia, myId, resumeCall, send]);
+
+  useEffect(() => {
+    if (!resumeCall || activeRef.current) return;
+    void joinExistingCall();
+  }, [joinExistingCall, resumeCall]);
 
   const acceptIncoming = useCallback(async () => {
     const call = incoming;
