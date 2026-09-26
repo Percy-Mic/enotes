@@ -3,8 +3,10 @@
 
    Web Push is browser/device based, not page-login based.
 
-   Once a browser has an active push subscription, this worker
-   can display notifications while the user is logged out.
+   If a visible enotes window exists, push is handed to the app's
+   custom notification UI. If no visible window exists, the worker
+   shows the native browser/OS notification so closed/background
+   delivery continues to work.
    ============================================================ */
 
 self.addEventListener('install', () => {
@@ -27,103 +29,216 @@ function cleanBody(value) {
   if (typeof value !== 'string') return '';
 
   return value
-    .replace(/\\s+/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 240);
 }
 
+async function hasVisibleEnotesWindow() {
+  const clients = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+
+  return clients.some(
+    (client) =>
+      client.visibilityState === 'visible' &&
+      new URL(client.url).origin === self.location.origin
+  );
+}
+
+async function forwardToVisibleApp(data) {
+  const clients = await self.clients.matchAll({
+    type: 'window',
+    includeUncontrolled: true,
+  });
+
+  let forwarded = false;
+
+  for (const client of clients) {
+    if (
+      client.visibilityState === 'visible' &&
+      new URL(client.url).origin === self.location.origin
+    ) {
+      client.postMessage({
+        type: 'ENOTES_PUSH_NOTIFICATION',
+        payload: data,
+      });
+      forwarded = true;
+    }
+  }
+
+  return forwarded;
+}
+
 self.addEventListener('push', (event) => {
-  let data = {};
+  event.waitUntil(
+    (async () => {
+      let data = {};
 
-  try {
-    data = event.data ? event.data.json() : {};
-  } catch {
-    data = {
-      title: 'enotes',
-      body: event.data ? event.data.text() : '',
-      url: '/notifications',
-      type: 'default',
-    };
-  }
+      try {
+        data = event.data ? event.data.json() : {};
+      } catch {
+        data = {
+          title: 'enotes',
+          body: event.data ? event.data.text() : '',
+          url: '/notifications',
+          type: 'default',
+        };
+      }
 
-  const type = data.type || 'default';
-  const isCall = type === 'call';
-  const isMessage = type === 'message';
+      /*
+       * Never show two notifications for an active user:
+       * visible enotes window -> custom in-app notification.
+       * no visible enotes window -> native Web Push notification.
+       */
+      if (await forwardToVisibleApp(data)) {
+        return;
+      }
 
-  const title =
-    data.title ||
-    (isMessage ? 'New message' : 'enotes');
+      const type = data.type || 'default';
+      const isCall = type === 'call';
+      const isMessage = type === 'message';
 
-  const body = cleanBody(data.body || '');
+      const title =
+        data.title ||
+        (isMessage ? 'New message' : 'enotes');
 
-  if (isMessage) {
-    const conversationId =
-      data.conversationId || null;
+      const body = cleanBody(data.body || '');
 
-    const targetUrl =
-      data.url ||
-      (
-        conversationId
-          ? '/messages/' + conversationId
-          : '/messages'
-      );
+      if (isMessage) {
+        const conversationId =
+          data.conversationId || null;
 
-    const tag =
-      data.tag ||
-      (
-        conversationId
-          ? 'message:conversation:' + conversationId
-          : 'message:' + Date.now()
-      );
+        const targetUrl =
+          data.url ||
+          (
+            conversationId
+              ? '/messages/' + conversationId
+              : '/messages'
+          );
 
-    event.waitUntil(
-      self.registration.showNotification(
+        const tag =
+          data.tag ||
+          (
+            conversationId
+              ? 'message:conversation:' + conversationId
+              : 'message:' + Date.now()
+          );
+
+        await self.registration.showNotification(
+          title,
+          {
+            body:
+              body ||
+              'You have a new message',
+
+            icon:
+              data.icon ||
+              '/icon.svg',
+
+            badge:
+              data.badge ||
+              '/icon.svg',
+
+            tag,
+
+            renotify: true,
+
+            requireInteraction: false,
+
+            actions: [
+              {
+                action: 'open',
+                title: 'Open chat',
+              },
+            ],
+
+            data: {
+              url: targetUrl,
+              type: 'message',
+              conversationId,
+              notificationId:
+                data.notificationId || null,
+              senderId:
+                data.senderId || null,
+              senderName:
+                data.senderName || title,
+            },
+          }
+        );
+
+        return;
+      }
+
+      if (isCall) {
+        await self.registration.showNotification(
+          title,
+          {
+            body:
+              body ||
+              'Incoming call',
+
+            icon:
+              data.icon ||
+              '/icon.svg',
+
+            badge:
+              data.badge ||
+              '/icon.svg',
+
+            tag:
+              data.tag ||
+              (
+                data.callId
+                  ? 'call:' + data.callId
+                  : undefined
+              ),
+
+            requireInteraction: true,
+
+            vibrate: [
+              300,
+              100,
+              300,
+              100,
+              600,
+            ],
+
+            actions: [
+              {
+                action: 'answer',
+                title: 'Open call',
+              },
+              {
+                action: 'dismiss',
+                title: 'Dismiss',
+              },
+            ],
+
+            data: {
+              url:
+                data.url ||
+                '/notifications',
+
+              type: 'call',
+
+              callId:
+                data.callId ||
+                null,
+            },
+
+            renotify: true,
+          }
+        );
+
+        return;
+      }
+
+      await self.registration.showNotification(
         title,
         {
-          body:
-            body ||
-            'You have a new message',
-
-          icon:
-            data.icon ||
-            '/icon.svg',
-
-          badge:
-            data.badge ||
-            '/icon.svg',
-
-          tag,
-
-          renotify: true,
-
-          requireInteraction: false,
-
-          data: {
-            url: targetUrl,
-            type: 'message',
-            conversationId,
-            notificationId:
-              data.notificationId || null,
-            senderId:
-              data.senderId || null,
-            senderName:
-              data.senderName || title,
-          },
-        }
-      )
-    );
-
-    return;
-  }
-
-  if (isCall) {
-    event.waitUntil(
-      self.registration.showNotification(
-        title,
-        {
-          body:
-            body ||
-            'Incoming call',
+          body,
 
           icon:
             data.icon ||
@@ -135,89 +250,27 @@ self.addEventListener('push', (event) => {
 
           tag:
             data.tag ||
-            (
-              data.callId
-                ? 'call:' + data.callId
-                : undefined
-            ),
+            undefined,
 
-          requireInteraction: true,
-
-          vibrate: [
-            300,
-            100,
-            300,
-            100,
-            600,
-          ],
-
-          actions: [
-            {
-              action: 'answer',
-              title: 'Open call',
-            },
-            {
-              action: 'dismiss',
-              title: 'Dismiss',
-            },
-          ],
+          requireInteraction: false,
 
           data: {
             url:
               data.url ||
               '/notifications',
 
-            type: 'call',
+            type,
 
-            callId:
-              data.callId ||
+            notificationId:
+              data.notificationId ||
               null,
           },
 
-          renotify: true,
+          renotify:
+            Boolean(data.tag),
         }
-      )
-    );
-
-    return;
-  }
-
-  event.waitUntil(
-    self.registration.showNotification(
-      title,
-      {
-        body,
-
-        icon:
-          data.icon ||
-          '/icon.svg',
-
-        badge:
-          data.badge ||
-          '/icon.svg',
-
-        tag:
-          data.tag ||
-          undefined,
-
-        requireInteraction: false,
-
-        data: {
-          url:
-            data.url ||
-            '/notifications',
-
-          type,
-
-          notificationId:
-            data.notificationId ||
-            null,
-        },
-
-        renotify:
-          Boolean(data.tag),
-      }
-    )
+      );
+    })()
   );
 });
 
