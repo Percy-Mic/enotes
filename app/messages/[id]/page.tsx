@@ -75,7 +75,7 @@ function ChatRoom() {
   const conversationId = params?.id as string;
 
   const { startCall } = useCall();
-  const { startGroupCall } = useGroupCall();
+  const { startGroupCall, joinExistingGroupCall } = useGroupCall();
 
   const [me, setMe] = useState<string | null>(null);
   const [conversation, setConversation] = useState<Conversation | null>(null);
@@ -981,6 +981,7 @@ function ChatRoom() {
                   theme={theme}
                   readReceiptsEnabled={readReceipts}
                   showAvatar={showAvatar}
+                  onJoinGroupCall={joinExistingGroupCall}
                   onReply={setReplyingTo}
                   onReact={handleReact}
                   onEdit={handleEdit}
