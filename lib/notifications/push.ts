@@ -63,6 +63,49 @@ export async function getPushState(): Promise<PushPermissionState> {
   return 'default';
 }
 
+async function persistSubscription(subscription: PushSubscription): Promise<string | null> {
+  const json = subscription.toJSON();
+  const endpoint = json.endpoint;
+  const keys = (json.keys || {}) as { p256dh?: string; auth?: string };
+
+  if (!endpoint || !keys.p256dh || !keys.auth) {
+    return 'The browser returned an invalid push subscription.';
+  }
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) return 'Sign in to enable push notifications.';
+
+  const { error } = await supabase.from('push_subscriptions').upsert(
+    {
+      user_id: user.id,
+      endpoint,
+      p256dh: keys.p256dh,
+      auth_key: keys.auth,
+      user_agent: navigator.userAgent.slice(0, 300),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'endpoint' }
+  );
+
+  return error ? `Could not save the subscription — ${error.message}` : null;
+}
+
+/**
+ * Re-sync an already granted browser subscription with Supabase.
+ * This never calls subscribe(), so it is safe to run during app startup.
+ */
+export async function syncPushSubscription(): Promise<string | null> {
+  if (!pushSupported() || Notification.permission !== 'granted') return null;
+
+  const reg = await registerWorker();
+  if (!reg) return 'Could not register the notification service worker.';
+
+  const subscription = await reg.pushManager.getSubscription();
+  if (!subscription) return null;
+
+  return persistSubscription(subscription);
+}
+
 /** Ask permission, subscribe, and persist the subscription. Returns an error message or null. */
 export async function enablePush(): Promise<string | null> {
   if (!pushSupported()) return 'This browser does not support push notifications.';
@@ -84,26 +127,8 @@ export async function enablePush(): Promise<string | null> {
         applicationServerKey: urlBase64ToUint8Array(vapidKey) as BufferSource,
       }));
 
-    const json = subscription.toJSON();
-    const endpoint = json.endpoint;
-    const keys = (json.keys || {}) as { p256dh?: string; auth?: string };
-    if (!endpoint || !keys.p256dh || !keys.auth) return 'The browser returned an invalid push subscription.';
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return 'Sign in to enable push notifications.';
+    return await persistSubscription(subscription);
 
-    const { error } = await supabase.from('push_subscriptions').upsert(
-      {
-        user_id: user.id,
-        endpoint,
-        p256dh: keys.p256dh,
-        auth_key: keys.auth,
-        user_agent: navigator.userAgent.slice(0, 300),
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'endpoint' }
-    );
-    if (error) return `Could not save the subscription — ${error.message}`;
-    return null;
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Subscribing to push failed.';
     /* Browsers without a push backend (some Chromium builds) and offline
