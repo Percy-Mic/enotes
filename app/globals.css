@@ -720,3 +720,9 @@ body {
 [data-theme='forest'] .bg-slate-200,
 [data-theme='forest'] .bg-slate-300 { background-color: #D8D2BC !important; }
 [data-theme='forest'] .bg-slate-700 { background-color: #45543F !important; }
+
+/* enotes in-app notification progress animation */
+@keyframes enotesNotificationProgress {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
