@@ -10,6 +10,7 @@ import AppNav from '@/components/social/AppNav';
 import NotesAside from '@/components/notes/NotesAside';
 import { AlertProvider } from '@/components/ui/Alert';
 import PushNotificationGate from '@/components/notifications/PushNotificationGate';
+import InAppNotificationCenter from '@/components/notifications/InAppNotificationCenter';
 
 /**
  * Routes that render their own chrome (fixed top bars, editors, viewers).
@@ -40,8 +41,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     supabase.auth.getUser().then(({ data: { user } }) => setMyId(user?.id || null));
   }, []);
 
-  /* The notes sidebar is viewport-driven and always mounted once signed in,
-     so it never depends on a per-page choice and never needs a refresh. */
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1280px)');
     const apply = () => setAsideEnabled(mq.matches);
@@ -52,9 +51,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const immersive = IMMERSIVE_ROUTES.some((re) => re.test(pathname));
 
-  /* Pages that own their full layout and must not carry the notes aside:
-     the feed, every journal surface (view, Studio editor, settings) and
-     the admin console (dashboard, template moderation, reports). */
   const NO_ASIDE_ROUTES = [
     /^\/journals(\/|$)/,
     /^\/admin(\/|$)/,
@@ -62,10 +58,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const asideHidden = NO_ASIDE_ROUTES.some((re) => re.test(pathname));
   const showAside = asideEnabled && !asideHidden;
 
-  /* Signed-out visitors never see the app nav (the landing page and auth
-     pages carry their own chrome). Applied on the NEXT paint after the
-     session resolves, so a refresh on a signed-out page removes it without
-     a flicker of wrong chrome. */
   const [showNav, setShowNav] = useState(false);
   useEffect(() => {
     if (immersive) {
@@ -84,32 +76,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <CallProvider myId={myId}>
       <GroupCallProvider myId={myId}>
-      <AlertProvider>
-      {showNav && <AppNav />}
-      {/* plain div (pages render their own <main>). Mobile: bottom runway so
-          the LAST item can always scroll clear of the fixed bottom nav AND
-          the floating create button (its top reaches ~136px above the viewport
-          bottom). Desktop: padding offsets the fixed top bar; wide screens
-          also reserve the right rail so content never slides under it. */}
-      <div
-        className={
-          immersive
-            ? ''
-            : `pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-0 ${showNav ? 'md:pt-14' : ''} ${
-                showAside ? 'xl:pl-[21rem]' : ''
-              }`
-        }
-      >
-        {children}
-      </div>
-      {/* Wide screens: the notes aside rides beside signed-in content pages
-          except the ones that own their layout (feed, journals, editors,
-          viewers) and signed-out visitors. */}
-      {showNav && showAside && <NotesAside />}
-      <CallOverlay />
-      <PushNotificationGate userId={myId} />
-      </AlertProvider>
-    </GroupCallProvider>
+        <AlertProvider>
+          {showNav && <AppNav />}
+          <div
+            className={
+              immersive
+                ? ''
+                : `pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-0 ${showNav ? 'md:pt-14' : ''} ${
+                    showAside ? 'xl:pl-[21rem]' : ''
+                  }`
+            }
+          >
+            {children}
+          </div>
+          {showNav && showAside && <NotesAside />}
+          <CallOverlay />
+          <InAppNotificationCenter userId={myId} />
+          <PushNotificationGate userId={myId} />
+        </AlertProvider>
+      </GroupCallProvider>
     </CallProvider>
   );
 }
