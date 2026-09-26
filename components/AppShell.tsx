@@ -11,7 +11,6 @@ import NotesAside from '@/components/notes/NotesAside';
 import { AlertProvider } from '@/components/ui/Alert';
 import PushNotificationGate from '@/components/notifications/PushNotificationGate';
 import InAppNotificationCenter from '@/components/notifications/InAppNotificationCenter';
-import NotificationQuietMode from '@/components/notifications/NotificationQuietMode';
 
 /**
  * Routes that render their own chrome (fixed top bars, editors, viewers).
@@ -93,7 +92,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {showNav && showAside && <NotesAside />}
           <CallOverlay />
           <InAppNotificationCenter userId={myId} />
-          <NotificationQuietMode userId={myId} />
           <PushNotificationGate userId={myId} />
         </AlertProvider>
       </GroupCallProvider>
