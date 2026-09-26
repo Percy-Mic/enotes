@@ -343,13 +343,13 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
     const isEditing = editingId === comment.id;
 
     return (
-      <li key={comment.id} className="min-w-0">
-        <div className="flex items-start gap-2.5">
+      <li key={comment.id} className="min-w-0 w-full max-w-full">
+        <div className="flex min-w-0 w-full items-start gap-2.5">
           <Link href={comment.author?.username ? `/u/${comment.author.username}` : '#'}>
             <Avatar src={comment.author?.avatar_url} name={comment.author?.full_text_name || comment.author?.username} size={depth > 0 ? 28 : 32} />
           </Link>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 max-w-full">
             <div className="rounded-2xl bg-[#F8F4F6] px-3 py-2">
               <p className="text-xs font-semibold">
                 <Link href={comment.author?.username ? `/u/${comment.author.username}` : '#'} className="hover:underline">
@@ -538,7 +538,7 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
                 {repliesOpen.has(comment.id) ? 'Hide replies' : 'View replies'}
               </button>
               {repliesOpen.has(comment.id) && (
-                <div className="mt-2 border-l-2 border-[#F0EAEC] pl-3">
+                <div className="mt-2 min-w-0 w-full max-w-full border-l-2 border-[#F0EAEC] pl-3">
                   <CommentThread
                     postId={postId}
                     postAuthorId={postAuthorId}
@@ -577,7 +577,7 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
           {depth === 0 ? 'No comments yet. Say something kind ♡' : 'No replies yet.'}
         </p>
       ) : (
-        <ul className={depth > 0 ? 'space-y-3' : 'space-y-4'}>{comments.map(renderComment)}</ul>
+        <ul className={`w-full min-w-0 max-w-full ${depth > 0 ? 'space-y-3' : 'space-y-4'}`}>{comments.map(renderComment)}</ul>
       )}
 
       {hasMore && !loading && (
@@ -611,7 +611,8 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
         </div>
       )}
 
-      {/* Composer (inline for this thread) */}
+      {/* Root-level composer only; nested replies use each comment's Reply action. */}
+      {depth === 0 && (
       <form onSubmit={submit} className="mt-3">
         {gifUrl && (
           <div className="relative mb-2 inline-block">
@@ -699,6 +700,7 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
           </button>
         </div>
       </form>
+      )}
 
       <ReportDialog open={reportTarget !== null} onClose={() => setReportTarget(null)} targetType="comment" targetId={reportTarget || ''} />
     </div>
