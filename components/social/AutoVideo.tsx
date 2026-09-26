@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
 /**
- * AutoVideo — a <video> that plays itself while ≥60% in view and pauses
- * (rewinding) when scrolled away, like the /videos page. One observer per
- * element is cheap and keeps this drop-in usable anywhere: feed cards,
- * story grids, profile media. Tap still toggles sound/pause, and the
- * `controls` prop hands native controls back when a caller wants them.
+ * AutoVideo — post/story video playback with frame-first autoplay.
+ *
+ * Some browsers can make the audio track audible as soon as play() starts
+ * while the first decoded video frame is still being presented. That is very
+ * noticeable in a social feed because the soundtrack appears to lead the
+ * picture. We wait for the first video frame before starting playback.
  */
 export default function AutoVideo({
   src,
@@ -15,7 +16,7 @@ export default function AutoVideo({
   controls = true,
   loop = true,
   muted = false,
-  preload = 'metadata',
+  preload = 'auto',
   onClick,
 }: {
   src: string;
@@ -27,6 +28,36 @@ export default function AutoVideo({
   onClick?: (e: React.MouseEvent<HTMLVideoElement>) => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
+  const playRequestRef = useRef(0);
+
+  const playFrameFirst = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const requestId = ++playRequestRef.current;
+    const startPlayback = () => {
+      if (requestId !== playRequestRef.current || !ref.current) return;
+      ref.current.play().catch(() => {
+        /* Autoplay with sound may be blocked until a user gesture. */
+      });
+    };
+
+    // HAVE_CURRENT_DATA means the current video frame is available.
+    if (el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+
+    // Prefer the browser's decoded-frame callback so playback cannot expose
+    // the audio track before a real video frame has reached the compositor.
+    if ('requestVideoFrameCallback' in el) {
+      const video = el as HTMLVideoElement & {
+        requestVideoFrameCallback?: (callback: () => void) => number;
+      };
+      video.requestVideoFrameCallback?.(() => startPlayback());
+    } else {
+      // Safari/older browsers: one animation frame gives the decoded frame
+      // an opportunity to be presented before media playback begins.
+      requestAnimationFrame(startPlayback);
+    }
+  }, []);
 
   useEffect(() => {
     const el = ref.current;
@@ -36,10 +67,9 @@ export default function AutoVideo({
       (entries) => {
         for (const entry of entries) {
           if (entry.intersectionRatio >= 0.6) {
-            el.play().catch(() => {
-              /* autoplay blocked until first user gesture — tap plays */
-            });
+            playFrameFirst();
           } else {
+            playRequestRef.current += 1;
             el.pause();
             el.currentTime = 0;
           }
@@ -47,9 +77,20 @@ export default function AutoVideo({
       },
       { threshold: [0, 0.6] },
     );
+
+    const onLoadedData = () => {
+      if (el.getBoundingClientRect().height > 0) playFrameFirst();
+    };
+
+    el.addEventListener('loadeddata', onLoadedData);
     observer.observe(el);
-    return () => observer.disconnect();
-  }, [src]);
+
+    return () => {
+      playRequestRef.current += 1;
+      el.removeEventListener('loadeddata', onLoadedData);
+      observer.disconnect();
+    };
+  }, [src, playFrameFirst]);
 
   return (
     <video
