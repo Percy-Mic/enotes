@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import Avatar from '@/components/social/Avatar';
 import { supabase } from '@/lib/supabase/client';
+import { getQuietState } from '@/lib/notifications/quiet';
 
 type PushData = {
   title?: string;
@@ -156,6 +157,7 @@ export default function InAppNotificationCenter({
   const [items, setItems] = useState<InAppNotification[]>([]);
   const seenIds = useRef(new Set<string>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const quietRef = useRef(false);
 
   const remove = useCallback((id: string) => {
     setItems((current) => current.filter((item) => item.id !== id));
@@ -169,6 +171,7 @@ export default function InAppNotificationCenter({
 
   const add = useCallback(
     (item: InAppNotification, persistent = false) => {
+      if (quietRef.current) return;
       if (seenIds.current.has(item.id)) return;
       seenIds.current.add(item.id);
 
@@ -197,7 +200,17 @@ export default function InAppNotificationCenter({
   );
 
   useEffect(() => {
+    let cancelled = false;
+    const refreshQuiet = async () => {
+      if (!userId) { quietRef.current = false; return; }
+      const state = await getQuietState();
+      if (!cancelled) quietRef.current = Boolean(state.until && state.userId === userId && state.until > Date.now());
+    };
+    void refreshQuiet();
+    const quietTimer = window.setInterval(() => void refreshQuiet(), 30000);
     return () => {
+      cancelled = true;
+      window.clearInterval(quietTimer);
       timers.current.forEach((timer) => clearTimeout(timer));
       timers.current.clear();
     };
