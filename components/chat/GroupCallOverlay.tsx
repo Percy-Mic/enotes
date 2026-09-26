@@ -105,6 +105,9 @@ export default function GroupCallOverlay({
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [switchingCamera, setSwitchingCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [miniPosition, setMiniPosition] = useState<{ x: number; y: number } | null>(null);
+  const miniDragRef = useRef<{ offsetX: number; offsetY: number } | null>(null);
+  const miniCardRef = useRef<HTMLDivElement>(null);
   const [callMembers, setCallMembers] = useState<GroupCallMember[]>(members);
 
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -918,6 +921,74 @@ export default function GroupCallOverlay({
 
   const remoteEntries = Object.entries(remoteStreams);
   const inviteableMembers = callMembers.filter((member) => member.user_id !== myId);
+  const clampMiniPosition = useCallback((x: number, y: number) => {
+    const card = miniCardRef.current;
+    const width = card?.offsetWidth ?? Math.min(window.innerWidth - 24, 380);
+    const height = card?.offsetHeight ?? 96;
+    const margin = 12;
+    return {
+      x: Math.min(Math.max(margin, x), Math.max(margin, window.innerWidth - width - margin)),
+      y: Math.min(Math.max(margin, y), Math.max(margin, window.innerHeight - height - margin)),
+    };
+  }, []);
+
+  const beginMiniDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button')) return;
+    const card = miniCardRef.current;
+    if (!card) return;
+
+    const rect = card.getBoundingClientRect();
+    miniDragRef.current = {
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }, []);
+
+  const moveMiniDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!miniDragRef.current) return;
+    const next = clampMiniPosition(
+      event.clientX - miniDragRef.current.offsetX,
+      event.clientY - miniDragRef.current.offsetY,
+    );
+    setMiniPosition(next);
+  }, [clampMiniPosition]);
+
+  const endMiniDrag = useCallback(() => {
+    miniDragRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (!minimized) {
+      miniDragRef.current = null;
+      return;
+    }
+
+    if (!miniPosition) {
+      const card = miniCardRef.current;
+      const width = card?.offsetWidth ?? Math.min(window.innerWidth - 24, 380);
+      const height = card?.offsetHeight ?? 96;
+      setMiniPosition(
+        clampMiniPosition(
+          window.innerWidth - width - 12,
+          window.innerHeight - height - 12,
+        ),
+      );
+    }
+
+    const handleResize = () => {
+      setMiniPosition((current) => {
+        if (!current) return current;
+        return clampMiniPosition(current.x, current.y);
+      });
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [clampMiniPosition, miniPosition, minimized]);
+
 
   const inviteMember = useCallback(async (userId: string) => {
     if (!activeRef.current || !myId || activeRef.current.hostId !== myId || invitingUserId) return;
@@ -1025,8 +1096,21 @@ export default function GroupCallOverlay({
       )}
 
       {active && minimized && (
-        <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-3 z-[230] w-[calc(100vw-1.5rem)] max-w-[380px] overflow-hidden rounded-2xl bg-[#17231d] text-white shadow-2xl ring-1 ring-white/10">
-          <div className="flex items-center gap-3 p-3">
+        <div
+          ref={miniCardRef}
+          className="fixed z-[230] w-[calc(100vw-1.5rem)] max-w-[380px] select-none overflow-hidden rounded-2xl bg-[#17231d] text-white shadow-2xl ring-1 ring-white/10"
+          style={
+            miniPosition
+              ? { left: miniPosition.x, top: miniPosition.y, touchAction: 'none' }
+              : { right: 12, bottom: 'max(1rem, env(safe-area-inset-bottom))', touchAction: 'none' }
+          }
+          onPointerDown={beginMiniDrag}
+          onPointerMove={moveMiniDrag}
+          onPointerUp={endMiniDrag}
+          onPointerCancel={endMiniDrag}
+          title="Drag to move"
+        >
+          <div className="flex cursor-grab items-center gap-3 p-3 active:cursor-grabbing">
             <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl bg-black sm:h-16 sm:w-24">
               <VideoTile stream={localStream} muted label="You" className="h-full w-full rounded-xl ring-0" />
             </div>
