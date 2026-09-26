@@ -27,15 +27,21 @@ export default function PostPage() {
       const { data: { user } } = await supabase.auth.getUser();
       setMyId(user?.id || null);
 
-      const { data, error } = await supabase
+      let postQuery = supabase
         .from('posts')
         .select(
           `id, author_id, journal_id, page_id, content, media_url, media_type, media_size, post_type, link_url,
            visibility, created_at, edited_at,
            author:profiles!posts_author_id_fkey(id, full_text_name, username, avatar_url)`
         )
-        .eq('id', postId)
-        .maybeSingle();
+        .eq('id', postId);
+
+      /* Signed-out visitors may open only explicitly public posts. */
+      if (!user) {
+        postQuery = postQuery.eq('visibility', 'public');
+      }
+
+      const { data, error } = await postQuery.maybeSingle();
 
       if (error || !data) {
         setNotFound(true);
