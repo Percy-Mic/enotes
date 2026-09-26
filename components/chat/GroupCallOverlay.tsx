@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Maximize2, Mic, MicOff, Minimize2, PhoneOff, RefreshCw, Video, VideoOff } from 'lucide-react';
+import { Camera, Maximize2, Mic, MicOff, Minimize2, PhoneOff, RefreshCw, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ICE_SERVERS } from '@/lib/calls/config';
 
@@ -53,11 +53,13 @@ function VideoTile({
   label,
   muted,
   className = '',
+  audioEnabled = true,
 }: {
   stream: MediaStream | null;
   label: string;
   muted?: boolean;
   className?: string;
+  audioEnabled?: boolean;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
 
@@ -67,7 +69,7 @@ function VideoTile({
 
   return (
     <div className={`relative overflow-hidden rounded-2xl bg-black/70 ring-1 ring-white/10 ${className}`}>
-      <video ref={ref} autoPlay playsInline muted={muted} className="h-full w-full object-cover" />
+      <video ref={ref} autoPlay playsInline muted={muted || !audioEnabled} className="h-full w-full object-cover" />
       {!stream && (
         <div className="absolute inset-0 flex items-center justify-center text-3xl text-white/40">●</div>
       )}
@@ -93,7 +95,9 @@ export default function GroupCallOverlay({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [micEnabled, setMicEnabled] = useState(true);
-  const [cameraEnabled, setCameraEnabled] = useState(true);  const [minimized, setMinimized] = useState(false);
+  const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [minimized, setMinimized] = useState(false);
+  const [speakerEnabled, setSpeakerEnabled] = useState(true);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [switchingCamera, setSwitchingCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -888,7 +892,30 @@ export default function GroupCallOverlay({
         </div>
       )}
 
-      {active && (
+      {active && minimized && (
+        <div className="fixed bottom-4 right-4 z-[230] w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-[#17231d] text-white shadow-2xl ring-1 ring-white/10">
+          <div className="flex items-center gap-3 p-3">
+            <div className="h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-black">
+              <VideoTile stream={localStream} muted label="You" className="h-full w-full rounded-xl ring-0" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-bold">Group video call</p>
+              <p className="text-[11px] text-white/50">{remoteEntries.length + 1} connected</p>
+            </div>
+            <button onClick={() => setSpeakerEnabled((value) => !value)} className="rounded-full p-2 text-white/80 hover:bg-white/10" aria-label={speakerEnabled ? 'Mute call audio' : 'Unmute call audio'} title={speakerEnabled ? 'Mute call audio' : 'Unmute call audio'}>
+              {speakerEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
+            </button>
+            <button onClick={() => setMinimized(false)} className="rounded-full p-2 text-white/80 hover:bg-white/10" aria-label="Return to call" title="Return to call">
+              <Maximize2 className="h-5 w-5" />
+            </button>
+            <button onClick={leave} className="rounded-full p-2 text-red-300 hover:bg-red-500/15" aria-label="Leave call" title="Leave call">
+              <PhoneOff className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {active && !minimized && (
         <div className="fixed inset-0 z-[210] flex flex-col bg-[#07110d] text-white">
           <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
             <div>
@@ -913,6 +940,7 @@ export default function GroupCallOverlay({
                   key={userId}
                   stream={stream}
                   label={nameFor(memberMap.get(userId))}
+                  audioEnabled={speakerEnabled}
                   className="aspect-video"
                 />
               ))}
@@ -927,6 +955,14 @@ export default function GroupCallOverlay({
             </button>
             <button onClick={toggleCamera} className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10" aria-label={cameraEnabled ? 'Turn camera off' : 'Turn camera on'}>
               {cameraEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+            </button>
+            <button
+              onClick={() => setSpeakerEnabled((value) => !value)}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10"
+              aria-label={speakerEnabled ? 'Mute call audio' : 'Unmute call audio'}
+              title={speakerEnabled ? 'Mute call audio' : 'Unmute call audio'}
+            >
+              {speakerEnabled ? <Volume2 className="h-5 w-5" /> : <VolumeX className="h-5 w-5" />}
             </button>
             <button
               onClick={() => void switchCamera()}
