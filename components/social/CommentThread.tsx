@@ -344,12 +344,13 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
 
     return (
       <li key={comment.id} className="min-w-0 w-full max-w-full">
-        <div className="flex min-w-0 w-full items-start gap-2.5">
-          <Link href={comment.author?.username ? `/u/${comment.author.username}` : '#'}>
-            <Avatar src={comment.author?.avatar_url} name={comment.author?.full_text_name || comment.author?.username} size={depth > 0 ? 28 : 32} />
-          </Link>
+        {depth === 0 ? (
+          <div className="flex min-w-0 w-full items-start gap-2.5">
+            <Link href={comment.author?.username ? `/u/${comment.author.username}` : '#'}>
+              <Avatar src={comment.author?.avatar_url} name={comment.author?.full_text_name || comment.author?.username} size={32} />
+            </Link>
+            <div className="min-w-0 flex-1 max-w-full">
 
-          <div className="min-w-0 flex-1 max-w-full">
             <div className="rounded-2xl bg-[#F8F4F6] px-3 py-2">
               <p className="text-xs font-semibold">
                 <Link href={comment.author?.username ? `/u/${comment.author.username}` : '#'} className="hover:underline">
@@ -555,6 +556,233 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
     );
   };
 
+            </div>
+          </div>
+        ) : (
+          <div className="relative min-w-0 w-full max-w-full">
+            <Link href={comment.author?.username ? `/u/${comment.author.username}` : '#'} className="absolute left-0 top-0 z-10">
+              <Avatar src={comment.author?.avatar_url} name={comment.author?.full_text_name || comment.author?.username} size={28} />
+            </Link>
+            <div className="min-w-0 w-full max-w-full pl-9">
+
+            <div className="rounded-2xl bg-[#F8F4F6] px-3 py-2">
+              <p className="text-xs font-semibold">
+                <Link href={comment.author?.username ? `/u/${comment.author.username}` : '#'} className="hover:underline">
+                  {comment.author?.full_text_name || comment.author?.username || 'Writer'}
+                </Link>
+                <span className="ml-2 font-normal text-[#9B9B9B]">
+                  {timeAgo(comment.created_at)}
+                  {comment.edited_at && !comment.deleted_at ? ' · edited' : ''}
+                </span>
+              </p>
+
+              {isEditing ? (
+                <div className="mt-1">
+                  <textarea
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    rows={2}
+                    autoFocus
+                    className="w-full resize-none rounded-lg border border-[#E8E2E4] p-2 text-sm focus:border-[#1E90FF] focus:outline-none"
+                  />
+                  <div className="mt-1 flex gap-1.5">
+                    <button onClick={() => saveEdit(comment)} className="rounded-lg bg-black px-3 py-1.5 text-xs font-semibold text-[#FFB6C1]">Save</button>
+                    <button onClick={() => setEditingId(null)} className="rounded-lg border px-3 py-1.5 text-xs font-semibold">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {comment.content && (
+                    <p className="mt-0.5 whitespace-pre-wrap break-words text-sm">
+                      {comment.content.split(/(@[a-zA-Z0-9_]{3,24})/g).map((part, i) =>
+                        part.startsWith('@') ? (
+                          <Link key={i} href={`/u/${part.slice(1)}`} className="font-semibold text-[#1E90FF] hover:underline">
+                            {part}
+                          </Link>
+                        ) : (
+                          <React.Fragment key={i}>{part}</React.Fragment>
+                        )
+                      )}
+                    </p>
+                  )}
+                  {comment.gif_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={comment.gif_url} alt="GIF" loading="lazy" className="mt-1.5 max-h-48 rounded-xl" />
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Reaction bar */}
+            <div className="mt-1 flex flex-wrap items-center gap-2 pl-1">
+              {Object.entries(reactions).map(([emoji, info]) => (
+                <button
+                  key={emoji}
+                  onClick={() => toggleReaction(comment, emoji)}
+                  className={`flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] transition ${
+                    info.mine ? 'border-[#E5798F] bg-[#FFF0F3]' : 'border-[#E8E2E4] bg-white'
+                  }`}
+                >
+                  <span>{emoji}</span> {info.count}
+                </button>
+              ))}
+
+              {/* react trigger — the picker needs a home on untouched comments */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReactionFor(reactionFor === comment.id ? null : comment.id);
+                }}
+                aria-label="React to comment"
+                aria-expanded={reactionFor === comment.id}
+                className="text-[11px] text-[#9B9B9B] transition hover:scale-125"
+              >
+                <Smile className="h-3.5 w-3.5" />
+              </button>
+              {reactionFor === comment.id && (
+                <span className="z-30 flex gap-0.5 rounded-full border border-[#E8E2E4] bg-white px-1.5 py-1 shadow-lg">
+                  {REACTION_EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleReaction(comment, emoji);
+                        setReactionFor(null);
+                      }}
+                      className="rounded-full p-0.5 text-base transition hover:scale-125"
+                      aria-label={`React ${emoji}`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setReplyTo(replyTo === comment.id ? null : comment.id);
+                  setReplyDraft('');
+                }}
+                className="text-[11px] font-semibold text-[#6B6B6B] hover:underline"
+              >
+                Reply
+              </button>
+
+              {myId && (
+                <details className="relative">
+                  <summary className="cursor-pointer list-none text-[11px] text-[#9B9B9B] hover:underline">···</summary>
+                  <div className="absolute left-0 z-20 mt-1 w-36 overflow-hidden rounded-xl border border-[#E8E2E4] bg-white shadow-lg">
+                    {isMine ? (
+                      <>
+                        <button onClick={() => { setEditingId(comment.id); setEditDraft(comment.content); }} className="flex w-full items-center gap-2 px-3 py-2 text-xs hover:bg-gray-50">
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </button>
+                        <button onClick={() => removeComment(comment)} className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-500 hover:bg-red-50">
+                          <Trash2 className="h-3.5 w-3.5" /> Delete
+                        </button>
+                      </>
+                    ) : (
+                      <button onClick={() => setReportTarget(comment.id)} className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-500 hover:bg-red-50">
+                        <Flag className="h-3.5 w-3.5" /> Report
+                      </button>
+                    )}
+                  </div>
+                </details>
+              )}
+            </div>
+
+            {/* Reply box */}
+            {replyTo === comment.id && (
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!replyDraft.trim() || !myId) return;
+                  (async () => {
+                    const { data, error } = await supabase
+                      .from('comments')
+                      .insert({ post_id: postId, author_id: myId, content: replyDraft.trim(), parent_comment_id: comment.id })
+                      .select(
+                        `id, post_id, author_id, content, parent_comment_id, gif_url, created_at,
+                         author:profiles!comments_author_id_fkey(id, full_text_name, username, avatar_url)`
+                      )
+                      .maybeSingle();
+                    if (data && !error) {
+                      onCountChange?.(1);
+
+                      setRepliesOpen((prev) => {
+                        const next = new Set(prev);
+                        next.add(comment.id);
+                        return next;
+                      });
+                      if (myId) {
+                        /* notify the parent author + post author (once each) */
+                        if (comment.author_id !== myId) notify(comment.author_id, myId, 'comment_reply', 'replied to your comment', postId);
+                        if (postAuthorId && postAuthorId !== myId && postAuthorId !== comment.author_id) {
+                          notify(postAuthorId, myId, 'comment', 'commented on your post', postId);
+                        }
+                      }
+                    }
+                    setReplyDraft('');
+                    setReplyTo(null);
+                  })();
+                }}
+                className="mt-1.5 flex items-center gap-2"
+              >
+                <input
+                  value={replyDraft}
+                  onChange={(e) => {
+                    setReplyDraft(e.target.value);
+                    trackMentions(e.target.value, 'reply');
+                  }}
+                  placeholder={`Reply to ${comment.author?.username || 'this'}…`}
+                  autoFocus
+                  className="min-w-0 flex-1 rounded-full border border-[#E8E2E4] px-3 py-2 text-sm focus:border-[#1E90FF] focus:outline-none"
+                />
+                <button type="submit" className="flex h-9 w-9 items-center justify-center rounded-full bg-black text-[#FFB6C1]" aria-label="Send reply">
+                  <Send className="h-4 w-4" />
+                </button>
+              </form>
+            )}
+
+            {/* Recursive replies: every reply can have its own replies. */}
+            <>
+              <button
+                onClick={() => openReplies(comment)}
+                className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-[#6B6B6B] hover:underline"
+              >
+                <ChevronDown className={`h-3.5 w-3.5 transition ${repliesOpen.has(comment.id) ? 'rotate-180' : ''}`} />
+                {repliesOpen.has(comment.id) ? 'Hide replies' : 'View replies'}
+              </button>
+              {repliesOpen.has(comment.id) && (
+                <div className="mt-2 min-w-0 w-full max-w-full border-l-2 border-[#F0EAEC] pl-3">
+                  <CommentThread
+                    postId={postId}
+                    postAuthorId={postAuthorId}
+                    parentComment={comment}
+                    depth={depth + 1}
+                    onCountChange={onCountChange}
+                  />
+                </div>
+              )}
+            </>
+          </div>
+        </div>
+      </li>
+    );
+  };
+
+            </div>
+          </div>
+        )}
+      </li>
+    );
+  };
+
+  const renderCommentContent = (comment: Comment) => {
+    const isMine = comment.author_id === myId;
+    const reactions = comment.reactions || {};
+    const isEditing = editingId === comment.id;
+
+    return (
   return (
     <div ref={listRef}>
       {depth === 0 && onClose && (
