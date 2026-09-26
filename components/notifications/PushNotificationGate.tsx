@@ -5,7 +5,7 @@ import { Bell, Check, Loader2, X } from 'lucide-react';
 import {
   enablePush,
   getPushState,
-  isStandalone,
+  syncPushSubscription,
   type PushPermissionState,
 } from '@/lib/notifications/push';
 
@@ -22,7 +22,7 @@ export default function PushNotificationGate({
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!userId || !isStandalone()) return;
+    if (!userId) return;
 
     let cancelled = false;
 
@@ -30,10 +30,14 @@ export default function PushNotificationGate({
       if (cancelled) return;
       setState(next);
 
+      if (next === 'granted' || next === 'subscribed') {
+        void syncPushSubscription();
+      }
+
       if (
         (next === 'default' || next === 'granted') &&
         sessionStorage.getItem(SESSION_DISMISSED_KEY) !== '1'
-      ) {
+      )
         setOpen(true);
       }
     });
