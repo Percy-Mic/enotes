@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Maximize2, Mic, MicOff, Minimize2, PhoneOff, RefreshCw, Video, VideoOff, Volume2, VolumeX } from 'lucide-react';
+import { Camera, Maximize2, Mic, MicOff, Minimize2, PhoneOff, RefreshCw, Video, VideoOff, Volume2, VolumeX, Users, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ICE_SERVERS } from '@/lib/calls/config';
 
@@ -98,6 +98,8 @@ export default function GroupCallOverlay({
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [minimized, setMinimized] = useState(false);
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invitingUserId, setInvitingUserId] = useState<string | null>(null);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [switchingCamera, setSwitchingCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -866,6 +868,38 @@ export default function GroupCallOverlay({
   if (!enabled || !myId) return null;
 
   const remoteEntries = Object.entries(remoteStreams);
+  const inviteableMembers = callMembers.filter((member) => member.user_id !== myId);
+
+  const inviteMember = useCallback(async (userId: string) => {
+    if (!activeRef.current || !myId || activeRef.current.hostId !== myId || invitingUserId) return;
+
+    setInvitingUserId(userId);
+    setError(null);
+
+    try {
+      const { error: inviteError } = await supabase.rpc('invite_group_call_participant', {
+        p_call_id: activeRef.current.callId,
+        p_user_id: userId,
+      });
+
+      if (inviteError) throw inviteError;
+
+      if (channelReadyRef.current) await channelReadyRef.current;
+
+      await send({
+        type: 'invite',
+        callId: activeRef.current.callId,
+        to: userId,
+      });
+
+      setInviteOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not invite that member.');
+    } finally {
+      setInvitingUserId(null);
+    }
+  }, [invitingUserId, myId, send]);
+
 
   return (
     <>
@@ -892,10 +926,59 @@ export default function GroupCallOverlay({
         </div>
       )}
 
+      {active && inviteOpen && (
+        <div className="fixed inset-0 z-[250] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4">
+          <div className="w-full max-h-[75vh] overflow-hidden rounded-t-3xl bg-[#17231d] text-white shadow-2xl ring-1 ring-white/10 sm:max-w-md sm:rounded-3xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+              <div>
+                <p className="font-bold">Invite to this call</p>
+                <p className="text-xs text-white/50">Re-invite someone without creating another call.</p>
+              </div>
+              <button onClick={() => setInviteOpen(false)} className="rounded-full p-2 hover:bg-white/10" aria-label="Close invite list">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="max-h-[calc(75vh-82px)] overflow-y-auto p-3">
+              {inviteableMembers.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-white/50">There are no other group members to invite.</p>
+              ) : (
+                <div className="space-y-1">
+                  {inviteableMembers.map((member) => {
+                    const isConnected = Boolean(remoteStreams[member.user_id]);
+                    const busy = invitingUserId === member.user_id;
+                    return (
+                      <button
+                        key={member.user_id}
+                        onClick={() => void inviteMember(member.user_id)}
+                        disabled={busy || isConnected}
+                        className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left hover:bg-white/10 disabled:cursor-default disabled:opacity-50"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/10">
+                          {member.profile?.avatar_url ? (
+                            <img src={member.profile.avatar_url} alt="" className="h-full w-full object-cover" />
+                          ) : (
+                            <span className="text-sm font-bold">{nameFor(member).slice(0, 1).toUpperCase()}</span>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">{nameFor(member)}</p>
+                          <p className="text-xs text-white/45">{isConnected ? 'Already connected' : busy ? 'Sending invitation…' : 'Invite to call'}</p>
+                        </div>
+                        {!isConnected && <Users className="h-5 w-5 shrink-0 text-white/50" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {active && minimized && (
-        <div className="fixed bottom-4 right-4 z-[230] w-[min(380px,calc(100vw-2rem))] overflow-hidden rounded-2xl bg-[#17231d] text-white shadow-2xl ring-1 ring-white/10">
+        <div className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-3 z-[230] w-[calc(100vw-1.5rem)] max-w-[380px] overflow-hidden rounded-2xl bg-[#17231d] text-white shadow-2xl ring-1 ring-white/10">
           <div className="flex items-center gap-3 p-3">
-            <div className="h-16 w-24 shrink-0 overflow-hidden rounded-xl bg-black">
+            <div className="h-14 w-20 shrink-0 overflow-hidden rounded-xl bg-black sm:h-16 sm:w-24">
               <VideoTile stream={localStream} muted label="You" className="h-full w-full rounded-xl ring-0" />
             </div>
             <div className="min-w-0 flex-1">
@@ -917,19 +1000,32 @@ export default function GroupCallOverlay({
 
       {active && !minimized && (
         <div className="fixed inset-0 z-[210] flex flex-col bg-[#07110d] text-white">
-          <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
-            <div>
-              <p className="text-sm font-bold">Group video call</p>
+          <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-3 py-3 sm:px-4">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold">Group video call</p>
               <p className="text-[11px] text-white/50">{remoteEntries.length + 1} connected</p>
             </div>
-            <button
-              onClick={() => setMinimized(true)}
-              className="rounded-full p-2 text-white/60 hover:bg-white/10"
-              aria-label="Minimize call"
-              title="Minimize call"
-            >
-              <Minimize2 className="h-5 w-5" />
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              {active.hostId === myId && (
+                <button
+                  onClick={() => setInviteOpen(true)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/15 sm:w-auto sm:gap-2 sm:px-3"
+                  aria-label="Invite someone"
+                  title="Invite someone"
+                >
+                  <Users className="h-5 w-5" />
+                  <span className="hidden text-sm font-semibold sm:inline">Invite</span>
+                </button>
+              )}
+              <button
+                onClick={() => setMinimized(true)}
+                className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/15"
+                aria-label="Minimize call"
+                title="Minimize call"
+              >
+                <Minimize2 className="h-5 w-5" />
+              </button>
+            </div>
           </header>
 
           <div className="min-h-0 flex-1 overflow-auto p-3">
@@ -949,7 +1045,7 @@ export default function GroupCallOverlay({
 
           {error && <p className="mx-auto max-w-lg px-4 pb-2 text-center text-xs text-red-300">{error}</p>}
 
-          <footer className="flex shrink-0 items-center justify-center gap-3 border-t border-white/10 bg-black/20 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <footer className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-black/20 px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:gap-3 sm:px-4 sm:py-4">
             <button onClick={toggleMic} className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10" aria-label={micEnabled ? 'Mute microphone' : 'Unmute microphone'}>
               {micEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
             </button>
