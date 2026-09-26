@@ -32,6 +32,7 @@ interface GroupCallOverlayProps {
   initialIncoming?: GroupCallInvite | null;
   startWhenOpened?: boolean;
   onClose?: () => void;
+  onAccepted?: (conversationId: string) => void;
 }
 
 type Signal = {
@@ -85,6 +86,7 @@ export default function GroupCallOverlay({
   startWhenOpened = false,
   initialIncoming = null,
   onClose,
+  onAccepted,
 }: GroupCallOverlayProps) {
   const [active, setActive] = useState<{ callId: string; hostId: string } | null>(null);
   const [incoming, setIncoming] = useState<Signal | null>(null);
@@ -500,6 +502,7 @@ export default function GroupCallOverlay({
       setActive({ callId: call.callId, hostId: call.from });
       activeRef.current = { callId: call.callId, hostId: call.from };
       setIncoming(null);
+      onAccepted?.(conversationId);
 
       if (channelReadyRef.current) {
         await channelReadyRef.current;
@@ -511,7 +514,7 @@ export default function GroupCallOverlay({
     } finally {
       startingRef.current = false;
     }
-  }, [getMedia, incoming, myId, send]);
+  }, [conversationId, getMedia, incoming, myId, onAccepted, send]);
 
   const declineIncoming = useCallback(async () => {
     if (!incoming) return;
