@@ -80,7 +80,12 @@ export default function MessagesPage() {
       let lastMessage: string | null = null;
       if (last) {
         const isVoice = last.message_type === 'audio';
-        const body = isVoice ? 'Voice message' : last.content;
+        const isCallInvite = last.message_type === 'call_invite';
+        const body = isCallInvite
+          ? '🎥 Group video call'
+          : isVoice
+            ? 'Voice message'
+            : last.content;
         if (last.sender_id === user.id) {
           lastMessage = `you: ${body}`;
         } else if (conv.is_group) {
