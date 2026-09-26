@@ -18,6 +18,7 @@ import GroupCallOverlay, {
 
 interface GroupCallContextValue {
   startGroupCall: (conversationId: string) => void;
+  joinExistingGroupCall: (conversationId: string, callId: string, hostId: string) => void;
   activeConversationId: string | null;
 }
 
@@ -52,6 +53,7 @@ export function GroupCallProvider({
   const [myId, setMyId] = useState<string | null>(suppliedMyId ?? null);
   const [pending, setPending] = useState<PendingRow | null>(null);
   const [outgoingConversationId, setOutgoingConversationId] = useState<string | null>(null);
+  const [resumeCall, setResumeCall] = useState<{ conversationId: string; callId: string; hostId: string } | null>(null);
   const loadInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -140,14 +142,21 @@ export function GroupCallProvider({
 
   const startGroupCall = useCallback((conversationId: string) => {
     setPending(null);
+    setResumeCall(null);
     setOutgoingConversationId(conversationId);
+  }, []);
+
+  const joinExistingGroupCall = useCallback((conversationId: string, callId: string, hostId: string) => {
+    setPending(null);
+    setOutgoingConversationId(null);
+    setResumeCall({ conversationId, callId, hostId });
   }, []);
 
   // An overlay is opened automatically only to show an incoming invitation.
   // It can never use that invitation to start or join the call without the
   // recipient explicitly pressing "Join call".
   const activeConversationId =
-    outgoingConversationId ?? pending?.conversation_id ?? null;
+    outgoingConversationId ?? resumeCall?.conversationId ?? pending?.conversation_id ?? null;
 
   const incomingInvite = useMemo<GroupCallInvite | null>(() => {
     if (!pending) return null;
@@ -185,6 +194,7 @@ export function GroupCallProvider({
 
   const closeOverlay = useCallback(() => {
     setOutgoingConversationId(null);
+    setResumeCall(null);
     setPending(null);
   }, []);
 
@@ -194,6 +204,7 @@ export function GroupCallProvider({
     <GroupCallContext.Provider
       value={{
         startGroupCall,
+        joinExistingGroupCall,
         activeConversationId,
       }}
     >
@@ -208,6 +219,7 @@ export function GroupCallProvider({
           // Start only when the user explicitly clicked the group video
           // button. Incoming invitations never auto-join.
           startWhenOpened={Boolean(outgoingConversationId)}
+          resumeCall={resumeCall}
           initialIncoming={
             pending?.conversation_id === activeConversationId
               ? incomingInvite
