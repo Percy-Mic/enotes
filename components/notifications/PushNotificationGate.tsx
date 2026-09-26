@@ -37,7 +37,7 @@ export default function PushNotificationGate({
       if (
         (next === 'default' || next === 'granted') &&
         sessionStorage.getItem(SESSION_DISMISSED_KEY) !== '1'
-      )
+      ) {
         setOpen(true);
       }
     });
