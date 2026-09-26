@@ -207,7 +207,87 @@ Notes:
 
 ---
 
-## 6. Video calls — what's implemented and the honest limits
+## 6. Web Push notifications — required for installed-app alerts
+
+The notification UI is already implemented. When enotes is running as an installed PWA,
+the user gets the **Stay connected** prompt and can explicitly enable browser/OS
+notifications. Push subscriptions are stored per device in `push_subscriptions`.
+
+The screenshot showing:
+
+> Push is not configured yet (missing VAPID public key).
+
+means the application code is working, but the deployment is missing its Web Push
+environment variables.
+
+### A. Generate one VAPID key pair
+
+Run once on your computer:
+
+```bash
+npx web-push generate-vapid-keys
+```
+
+Keep the **private key secret**. The public key is safe to expose to the browser.
+
+### B. Add these variables to Vercel
+
+In **Vercel → Project → Settings → Environment Variables**, add:
+
+```bash
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=<generated public key>
+VAPID_PRIVATE_KEY=<generated private key>
+VAPID_SUBJECT=mailto:enotes@example.com
+PUSH_SEND_SECRET=<long random secret>
+NEXT_PUBLIC_SITE_URL=https://enotes-amber.vercel.app
+```
+
+Use the same values for Production (and Preview if you want push there). Redeploy
+after saving them because `NEXT_PUBLIC_VAPID_PUBLIC_KEY` is bundled into the client.
+
+### C. Configure Supabase's push delivery endpoint
+
+After the Vercel deployment exists, run this in **Supabase → SQL Editor**:
+
+```sql
+insert into public.platform_config (key, value)
+values
+  ('push_endpoint', '"https://enotes-amber.vercel.app/api/push/send"'),
+  ('push_send_secret', '"<the exact PUSH_SEND_SECRET from Vercel>"')
+on conflict (key) do update
+set value = excluded.value;
+```
+
+The secret must exactly match the Vercel environment variable.
+
+### D. Run the push migration
+
+Run:
+
+`supabase/migrations/2026-09-16_push_delivery.sql`
+
+The existing call migrations also contain the push triggers for 1:1 and group-call
+invitations:
+
+- `supabase/migrations/2026-09-25_priority_call_push.sql`
+- `supabase/migrations/2026-09-25_persistent_group_calls.sql`
+
+### E. Test on the installed app
+
+1. Open/install enotes on the phone.
+2. Sign in.
+3. The **Stay connected** dialog appears.
+4. Tap **Enable notifications**.
+5. Android/browser asks for notification permission.
+6. Allow it.
+7. The push subscription is saved to `push_subscriptions`.
+8. From another account, send a chat message or start a call.
+9. The phone should receive the notification even when enotes is in the background/closed.
+
+For calls, the push is only an alert. It does **not** automatically turn on the
+camera or microphone. The existing invite-only **Join / Decline** behavior remains.
+
+## 7. Video calls — what's implemented and the honest limits
 
 **Implemented (free, no paid service):** 1:1 audio + video calls with
 WebRTC peer-to-peer media, Supabase Realtime broadcast channels as the
