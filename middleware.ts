@@ -16,6 +16,8 @@ const PUBLIC_PREFIXES = [
   '/', // landing
   '/auth', // sign-in / sign-up / callback / password reset
   '/contact',
+  '/feed', // public, crawlable feed (shows public posts to signed-out visitors)
+  '/posts', // public post pages for shared/indexable posts
   '/privacy',
   '/terms',
 ];
