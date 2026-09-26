@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Camera, Mic, MicOff, PhoneOff, RefreshCw, Video, VideoOff, X } from 'lucide-react';
+import { Camera, Maximize2, Mic, MicOff, Minimize2, PhoneOff, RefreshCw, Video, VideoOff, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { ICE_SERVERS } from '@/lib/calls/config';
 
@@ -91,7 +91,7 @@ export default function GroupCallOverlay({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStreams, setRemoteStreams] = useState<Record<string, MediaStream>>({});
   const [micEnabled, setMicEnabled] = useState(true);
-  const [cameraEnabled, setCameraEnabled] = useState(true);
+  const [cameraEnabled, setCameraEnabled] = useState(true);\n  const [minimized, setMinimized] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
   const [switchingCamera, setSwitchingCamera] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -892,8 +892,13 @@ export default function GroupCallOverlay({
               <p className="text-sm font-bold">Group video call</p>
               <p className="text-[11px] text-white/50">{remoteEntries.length + 1} connected</p>
             </div>
-            <button onClick={leave} className="rounded-full p-2 text-white/60 hover:bg-white/10" aria-label="Close call">
-              <X className="h-5 w-5" />
+            <button
+              onClick={() => setMinimized(true)}
+              className="rounded-full p-2 text-white/60 hover:bg-white/10"
+              aria-label="Minimize call"
+              title="Minimize call"
+            >
+              <Minimize2 className="h-5 w-5" />
             </button>
           </header>
 
