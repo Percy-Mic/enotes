@@ -4,9 +4,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Bell,
+  BellOff,
   Check,
+  ChevronDown,
+  Clock3,
   Heart,
   MessageCircle,
+  Phone,
+  Reply,
+  Sparkles,
+  X,
   Phone,
   Reply,
   Sparkles,
@@ -14,7 +21,13 @@ import {
 } from 'lucide-react';
 import Avatar from '@/components/social/Avatar';
 import { supabase } from '@/lib/supabase/client';
-import { getQuietState } from '@/lib/notifications/quiet';
+import {
+  clearQuietMode,
+  formatQuietRemaining,
+  getQuietState,
+  setQuietMode,
+  type QuietDuration,
+} from '@/lib/notifications/quiet';
 
 type PushData = {
   title?: string;
@@ -155,6 +168,9 @@ export default function InAppNotificationCenter({
 }) {
   const router = useRouter();
   const [items, setItems] = useState<InAppNotification[]>([]);
+  const [quietOpen, setQuietOpen] = useState(false);
+  const [quietUntil, setQuietUntil] = useState<number | null>(null);
+  const [quietEnabled, setQuietEnabled] = useState(false);
   const seenIds = useRef(new Set<string>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const quietRef = useRef(false);
@@ -202,9 +218,20 @@ export default function InAppNotificationCenter({
   useEffect(() => {
     let cancelled = false;
     const refreshQuiet = async () => {
-      if (!userId) { quietRef.current = false; return; }
+      if (!userId) {
+        quietRef.current = false;
+        setQuietEnabled(false);
+        setQuietUntil(null);
+        return;
+      }
       const state = await getQuietState();
-      if (!cancelled) quietRef.current = Boolean(state.until && state.userId === userId && state.until > Date.now());
+      const matchesUser = state.userId === userId;
+      const active = matchesUser && (state.until === null || state.until > Date.now());
+      if (!cancelled) {
+        quietRef.current = active;
+        setQuietEnabled(active);
+        setQuietUntil(matchesUser ? state.until : null);
+      }
     };
     void refreshQuiet();
     const quietTimer = window.setInterval(() => void refreshQuiet(), 30000);
@@ -291,6 +318,23 @@ export default function InAppNotificationCenter({
     };
   }, [add, userId]);
 
+  const enableQuiet = async (duration: QuietDuration) => {
+    if (!userId) return;
+    const state = await setQuietMode(userId, duration);
+    quietRef.current = true;
+    setQuietEnabled(true);
+    setQuietUntil(state.until);
+    setQuietOpen(false);
+  };
+
+  const disableQuiet = async () => {
+    await clearQuietMode();
+    quietRef.current = false;
+    setQuietEnabled(false);
+    setQuietUntil(null);
+    setQuietOpen(false);
+  };
+
   const openItem = (item: InAppNotification) => {
     remove(item.id);
     router.push(item.url);
@@ -325,14 +369,73 @@ export default function InAppNotificationCenter({
                 </span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => remove(item.id)}
-                aria-label="Dismiss notification"
+              <div className="absolute right-2 top-2 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setQuietOpen((value) => !value)}
+                  aria-label={quietEnabled ? 'Quiet mode is on' : 'Notification settings'}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-[#9B9296] transition hover:bg-[#F7F1F3] hover:text-[#171315]"
+                >
+                  {quietEnabled ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => remove(item.id)}
+                  aria-label="Dismiss notification"
                 className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-[#9B9296] transition hover:bg-[#F7F1F3] hover:text-[#171315]"
               >
                 <X className="h-4 w-4" />
-              </button>
+                </button>
+              </div>
+
+              {quietOpen && (
+                <div className="mt-2 rounded-2xl border border-[#ECE5E7] bg-[#FFFDFE] p-2 shadow-sm">
+                  <div className="flex items-center justify-between gap-2 px-2 pb-1">
+                    <div>
+                      <p className="text-[11px] font-bold text-[#171315]">
+                        {quietEnabled ? 'Quiet mode is on' : 'Notification settings'}
+                      </p>
+                      <p className="text-[10px] leading-4 text-[#766D71]">
+                        {quietEnabled
+                          ? 'Notifications are paused for ' + formatQuietRemaining(quietUntil) + '.'
+                          : 'Pause messages, calls, and in-app alerts while you watch.'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setQuietOpen(false)}
+                      aria-label="Close notification settings"
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#9B9296] hover:bg-[#F7F1F3]"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  {quietEnabled ? (
+                    <button
+                      type="button"
+                      onClick={() => void disableQuiet()}
+                      className="flex min-h-9 w-full items-center gap-2 rounded-xl px-2 text-left text-[11px] font-semibold text-[#E5798F] hover:bg-[#FFF0F3]"
+                    >
+                      <Bell className="h-3.5 w-3.5" />
+                      Turn notifications back on
+                    </button>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {([[30, '30 minutes'], [60, '1 hour'], [120, '2 hours'], [0, 'Until I turn it on']] as const).map(([duration, label]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={() => void enableQuiet(duration)}
+                          className="flex min-h-9 w-full items-center gap-2 rounded-xl px-2 text-left text-[11px] font-semibold text-[#3C3538] hover:bg-[#F8F3F5]"
+                        >
+                          <Clock3 className="h-3.5 w-3.5 text-[#E5798F]" />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <button
                 type="button"
