@@ -31,9 +31,12 @@ export async function getQuietState(): Promise<QuietState> {
       request.onerror = () => reject(request.error);
     });
     db.close();
-    if (!value?.until || value.until <= Date.now()) {
-      if (value) await clearQuietMode();
-      return { userId: value?.userId || null, until: null };
+    // A stored null value means "quiet indefinitely".
+    // Only a past timestamp means the timed quiet period has expired.
+    if (!value) return { userId: null, until: null };
+    if (value.until !== null && value.until <= Date.now()) {
+      await clearQuietMode();
+      return { userId: null, until: null };
     }
     return value;
   } catch { return { userId: null, until: null }; }
@@ -72,7 +75,7 @@ export async function getCurrentUserId() {
 }
 
 export function formatQuietRemaining(until: number | null) {
-  if (!until) return 'Until you turn it off';
+  if (until === null) return 'Until you turn it on';
   const minutes = Math.ceil(Math.max(0, until - Date.now()) / 60_000);
   if (minutes < 60) return minutes + ' min';
   return Math.ceil(minutes / 60) + ' hr';
