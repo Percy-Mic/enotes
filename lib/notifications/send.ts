@@ -89,13 +89,16 @@ export async function allNotificationsOff(userId: string): Promise<boolean> {
   const pool = db();
   if (!pool) return false; /* cannot check — send (same behavior as no DATABASE_URL) */
   try {
-    const { rows } = await pool.query<{ s: string[] | null }>(
-      `select array(select key from jsonb_each_text(to_jsonb(us)) where key like 'notify\_%' and key <> 'notify_sms' and value = 'false') as s
-         from user_settings us where us.user_id = $1`,
+    const { rows } = await pool.query<{ all_off: boolean }>(
+      `select coalesce(bool_and(value = 'false'), false) as all_off
+         from user_settings us,
+              lateral jsonb_each_text(to_jsonb(us))
+         where us.user_id = $1
+           and key like 'notify\\_%'
+           and key <> 'notify_sms'`,
       [userId]
     );
-    const flags = rows[0]?.s;
-    return Array.isArray(flags) && flags.length > 0;
+    return rows[0]?.all_off === true;
   } catch {
     return false;
   }
