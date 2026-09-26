@@ -402,7 +402,7 @@ export default function GroupCallOverlay({
        * genuinely active call remains protected and still reports the
        * original error.
        */
-      if (createError?.code === 'P0001' || createError?.code === 'PT409' || createError?.code === 'PGRST') {
+      if (createError?.code === 'P0001' || createError?.code === 'PT409') {
         /*
          * The durable call may still be genuinely active while this page was
          * refreshed/navigated away from the overlay. Reattach to that call
