@@ -21,6 +21,7 @@ const OPTIONS = [
 export default function NotificationQuietMode({ userId }: { userId: string | null }) {
   const pathname = usePathname() || '/';
   const [until, setUntil] = useState<number | null>(null);
+  const [quietEnabled, setQuietEnabled] = useState(false);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
     const refresh = async () => {
       if (!userId) {
         setUntil(null);
+        setQuietEnabled(false);
         setOpen(false);
         return;
       }
@@ -36,7 +38,9 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
       const state = await getQuietState();
 
       if (!cancelled) {
-        setUntil(state.userId === userId ? state.until : null);
+        const matchesUser = state.userId === userId;
+        setUntil(matchesUser ? state.until : null);
+        setQuietEnabled(matchesUser);
       }
     };
 
@@ -65,17 +69,19 @@ export default function NotificationQuietMode({ userId }: { userId: string | nul
 
   if (!userId) return null;
 
-  const quiet = Boolean(until && until > Date.now());
+  const quiet = quietEnabled && (until === null || until > Date.now());
 
   const enable = async (duration: QuietDuration) => {
     const state = await setQuietMode(userId, duration);
     setUntil(state.until);
+    setQuietEnabled(true);
     setOpen(false);
   };
 
   const disable = async () => {
     await clearQuietMode();
     setUntil(null);
+    setQuietEnabled(false);
     setOpen(false);
   };
 
