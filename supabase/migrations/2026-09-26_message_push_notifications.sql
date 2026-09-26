@@ -35,7 +35,7 @@ begin
       when new.message_type = 'file' then 'Sent you a file'
       else 'Sent you a message'
     end,
-    'message:' || new.id::text
+    'message:' || new.id::text || ':' || cm.user_id::text
   from public.conversation_members cm
   join public.user_settings us on us.user_id = cm.user_id
   where cm.conversation_id = new.conversation_id
