@@ -15,7 +15,7 @@ const OPTIONS = [
   [30, '30 minutes'],
   [60, '1 hour'],
   [120, '2 hours'],
-  [0, 'Until I turn it off'],
+  [0, 'Until I turn it on'],
 ] as const;
 
 export default function NotificationQuietMode({ userId }: { userId: string | null }) {
