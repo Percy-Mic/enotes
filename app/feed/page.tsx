@@ -149,36 +149,48 @@ export default function FeedPage() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
-        router.replace('/auth/sign-in');
-        return;
+      if (userError) {
+        setError(userError.message);
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, username, full_text_name, avatar_url')
-        .eq('id', user.id)
-        .maybeSingle();
-      setMe((profile as any) || { id: user.id });
+      /*
+       * /feed is intentionally public. Signed-out visitors can browse
+       * public posts, while posting, stories, journals and other account
+       * features remain available only after sign-in.
+       */
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('id, username, full_text_name, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+        setMe((profile as any) || { id: user.id });
 
-      const { data: journalData, error: journalError } = await supabase
-        .from('journals')
-        .select('id, title')
-        .eq('owner_id', user.id)
-        .order('created_at', { ascending: false });
+        const { data: journalData, error: journalError } = await supabase
+          .from('journals')
+          .select('id, title')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false });
 
-      if (journalError) {
-        setError(journalError.message);
+        if (journalError) {
+          setError(journalError.message);
+        }
+        setJournals((journalData || []) as { id: string; title: string }[]);
+
+        /* Deep link: /feed?compose=1 opens the composer for signed-in users. */
+        if (new URLSearchParams(window.location.search).get('compose')) {
+          setComposerOpen(true);
+        }
+      } else {
+        setMe(null);
+        setJournals([]);
+        setComposerOpen(false);
       }
-      setJournals((journalData || []) as { id: string; title: string }[]);
 
-      /* Deep link: /feed?compose=1 opens the composer (nav create buttons) */
-      if (new URLSearchParams(window.location.search).get('compose')) {
-        setComposerOpen(true);
+      await loadPosts();
+      if (user) {
+        await loadStories();
       }
-
-      loadPosts();
-      loadStories();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
@@ -186,14 +198,25 @@ export default function FeedPage() {
   const loadPosts = useCallback(async () => {
     setLoading(true);
 
-    const { data, error: postsError } = await supabase
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    let postsQuery = supabase
       .from('posts')
       .select(
-        `id, author_id, journal_id, page_id, content, media_url, media_type, media_size, visibility, created_at,
+        `id, author_id, journal_id, page_id, content, media_url, media_type, media_size, post_type, link_url, visibility, created_at, edited_at,
          author:profiles!posts_author_id_fkey(id, full_text_name, username, avatar_url)`,
       )
       .order('created_at', { ascending: false })
       .limit(50);
+
+    /* Never expose followers-only/private posts to signed-out visitors. */
+    if (!user) {
+      postsQuery = postsQuery.eq('visibility', 'public');
+    }
+
+    const { data, error: postsError } = await postsQuery;
 
     if (postsError) {
       setError(postsError.message);
@@ -205,9 +228,6 @@ export default function FeedPage() {
     let list = (data || []) as unknown as Post[];
 
     /* enrich: journal titles + like/comment counts + liked_by_me */
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
     const myId = user?.id;
 
     const journalIds = Array.from(new Set(list.map((p) => p.journal_id).filter(Boolean))) as string[];
@@ -220,9 +240,13 @@ export default function FeedPage() {
       journalMap = new Map((jd || []).map((j: any) => [j.id, j]));
     }
 
-    /* journal titles, like/comment counts, reactions, saves, repost state —
-       one shared enrichment owner (lib/social/enrich.ts) */
-    list = await enrichPosts(list, myId);
+    /*
+     * Enrichment contains account-specific interaction state. Keep it for
+     * signed-in users; anonymous visitors only need the public post rows.
+     */
+    if (user) {
+      list = await enrichPosts(list, myId);
+    }
     setPosts(list);
     setLoading(false);
   }, []);
@@ -504,7 +528,9 @@ export default function FeedPage() {
           })}
         </div>
 
-        {/* Composer */}
+        {/* Composer — signed-in users only. Anonymous visitors get a
+            crawlable public feed without an account-only composer. */}
+        {me ? (
         <div className="mb-5">
           {composerOpen ? (
             <form onSubmit={submitPost} className="space-y-3 rounded-2xl border border-[#E8E2E4] bg-white p-4 shadow-sm">
@@ -724,6 +750,24 @@ export default function FeedPage() {
             </button>
           )}
         </div>
+        ) : (
+          <div className="mb-5 rounded-2xl border border-[#E8E2E4] bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">Explore public posts on enotes</p>
+                <p className="mt-1 text-sm text-[#6B6B6B]">
+                  Sign in to create posts, follow people, react, save, and share.
+                </p>
+              </div>
+              <Link
+                href="/auth/sign-in?redirect=%2Ffeed"
+                className="inline-flex min-h-[42px] items-center justify-center rounded-xl bg-black px-4 py-2 text-sm font-semibold text-[#FFB6C1]"
+              >
+                Sign in
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Error */}
         {error && (
