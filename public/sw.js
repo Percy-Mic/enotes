@@ -41,7 +41,10 @@ function getQuietState() {
 async function isQuietForRecipient(userId) {
   if (!userId) return false;
   const state = await getQuietState();
-  return Boolean(state && state.userId === userId && state.until && state.until > Date.now());
+  if (!state || state.userId !== userId) return false;
+  // null means "Until I turn it off".
+  if (state.until === null) return true;
+  return state.until > Date.now();
 }
 
 async function forwardToVisibleApp(data) {
