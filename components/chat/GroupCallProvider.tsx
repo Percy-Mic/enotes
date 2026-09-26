@@ -175,6 +175,14 @@ export function GroupCallProvider({
     }));
   }, [pending]);
 
+  const acceptGroupCall = useCallback((conversationId: string) => {
+    // Once the recipient accepts, the invitation is no longer pending, but
+    // the call itself must remain mounted. Keep the conversation as the
+    // active call context until the participant explicitly leaves.
+    setPending(null);
+    setOutgoingConversationId(conversationId);
+  }, []);
+
   const closeOverlay = useCallback(() => {
     setOutgoingConversationId(null);
     setPending(null);
@@ -206,6 +214,7 @@ export function GroupCallProvider({
               : null
           }
           onClose={closeOverlay}
+          onAccepted={acceptGroupCall}
         />
       )}
     </GroupCallContext.Provider>
