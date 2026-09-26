@@ -1219,6 +1219,24 @@ export class VideoRenderer {
         }
       }
 
+      /*
+       * A/V SYNC: render the very first visual frame BEFORE creating and
+       * scheduling the audio graph. Previously audio could be scheduled
+       * while the decoder was still preparing frame 0. On slower devices or
+       * remote media, that made the soundtrack become audible before the
+       * first video frame reached canvas.captureStream(). The exported file
+       * then looked like the sound was "ahead" of the picture.
+       *
+       * Frame 0 is now decoded/painted first. Only after it is ready do we
+       * start the recorder and schedule audio, so the captured timeline has
+       * a real visual frame at its beginning instead of an empty/old canvas.
+       */
+      try {
+        await this.drawFrame(canvas, scaled, 0, { previewing: true, playing: true });
+      } catch (e) {
+        throw e instanceof Error ? e : new Error('Unable to render the first video frame.');
+      }
+
       onProgress?.({ phase: 'processing', percent: 5, message: 'Setting up audio mix…' });
 
       /* ---------- audio graph ---------- */
