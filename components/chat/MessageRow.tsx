@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, CheckCheck, Copy, CornerUpLeft, EyeOff, FileText, Loader2, MoreHorizontal, Pencil, Smile, Trash2, X } from 'lucide-react';
+import { Check, CheckCheck, Copy, CornerUpLeft, EyeOff, FileText, Loader2, MoreHorizontal, Pencil, Smile, Trash2, Video, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import type { Message } from '@/types/social';
 import Avatar from '@/components/social/Avatar';
@@ -53,6 +53,7 @@ interface MessageRowProps {
   onDeleteForMe: (message: Message) => Promise<void>;
   onForward: (message: Message) => void;
   showAvatar: boolean;
+  onJoinGroupCall?: (conversationId: string, callId: string, hostId: string) => void;
 }
 
 export default function MessageRow({
@@ -69,6 +70,7 @@ export default function MessageRow({
   onDeleteForMe,
   onForward,
   showAvatar,
+  onJoinGroupCall,
 }: MessageRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
@@ -184,6 +186,33 @@ export default function MessageRow({
           {/* message content */}
           {isDeleted ? (
             <p className="px-3.5 py-2.5 text-sm italic opacity-70">Message deleted</p>
+          ) : message.message_type === 'call_invite' ? (
+            (() => {
+              try {
+                const call = JSON.parse(message.content || '{}') as { callId?: string; conversationId?: string; hostId?: string };
+                if (!call.callId || !call.conversationId || !call.hostId) return <p className="px-3.5 py-2.5 text-sm">Group video call</p>;
+                return (
+                  <div className="min-w-[240px] max-w-[320px] p-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#3F6238] text-white">
+                        <Video className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold">Group video call</p>
+                        <p className="text-xs opacity-60">The call is still available.</p>
+                      </div>
+                    </div>
+                    {onJoinGroupCall && (
+                      <button onClick={() => onJoinGroupCall(call.conversationId!, call.callId!, call.hostId!)} className="mt-3 w-full rounded-xl bg-[#3F6238] px-4 py-2.5 text-sm font-semibold text-white hover:brightness-110">
+                        Return to call
+                      </button>
+                    )}
+                  </div>
+                );
+              } catch {
+                return <p className="px-3.5 py-2.5 text-sm">Group video call</p>;
+              }
+            })()
           ) : (
             <>
               {message.media_url && (message.message_type === 'image' || message.message_type === 'gif') && (
