@@ -68,7 +68,7 @@ export default function IconPicker({
 
       {/* Icons */}
       <div
-        className="no-scrollbar min-h-0 flex-1 grid grid-cols-6 gap-1.5 overflow-y-auto overscroll-contain p-2" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', scrollbarWidth: 'thin' }}
+        className="min-h-0 flex-1 grid grid-cols-6 gap-1.5 overflow-y-auto overscroll-contain p-2" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', scrollbarWidth: 'thin' }}
         role="list"
         aria-label="Available icons"
       >
