@@ -1788,7 +1788,9 @@ function VideoEditor() {
   };
 
   /* ---------- audio ---------- */
-  const [sounds, setSounds] = useState<{ id: string; title: string; artist: string; url: string; duration_seconds: number; category: string }[]>([]);
+  const [sounds, setSounds] = useState<{ id: string; title: string; artist: string; url: string; duration_seconds: number; category: string; license?: string; source?: string }[]>([]);
+  const [soundQuery, setSoundQuery] = useState('');
+  const [soundProvider, setSoundProvider] = useState<'library' | 'freesound'>('library');
   const [soundBusy, setSoundBusy] = useState(false);
 
   const loadSounds = async () => {
@@ -1801,6 +1803,29 @@ function VideoEditor() {
       .limit(30);
     setSounds((data || []) as never);
     setSoundBusy(false);
+  };
+
+  const searchFreesound = async (query = soundQuery) => {
+    setSoundBusy(true);
+    try {
+      const res = await fetch(`/api/studio/sounds?q=${encodeURIComponent(query.trim() || 'cinematic')}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not load sounds.');
+      setSounds((json.results || []).map((s: any) => ({
+        id: `freesound-${s.id}`,
+        title: s.name,
+        artist: s.username || 'Freesound',
+        url: s.url,
+        duration_seconds: Number(s.duration || 15),
+        category: 'Freesound',
+        license: s.license,
+        source: s.source,
+      })));
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Could not load sounds.');
+    } finally {
+      setSoundBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -2335,7 +2360,7 @@ function VideoEditor() {
                   className="pointer-events-none absolute"
                   style={{
                     left: (clipFrame.cx - clipFrame.w / 2) * previewScale,
-                    top: (clipFrame.cy - clipFrame.h / 2) * previewScale,
+                    top: 44 + (clipFrame.cy - clipFrame.h / 2) * previewScale,
                     width: clipFrame.w * previewScale,
                     height: clipFrame.h * previewScale,
                     transform: `rotate(${selectedClip.transform.rotation}deg)`,
@@ -2373,7 +2398,7 @@ function VideoEditor() {
                   className="pointer-events-none absolute"
                   style={{
                     left: selectedElement.x * previewScale,
-                    top: selectedElement.y * previewScale,
+                    top: 44 + selectedElement.y * previewScale,
                     width: selectedElement.width * previewScale,
                     height: selectedElement.height * previewScale,
                     transform: `rotate(${selectedElement.rotation}deg)`,
@@ -2389,7 +2414,7 @@ function VideoEditor() {
                   ]).map((c, i) => (
                     <span
                       key={i}
-                      className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow ${c.cls}`}
+                      className={`absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow ${c.cls}`}
                     />
                   ))}
                   <span className="absolute left-1/2 top-0 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
@@ -2420,7 +2445,7 @@ function VideoEditor() {
 
               {selectedElement && !cropMode && (
                 <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white/90">
-                  drag · corner resize · edge stretch · top rotate
+                  Text: drag · corner/edge resize · top rotate
                 </span>
               )}
 
@@ -3049,14 +3074,24 @@ function VideoEditor() {
             </div>
 
             <div>
-              <p className="mb-1.5 text-xs font-semibold text-white/60">Sound library (licensed)</p>
+              <div className="mb-2 flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] p-1">
+                <button onClick={() => { setSoundProvider('library'); void loadSounds(); }} className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'library' ? 'bg-white/15 text-white' : 'text-white/45'}`}>My library</button>
+                <button onClick={() => { setSoundProvider('freesound'); void searchFreesound(); }} className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'freesound' ? 'bg-white/15 text-white' : 'text-white/45'}`}>Freesound</button>
+              </div>
+              {soundProvider === 'freesound' && (
+                <form onSubmit={(e) => { e.preventDefault(); void searchFreesound(); }} className="mb-2 flex gap-2">
+                  <input value={soundQuery} onChange={(e) => setSoundQuery(e.target.value)} placeholder="Search music, ambience, SFX…" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs outline-none focus:border-[#E5798F]" />
+                  <button type="submit" className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold">Search</button>
+                </form>
+              )}
+              <p className="mb-1.5 text-xs font-semibold text-white/60">{soundProvider === 'freesound' ? 'Freesound · CC0 sounds' : 'Sound library'}</p>
               {soundBusy && <p className="text-xs text-white/50">Loading sounds…</p>}
               <ul className="space-y-1.5">
                 {sounds.map((s) => (
                   <li key={s.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-2">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-semibold">{s.title}</p>
-                      <p className="truncate text-[10px] text-white/50">{s.artist} · {s.category}</p>
+                      <p className="truncate text-[10px] text-white/50">{s.artist} · {s.category}{s.license ? ` · ${s.license}` : ''}</p>
                     </div>
                     <audio src={s.url} controls preload="none" className="h-8 max-w-[130px]" />
                     <button onClick={() => addSoundTrack(s, 'music')} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white">
@@ -3066,7 +3101,7 @@ function VideoEditor() {
                 ))}
                 {!soundBusy && sounds.length === 0 && (
                   <li className="rounded-lg border border-dashed border-white/15 px-3 py-4 text-center text-xs text-white/50">
-                    No sounds yet. Admins add licensed tracks in SQL (see checklist §8).
+                    {soundProvider === 'freesound' ? 'No results. Try another search.' : 'No sounds in your library yet.'}
                   </li>
                 )}
               </ul>
