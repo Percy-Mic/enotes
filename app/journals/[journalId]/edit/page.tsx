@@ -65,6 +65,7 @@ import {
 
 import { useHistory, useHistoryShortcuts } from '@/lib/editor/history';
 import { uploadFile } from '@/lib/storage/upload';
+import { useMobileGestures } from '@/lib/gestures/useMobileGestures';
 
 import StickerPicker from '@/components/pickers/StickerPicker';
 import EmojiPicker from '@/components/pickers/EmojiPicker';
@@ -841,6 +842,24 @@ export default function JournalCanvasStudio() {
 
   const longPressStart =
     useRef<Point | null>(null);
+
+  useMobileGestures(stageRef, {
+    onThreeFingerTap: () => {
+      if (history.canUndo) {
+        history.undo();
+        showToast('Undo.');
+      }
+    },
+    onThreeFingerSwipe: (direction) => {
+      if (direction === 'left' && history.canUndo) {
+        history.undo();
+        showToast('Undo.');
+      } else if (direction === 'right' && history.canRedo) {
+        history.redo();
+        showToast('Redo.');
+      }
+    },
+  }, true);
 
   const showToast = useCallback(
     (
