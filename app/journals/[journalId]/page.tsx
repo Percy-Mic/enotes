@@ -245,6 +245,22 @@ export default function JournalBookView() {
   const timeoutRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useMobileGestures(bookGestureRef, {
+    onSwipe: (direction) => {
+      if (direction === 'left') go('next');
+      if (direction === 'right') go('prev');
+    },
+    onPinch: (scale) => {
+      setBookZoom((value) => Math.max(0.82, Math.min(1.6, value * scale)));
+    },
+    onTwoFingerTap: () => {
+      setBookZoom((value) => value > 1.02 ? 1 : 1.18);
+    },
+    onLongPress: () => {
+      openSeek();
+    },
+  }, isMobile);
+
   /* ------------------------------------------------
    * WHO AM I
    * ------------------------------------------------ */
