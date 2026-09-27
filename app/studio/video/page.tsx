@@ -1693,7 +1693,7 @@ function VideoEditor() {
     if (!selectedElement) return;
     setPlaying(false);
     setCropMode({ type: 'element', id: selectedElement.id, initial: selectedElement.crop ?? null });
-    setTool(selectedElement.kind === 'text' ? 'text' : 'stickers');
+    setTool(selectedElement.kind === 'text' ? 'text' : 'overlays');
   };
 
   const applyCropChange = (next: CropRect | null) => {
