@@ -2303,7 +2303,7 @@ function VideoEditor() {
               <p className="mt-1 text-[11px] text-white/55">Video and image files · originals remain untouched</p>
             </div>
           </div>
-        )
+        )}
         {/* ---------- preview stage ---------- */}
         <section ref={stageRef} className="shrink-0 px-3 pt-2">
           <div className="mx-auto flex w-fit items-center justify-center">
