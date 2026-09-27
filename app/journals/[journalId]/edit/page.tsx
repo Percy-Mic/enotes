@@ -1588,6 +1588,7 @@ export default function JournalCanvasStudio() {
       {
         id: makeId('shape'),
         type: 'shape',
+        shape,
 
         content:
           JSON.stringify({
@@ -4755,7 +4756,7 @@ export default function JournalCanvasStudio() {
   );
 
   const toolsAside = (
-    <aside className="rounded-2xl border border-[#D8C9BA] bg-[#FFFDF9] p-3 shadow-sm">
+    <aside className="max-h-[calc(100dvh-7rem)] overflow-y-auto overscroll-contain rounded-2xl border border-[#D8C9BA] bg-[#FFFDF9] p-3 shadow-sm xl:max-h-none xl:overflow-visible">
       <h2 className="mb-3 font-serif font-bold">
         Scrapbook tools
       </h2>
@@ -4843,7 +4844,7 @@ export default function JournalCanvasStudio() {
 
       {toolPanel ===
         'stickers' && (
-        <div className="mb-3 max-h-72 overflow-hidden rounded-xl border bg-white">
+        <div className="mb-3 h-[min(20rem,55dvh)] max-h-[calc(100dvh-12rem)] overflow-hidden rounded-xl border bg-white">
           <StickerPicker
             onPick={
               addSticker
@@ -4854,7 +4855,7 @@ export default function JournalCanvasStudio() {
 
       {toolPanel ===
         'emoji' && (
-        <div className="mb-3 max-h-72 overflow-hidden rounded-xl border bg-white">
+        <div className="mb-3 h-[min(20rem,55dvh)] max-h-[calc(100dvh-12rem)] overflow-hidden rounded-xl border bg-white">
           <EmojiPicker
             onPick={
               addEmoji
@@ -4865,7 +4866,7 @@ export default function JournalCanvasStudio() {
 
       {toolPanel ===
         'gif' && (
-        <div className="mb-3 max-h-80 overflow-hidden rounded-xl border bg-white">
+        <div className="mb-3 h-[min(20rem,55dvh)] max-h-[calc(100dvh-12rem)] overflow-hidden rounded-xl border bg-white">
           <GifPicker
             onPick={addGif}
           />
@@ -4874,7 +4875,7 @@ export default function JournalCanvasStudio() {
 
       {toolPanel ===
         'icons' && (
-        <div className="mb-3 max-h-72 overflow-hidden rounded-xl border bg-white">
+        <div className="mb-3 h-[min(20rem,55dvh)] max-h-[calc(100dvh-12rem)] overflow-hidden rounded-xl border bg-white">
           <IconPicker
             onPick={
               addIcon
