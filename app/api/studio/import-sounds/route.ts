@@ -72,9 +72,9 @@ export async function POST(request: Request) {
   const limit = Math.min(Math.max(body.limit ?? 6, 1), 12);
 
   /* 1) search CC0-only sounds */
-  const searchUrl = new URL('https://freesound.org/apiv2/search/text/');
-  searchUrl.searchParams.set('query', `${query} license:"Creative Commons 0"`);
-  searchUrl.searchParams.set('filter', 'duration:[2 TO 120]');
+  const searchUrl = new URL('https://freesound.org/apiv2/search/');
+  searchUrl.searchParams.set('query', query);
+  searchUrl.searchParams.set('filter', 'duration:[2 TO 120] license:"Creative Commons 0"');
   searchUrl.searchParams.set('page_size', String(limit * 2));
   searchUrl.searchParams.set('fields', 'id,name,previews,duration,license,username');
   searchUrl.searchParams.set('token', process.env.FREESOUND_API_KEY);
