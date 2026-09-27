@@ -145,7 +145,7 @@ export default function NotesAside() {
               <li key={note.id}>
                 <Link
                   href={`/notes/${note.id}`}
-                  className="block rounded-xl px-3 py-2.5 transition hover:bg-[#FDF0F3]"
+                  className="block rounded-xl border border-transparent px-3 py-2.5 transition hover:border-[#F1DDE2] hover:bg-[#FDF0F3]"
                 >
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-[#111111]">
                     {note.pinned && <Pin className="h-3 w-3 shrink-0 text-[#E5798F]" />}
