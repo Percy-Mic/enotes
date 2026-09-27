@@ -193,10 +193,11 @@ function ShapeView({
 }: {
   element: CanvasElement;
 }) {
-  const shape = element.shape || 'rectangle';
-  const fill = element.fill || '#F6D5DF';
-  const stroke = element.stroke || '#8B5260';
-  const sw = element.stroke_width || 4;
+  const shapeData = safeJson(element.content, {});
+  const shape = element.shape || shapeData.shape || 'rectangle';
+  const fill = element.fill || shapeData.fill || '#F6D5DF';
+  const stroke = element.stroke || shapeData.stroke || '#8B5260';
+  const sw = element.stroke_width || shapeData.stroke_width || 4;
 
   if (
     shape === 'circle' ||
