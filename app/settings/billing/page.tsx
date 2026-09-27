@@ -25,7 +25,18 @@ const PLANS: { id: string; name: string; price: string; blurb: string; perks: st
     name: 'Pro',
     price: 'Pro',
     blurb: 'For creators who want the full studio.',
-    perks: ['4K export & HD quality', 'Advanced effects (shake, pulse)', 'Premium templates & sounds', '50 GB media storage', 'Ad-free'],
+    perks: [
+      '4K export & higher-quality rendering',
+      'Advanced effects & transitions',
+      'Keyframes, masking & blend modes',
+      'Advanced color grading & LUT support',
+      'Advanced audio: noise reduction, EQ & compression',
+      'Advanced captions & subtitle tools',
+      'Premium templates & sounds',
+      '50 GB media storage',
+      'Advanced journal customization',
+      'Ad-free experience',
+    ],
   },
   {
     id: 'creator',
@@ -91,7 +102,7 @@ export default function BillingSettingsPage() {
 
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Subscription</h1>
         <p className="mt-1 text-sm text-[#6B6B6B]">
-          Free stays useful forever — paid tiers unlock studio power. Manage or cancel anytime.
+          Free stays useful forever. Pro unlocks the advanced creator tools across enotes.
         </p>
 
         {loading ? (
