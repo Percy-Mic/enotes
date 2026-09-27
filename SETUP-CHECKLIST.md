@@ -191,8 +191,17 @@ TENOR_API_KEY=your-tenor-google-cloud-key
 # STRIPE_SECRET_KEY=sk_test_...
 # STRIPE_WEBHOOK_SECRET=whsec_...
 # NEXT_PUBLIC_SITE_URL=http://localhost:3000
-# Prices go in Supabase → platform_config → key 'billing':
-# { "pro": { "price_id": "price_...", "amount_cents": 600 } }
+# Maya Pro billing:
+# { "pro": { "amount_cents": 34900 } }
+# amount_cents is PHP centavos, so 34900 = ₱349.00 for 30 days.
+# Vercel server-side variables:
+# MAYA_PUBLIC_KEY=pk-...
+# MAYA_SECRET_KEY=sk-...
+# MAYA_ENV=sandbox
+# Production: change MAYA_ENV to production after Maya approves the live integration.
+# Maya webhook URL:
+# https://enotes-amber.vercel.app/api/billing/webhook
+# Register PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_EXPIRED and PAYMENT_CANCELLED in Maya Manager.
 ```
 
 Notes:
