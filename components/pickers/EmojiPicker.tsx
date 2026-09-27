@@ -110,7 +110,7 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
       </div>
 
       <div
-        className="no-scrollbar min-h-0 flex-1 grid grid-cols-8 gap-0.5 overflow-y-auto overscroll-contain p-2"
+        className="min-h-0 flex-1 grid grid-cols-8 gap-0.5 overflow-y-auto overscroll-contain p-2"
         style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', scrollbarWidth: 'thin' }}
       >
         {recents.length > 0 && !query && category === 'smileys' && (
