@@ -1375,7 +1375,12 @@ export class VideoRenderer {
         }
       }
 
+      const audioTracks = project.tracks.filter((t) => t.kind === 'audio');
+      const audioSoloActive = audioTracks.some((t) => t.solo);
       for (const audio of project.audio) {
+        const lane = audioTracks.find((t) => t.id === audio.track_id) || audioTracks[0];
+        if (lane?.muted) continue;
+        if (audioSoloActive && !lane?.solo) continue;
         await connectTrack({
           src: audio.src,
           volume: audio.volume,
