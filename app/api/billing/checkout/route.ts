@@ -55,7 +55,9 @@ export async function POST(request: Request) {
   }
 
   const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin;
-  // Maya requires requestReferenceNumber to be 1–36 characters.\n  // Keep it deterministic enough to trace while staying inside that limit.\n  const requestReferenceNumber = `en-${user.id.replaceAll('-', '').slice(0, 20)}-${Date.now().toString(36)}`;
+  // Maya requires requestReferenceNumber to be 1–36 characters.
+  // Keep it deterministic enough to trace while staying inside that limit.
+  const requestReferenceNumber = `en-${user.id.replaceAll('-', '').slice(0, 20)}-${Date.now().toString(36)}`;
   const amount = (amountCents / 100).toFixed(2);
 
   const payload = {
