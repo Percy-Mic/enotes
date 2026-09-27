@@ -248,14 +248,45 @@ export function CallProvider({
 
     let cancelled = false;
 
-    void supabase.auth.getUser().then(({ data }) => {
-      if (!cancelled) {
-        setMyId(data.user?.id ?? null);
+    /*
+     * Use the client auth session as the initial identity source instead of
+     * making the call UI depend on an immediate /auth/v1/user round-trip.
+     * The auth state listener also keeps calls synchronized after sign-in,
+     * token refresh, sign-out, or account changes.
+     */
+    const loadInitialSession = async () => {
+      const { data, error: sessionError } =
+        await supabase.auth.getSession();
+
+      if (cancelled) {
+        return;
       }
-    });
+
+      if (sessionError) {
+        console.warn(
+          '[enotes calls] could not read Supabase session:',
+          sessionError.message,
+        );
+      }
+
+      setMyId(data.session?.user?.id ?? null);
+    };
+
+    void loadInitialSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!cancelled) {
+          setMyId(session?.user?.id ?? null);
+        }
+      },
+    );
 
     return () => {
       cancelled = true;
+      subscription.unsubscribe();
       mountedRef.current = false;
     };
   }, [suppliedMyId]);
