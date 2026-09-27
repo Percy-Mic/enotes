@@ -63,7 +63,13 @@ async function verifyMayaPayment(paymentId: string) {
     paymentStatus?: string;
     requestReferenceNumber?: string;
     totalAmount?: { value?: string | number; currency?: string };
-    metadata?: { user_id?: string; plan?: string; billing_period?: string };
+    metadata?: {
+      user_id?: string;
+      plan?: string;
+      transaction_type?: string;
+      billing_period?: string;
+      billing_period_days?: string;
+    };
   };
 }
 
@@ -177,12 +183,6 @@ async function grantPro(userId: string, payment: {
     metadata: { auto_renew: false, transaction_id: transaction.id },
     updated_at: now.toISOString(),
   };
-
-  const { data: existingSubscription } = await supabase
-    .from('subscriptions')
-    .select('id')
-    .eq('user_id', userId)
-    .maybeSingle();
 
   const { error: subscriptionError } = existingSubscription
     ? await supabase.from('subscriptions').update(subscriptionPayload).eq('id', existingSubscription.id)
