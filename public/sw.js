@@ -66,11 +66,18 @@ self.addEventListener('push', (event) => {
     catch { data = { title: 'enotes', body: event.data ? event.data.text() : '', url: '/notifications', type: 'default' }; }
 
     if (await isQuietForRecipient(data.userId)) return;
-    if (await forwardToVisibleApp(data)) return;
 
     const type = data.type || 'default';
     const isCall = type === 'call';
     const isMessage = type === 'message';
+
+    /*
+     * Calls are special: the recipient may be logged out while the enotes
+     * tab is still open. A visible window is therefore NOT proof that the
+     * call can be handled in-app. Always keep the OS notification for calls.
+     * Messages can still be forwarded to a visible authenticated app.
+     */
+    if (!isCall && await forwardToVisibleApp(data)) return;
     const title = data.title || (isMessage ? 'New message' : 'enotes');
     const body = cleanBody(data.body || '');
 
