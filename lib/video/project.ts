@@ -441,7 +441,6 @@ export function normalizeProject(input: unknown): VideoProject {
           order: Number.isFinite(Number(t.order)) ? Number(t.order) : index,
           muted: Boolean(t.muted),
           locked: Boolean(t.locked),
-          solo: Boolean(t.solo),
         } as TimelineTrack;
       })
     : [];
