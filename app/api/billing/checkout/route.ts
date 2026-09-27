@@ -3,7 +3,12 @@ import { createClient } from '@/lib/supabase/server';
 
 const VALID_PLANS = new Set(['pro']);
 
-async function platformPrice(plan: string) {
+type BillingConfig = {
+  pro?: { amount_cents?: number; billing_period_days?: number; auto_renew?: boolean };
+  providers?: Record<string, { enabled?: boolean; checkout?: string }>;
+};
+
+async function billingConfig(): Promise<BillingConfig> {
   const supabase = await createClient();
   const { data } = await supabase
     .from('platform_config')
@@ -11,8 +16,7 @@ async function platformPrice(plan: string) {
     .eq('key', 'billing')
     .maybeSingle();
 
-  const cfg = (data?.value as Record<string, { amount_cents?: number }> | null) ?? {};
-  return Number(cfg[plan]?.amount_cents ?? 0);
+  return (data?.value as BillingConfig | null) ?? {};
 }
 
 export async function POST(request: Request) {
@@ -32,17 +36,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Only the Pro plan is available.' }, { status: 400 });
   }
 
+  const cfg = await billingConfig();
   const publicKey = process.env.MAYA_PUBLIC_KEY;
-  if (!publicKey) {
-    return NextResponse.json({ error: 'Maya payment integration is not configured.' }, { status: 501 });
+  if (cfg.providers?.maya?.enabled === false || !publicKey) {
+    return NextResponse.json({ error: 'Maya checkout is not available yet.' }, { status: 501 });
   }
 
-  const amountCents = await platformPrice(plan);
+  const amountCents = Number(cfg.pro?.amount_cents ?? 0);
+  const billingPeriodDays = Number(cfg.pro?.billing_period_days ?? 30);
   if (!Number.isFinite(amountCents) || amountCents <= 0) {
     return NextResponse.json(
       { error: 'Pro pricing is not configured. Set billing.pro.amount_cents in platform_config.' },
       { status: 500 }
     );
+  }
+  if (!Number.isInteger(billingPeriodDays) || billingPeriodDays <= 0) {
+    return NextResponse.json({ error: 'Pro billing period is not configured correctly.' }, { status: 500 });
   }
 
   const origin = process.env.NEXT_PUBLIC_SITE_URL ?? new URL(request.url).origin;
@@ -63,7 +72,7 @@ export async function POST(request: Request) {
     },
     items: [
       {
-        name: 'enotes Pro — 30 days',
+        name: `enotes Pro — ${billingPeriodDays} days`,
         quantity: 1,
         totalAmount: {
           value: amount,
@@ -80,7 +89,9 @@ export async function POST(request: Request) {
     metadata: {
       user_id: user.id,
       plan,
-      billing_period: '30_days',
+      transaction_type: 'pro_subscription',
+      billing_period_days: String(billingPeriodDays),
+      auto_renew: String(cfg.pro?.auto_renew === true),
     },
   };
 
@@ -114,9 +125,34 @@ export async function POST(request: Request) {
     );
   }
 
+  const checkoutId = json.checkoutId ?? json.id ?? null;
+
+  if (checkoutId) {
+    const { error: ledgerError } = await supabase
+      .from('billing_transactions')
+      .insert({
+        user_id: user.id,
+        provider: 'maya',
+        provider_payment_id: checkoutId,
+        provider_checkout_id: checkoutId,
+        request_reference_number: requestReferenceNumber,
+        transaction_type: 'pro_subscription',
+        plan,
+        status: 'pending',
+        amount_cents: amountCents,
+        currency: 'PHP',
+        billing_period_days: billingPeriodDays,
+        metadata: { user_id: user.id, plan, transaction_type: 'pro_subscription' },
+      });
+
+    if (ledgerError) console.error('[billing-checkout-ledger]', ledgerError);
+  }
+
   return NextResponse.json({
     url: json.redirectUrl,
     provider: 'maya',
-    checkoutId: json.checkoutId ?? json.id ?? null,
+    checkoutId,
+    billingPeriodDays,
+    autoRenew: cfg.pro?.auto_renew === true,
   });
 }
