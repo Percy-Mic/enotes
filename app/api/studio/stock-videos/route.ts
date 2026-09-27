@@ -14,6 +14,8 @@ export async function GET(request: Request) {
   const orientation = clean(searchParams.get('orientation'), 12);
   const apiKey = process.env.PEXELS_API_KEY;
 
+  // Keep the API key server-side. Never expose it through NEXT_PUBLIC_* variables.
+
   if (!apiKey) {
     return NextResponse.json(
       { provider: 'pexels', videos: [], nextPage: null, error: 'PEXELS_API_KEY is missing.' },
@@ -34,7 +36,7 @@ export async function GET(request: Request) {
   try {
     const response = await fetch(`https://api.pexels.com/v1/videos/search?${params.toString()}`, {
       headers: { Authorization: apiKey, Accept: 'application/json' },
-      next: { revalidate: 300 },
+      next: { revalidate: 86400 },
     });
 
     if (!response.ok) {
