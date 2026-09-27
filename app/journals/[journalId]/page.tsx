@@ -28,6 +28,7 @@ import {
 import { supabase } from '@/lib/supabase/client';
 
 import ShareJournalModal from '@/components/social/ShareJournalModal';
+import { useMobileGestures } from '@/lib/gestures/useMobileGestures';
 
 import JournalCanvasRenderer, {
   CANVAS_WIDTH,
@@ -1520,18 +1521,16 @@ export default function JournalBookView() {
           {/* ================================= */}
 
           <div
-            className="relative [perspective:2400px]"
+            ref={bookGestureRef}
+            className="relative [perspective:2400px] touch-none"
             style={{
               width: bookWidth,
               height: bookHeight,
-              touchAction: 'pan-y',
+              touchAction: 'none',
+              transform: `scale(${bookZoom})`,
+              transformOrigin: 'center center',
             }}
-            onTouchStart={
-              onTouchStart
-            }
-            onTouchEnd={
-              onTouchEnd
-            }
+            aria-label="Journal book. Swipe to turn pages, pinch to zoom, long-press for page search."
           >
             {/* TABLE SHADOW */}
 
