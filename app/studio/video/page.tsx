@@ -683,14 +683,14 @@ function VideoEditor() {
   );
 
   /* ---------- stock footage + GIF libraries ---------- */
-  const searchStockVideos = useCallback(async (reset = true) => {
+  const searchStockVideos = useCallback(async (reset = true, providerOverride?: 'all' | 'pexels' | 'pixabay') => {
     setStockBusy(true); setStockError(null);
     try {
       const page = reset ? 1 : Math.max(1, Number((window as any).__enotesStockPage || 1) + 1);
       const params = new URLSearchParams({
         query: stockQuery.trim() || 'nature',
         page: String(page),
-        provider: stockProvider,
+        provider: providerOverride || stockProvider,
       });
       if (stockOrientation !== 'all') params.set('orientation', stockOrientation);
       const response = await fetch('/api/studio/stock-videos?' + params.toString());
@@ -2796,7 +2796,7 @@ function VideoEditor() {
                     type="button"
                     onClick={() => {
                       setStockProvider(provider);
-                      window.setTimeout(() => void searchStockVideos(true), 0);
+                      void searchStockVideos(true, provider);
                     }}
                     className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize ${stockProvider === provider ? 'bg-white/15 text-white' : 'text-white/45 hover:text-white/75'}`}
                   >
