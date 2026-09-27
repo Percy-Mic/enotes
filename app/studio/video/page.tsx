@@ -1196,6 +1196,7 @@ function VideoEditor() {
     setSelectedClipId(null);
     setSelectedElementId(null);
     setPointerDragId(a.id);
+
     const startX = e.clientX;
     const startY = e.clientY;
     const startStart = a.start;
@@ -1216,8 +1217,39 @@ function VideoEditor() {
 
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
       const ns = Math.max(0, startStart + d);
-      const lane = laneRects().find((l) => ev.clientY >= l.top && ev.clientY <= l.bottom);
+      const lanes = laneRects();
+      const currentLane = lanes.find((l) => l.id === currentTrackId);
+      const belowLastLane = lanes.length > 0 && ev.clientY > Math.max(...lanes.map((l) => l.bottom));
 
+      if (belowLastLane) {
+        updateProject((p) => {
+          const audioTracks = p.tracks.filter((t) => t.kind === 'audio').sort((x, y) => x.order - y.order);
+          const last = audioTracks[audioTracks.length - 1];
+          if (!last || last.id !== currentTrackId) {
+            return { ...p, audio: p.audio.map((item) => item.id === a.id ? { ...item, start: ns } : item) };
+          }
+
+          const newTrack = {
+            id: makeVideoId('track'),
+            name: `A${audioTracks.length + 1}`,
+            kind: 'audio' as const,
+            order: Math.max(...p.tracks.map((t) => t.order), -1) + 1,
+            muted: false,
+            locked: false,
+            solo: false,
+          };
+
+          currentTrackId = newTrack.id;
+          return {
+            ...p,
+            tracks: [...p.tracks, newTrack],
+            audio: p.audio.map((item) => item.id === a.id ? { ...item, start: ns, track_id: newTrack.id } : item),
+          };
+        }, 'Create audio track', `audlane-${a.id}`);
+        return;
+      }
+
+      const lane = lanes.find((l) => ev.clientY >= l.top && ev.clientY <= l.bottom);
       if (lane && lane.id !== currentTrackId) {
         const target = docRef.current.project.tracks.find((t) => t.id === lane.id);
         if (target && !target.locked) {
