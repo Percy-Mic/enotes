@@ -6,6 +6,17 @@ const PRO_ENTITLEMENTS = [
   'video.export.hd',
   'video.export.4k',
   'video.advanced_effects',
+  'video.keyframes',
+  'video.masking',
+  'video.blend_modes',
+  'video.color_grading',
+  'video.luts',
+  'video.advanced_audio',
+  'video.noise_reduction',
+  'video.eq',
+  'video.compressor',
+  'video.audio_ducking',
+  'video.advanced_captions',
   'templates.free',
   'templates.premium',
   'sounds.free',
@@ -67,6 +78,25 @@ async function grantPro(userId: string, payment: {
 
   const amount = Number(payment.totalAmount?.value ?? 0);
   const currency = String(payment.totalAmount?.currency ?? 'PHP');
+
+  const { error: transactionError } = await supabase
+    .from('billing_transactions')
+    .upsert({
+      user_id: userId,
+      provider: 'maya',
+      provider_payment_id: payment.id ?? '',
+      plan: 'pro',
+      status: 'paid',
+      amount_cents: Math.round(amount * 100),
+      currency,
+      billing_period_days: 30,
+      paid_at: now.toISOString(),
+      period_start: now.toISOString(),
+      period_end: periodEnd.toISOString(),
+      provider_payload: payment,
+      updated_at: now.toISOString(),
+    }, { onConflict: 'provider,provider_payment_id' });
+  if (transactionError) throw transactionError;
 
   const { data: existing } = await supabase
     .from('entitlements')
