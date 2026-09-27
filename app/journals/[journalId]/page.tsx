@@ -245,6 +245,9 @@ export default function JournalBookView() {
   const timeoutRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [bookZoom, setBookZoom] = useState(1);
+  const bookGestureRef = useRef<HTMLDivElement>(null);
+
   useMobileGestures(bookGestureRef, {
     onSwipe: (direction) => {
       if (direction === 'left') go('next');
