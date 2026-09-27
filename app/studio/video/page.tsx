@@ -577,6 +577,7 @@ function VideoEditor() {
 
   /* ---------- import clips ---------- */
   const [importing, setImporting] = useState<{ name: string; percent: number } | null>(null);
+  const [fileDragActive, setFileDragActive] = useState(false);
 
   const importFiles = useCallback(
     async (files: FileList | File[]) => {
@@ -2224,7 +2225,42 @@ function VideoEditor() {
           The WHOLE editing area scrolls vertically when the viewport is
           short (landscape phones, small laptops, many timeline lanes) —
           nothing is clipped away, and the page itself never scrolls. */}
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        onDragEnter={(e) => {
+          if (Array.from(e.dataTransfer.types).includes('Files')) {
+            e.preventDefault();
+            setFileDragActive(true);
+          }
+        }}
+        onDragOver={(e) => {
+          if (Array.from(e.dataTransfer.types).includes('Files')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+            setFileDragActive(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setFileDragActive(false);
+          }
+        }}
+        onDrop={(e) => {
+          if (!Array.from(e.dataTransfer.types).includes('Files')) return;
+          e.preventDefault();
+          setFileDragActive(false);
+          if (e.dataTransfer.files.length) void importFiles(e.dataTransfer.files);
+        }}
+      >
+        {fileDragActive && (
+          <div className="pointer-events-none absolute inset-2 z-[70] flex items-center justify-center rounded-2xl border-2 border-dashed border-[#E5798F] bg-[#E5798F]/15 backdrop-blur-sm">
+            <div className="rounded-2xl border border-white/20 bg-black/80 px-6 py-5 text-center shadow-2xl">
+              <Upload className="mx-auto h-8 w-8 text-[#FFB6C1]" />
+              <p className="mt-2 text-sm font-bold">Drop media to import</p>
+              <p className="mt-1 text-[11px] text-white/55">Video and image files · originals remain untouched</p>
+            </div>
+          </div>
+        )
         {/* ---------- preview stage ---------- */}
         <section ref={stageRef} className="shrink-0 px-3 pt-2">
           <div className="mx-auto flex w-fit items-center justify-center">
@@ -2244,7 +2280,7 @@ function VideoEditor() {
                 className="block bg-black"
                 style={{
                   aspectRatio: `${project.canvas.width} / ${project.canvas.height}`,
-                  maxHeight: 'min(38dvh, 480px)',
+                  maxHeight: 'min(48dvh, 620px)',
                   maxWidth: 'min(100%, 92vw)',
                   touchAction: 'none',
                 }}
@@ -2604,7 +2640,7 @@ function VideoEditor() {
                         );
                       })}
                       {items.length === 0 && (
-                        <span className="pointer-events-none absolute left-2 top-3 text-[9px] text-white/20">Drag text, stickers, media or video here</span>
+                        <span className="pointer-events-none absolute left-2 top-3 text-[9px] text-white/20">Drag text, media or video here</span>
                       )}
                     </div>
                   </div>
@@ -3744,13 +3780,20 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
 
       {el.kind === 'text' && (
         <>
-          <textarea
-            value={el.content}
-            onChange={(e) => onChange({ content: e.target.value }, 'Edit text', `txt-${el.id}`)}
-            rows={2}
-            className="w-full rounded-lg bg-white/10 px-3 py-2"
-            aria-label="Text content"
-          />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-white/60">Text content</span>
+              <span className="text-[10px] tabular-nums text-white/30">{el.content.length} chars</span>
+            </div>
+            <textarea
+              value={el.content}
+              onChange={(e) => onChange({ content: e.target.value }, 'Edit text', `txt-${el.id}`)}
+              rows={5}
+              className="min-h-32 w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none transition focus:border-[#E5798F]/70 focus:ring-2 focus:ring-[#E5798F]/20"
+              aria-label="Text content"
+              placeholder="Type your title, caption, subtitle, or body text…"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <Slider label="Size" min={16} max={140} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
             <label className="space-y-1">
@@ -3834,7 +3877,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
         </>
       )}
 
-      {(el.kind === 'image' || el.kind === 'video' || el.kind === 'gif') && (
+      {(el.kind === 'image' || el.kind === 'video') && (
         <div className="grid grid-cols-2 gap-2">
           <label className="space-y-1">
             <span className="text-white/60">Object fit</span>
