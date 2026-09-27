@@ -248,6 +248,11 @@ export interface AudioTrack {
   id: string;
   name: string;
   src: string;
+  /** Optional source metadata for stock/library audio. */
+  provider?: 'library' | 'freesound' | 'upload' | 'recording';
+  sourceUrl?: string;
+  license?: string;
+  creator?: string;
   /** seconds into the project where playback begins */
   start: number;
   /** trim window inside the source audio */
