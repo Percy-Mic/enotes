@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import type { RefObject } from 'react';
 
 export type MobileSwipeDirection = 'left' | 'right' | 'up' | 'down';
 
@@ -57,7 +58,7 @@ function normalizeAngle(value: number) {
  * Multi-touch gestures are recognized from the same pointer stream.
  */
 export function useMobileGestures<T extends HTMLElement>(
-  ref: React.RefObject<T | null>,
+  ref: RefObject<T | null>,
   handlers: MobileGestureHandlers,
   enabled = true,
 ) {
@@ -80,6 +81,7 @@ export function useMobileGestures<T extends HTMLElement>(
     let gestureStartDistance = 0;
     let gestureStartAngle = 0;
     let lastCenter: GesturePoint | null = null;
+    let currentCenter: GesturePoint | null = null;
     let lastDistance = 0;
     let lastAngle = 0;
     let multiTouchMoved = false;
@@ -114,6 +116,7 @@ export function useMobileGestures<T extends HTMLElement>(
       gestureStartDistance = distance(a, b);
       gestureStartAngle = angle(a, b);
       lastCenter = gestureStartCenter;
+      currentCenter = gestureStartCenter;
       lastDistance = gestureStartDistance;
       lastAngle = gestureStartAngle;
     };
@@ -188,6 +191,7 @@ export function useMobileGestures<T extends HTMLElement>(
       }
 
       lastCenter = center;
+      currentCenter = center;
     };
 
     const finishPointer = (event: PointerEvent) => {
@@ -202,7 +206,6 @@ export function useMobileGestures<T extends HTMLElement>(
         clearLongPress();
         if (elapsed <= TAP_MAX_MS && moved <= TAP_MAX_MOVE) {
           const start = longPressStart || current;
-          handlersRef.current.onSwipe; // keep handler refs hot without changing tap semantics
         }
       }
 
@@ -215,6 +218,18 @@ export function useMobileGestures<T extends HTMLElement>(
         if (!multiTouchMoved && duration <= TAP_MAX_MS && (count === 2 || count === 3) && gestureStartCenter) {
           if (count === 2) handlersRef.current.onTwoFingerTap?.(gestureStartCenter);
           if (count === 3) handlersRef.current.onThreeFingerTap?.(gestureStartCenter);
+        } else if (multiTouchMoved && count === 3 && gestureStartCenter && currentCenter) {
+          const dx = currentCenter.x - gestureStartCenter.x;
+          const dy = currentCenter.y - gestureStartCenter.y;
+          if (Math.max(Math.abs(dx), Math.abs(dy)) >= SWIPE_MIN_DISTANCE) {
+            const direction = Math.abs(dx) >= Math.abs(dy)
+              ? (dx < 0 ? 'left' : 'right')
+              : (dy < 0 ? 'up' : 'down');
+            handlersRef.current.onThreeFingerSwipe?.(
+              direction,
+              Math.max(Math.abs(dx), Math.abs(dy)),
+            );
+          }
         }
 
         gestureStartCount = 0;
@@ -222,6 +237,7 @@ export function useMobileGestures<T extends HTMLElement>(
         gestureStartDistance = 0;
         gestureStartAngle = 0;
         lastCenter = null;
+        currentCenter = null;
         lastDistance = 0;
         lastAngle = 0;
         multiTouchMoved = false;
@@ -249,6 +265,7 @@ export function useMobileGestures<T extends HTMLElement>(
         gestureStartCount = 0;
         gestureStartCenter = null;
         lastCenter = null;
+        currentCenter = null;
         multiTouchMoved = false;
       }
     };
