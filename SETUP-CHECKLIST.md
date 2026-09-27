@@ -186,22 +186,26 @@ TENOR_API_KEY=your-tenor-google-cloud-key
 # Free API key: https://freesound.org/apiv2/apply
 # FREESOUND_API_KEY=...
 
-# --- optional: billing (leave unset = billing UI shows honest "not configured") ---
-# PAYMENT_PROVIDER=stripe            # stripe | paddle | lemonsqueezy
-# STRIPE_SECRET_KEY=sk_test_...
-# STRIPE_WEBHOOK_SECRET=whsec_...
-# NEXT_PUBLIC_SITE_URL=http://localhost:3000
-# Maya Pro billing:
-# { "pro": { "amount_cents": 34900 } }
-# amount_cents is PHP centavos, so 34900 = ₱349.00 for 30 days.
-# Vercel server-side variables:
+# --- optional: provider-agnostic billing ---
+# The billing schema supports Maya, Stripe, PayPal, and GCash gateways.
+# Provider API secrets belong in Vercel environment variables, never platform_config.
+# Pro pricing is stored in platform_config.billing:
+# { "currency": "PHP", "pro": { "amount_cents": 34900, "billing_period_days": 30, "auto_renew": false } }
+# 34900 = ₱349.00. This is an example price; choose your final price before sales.
+# The current Maya integration is a 30-day prepaid flow with no automatic renewal.
+#
+# Maya Vercel server-side variables:
 # MAYA_PUBLIC_KEY=pk-...
 # MAYA_SECRET_KEY=sk-...
 # MAYA_ENV=sandbox
-# Production: change MAYA_ENV to production after Maya approves the live integration.
+# Production: change MAYA_ENV to production only after Maya merchant onboarding/live approval.
+#
 # Maya webhook URL:
 # https://enotes-amber.vercel.app/api/billing/webhook
 # Register PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_EXPIRED and PAYMENT_CANCELLED in Maya Manager.
+#
+# Run supabase/migrations/2026-09-27_pro_billing_transactions.sql in Supabase SQL Editor
+# before enabling checkout.
 ```
 
 Notes:
