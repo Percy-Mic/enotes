@@ -1788,10 +1788,33 @@ function VideoEditor() {
   };
 
   /* ---------- audio ---------- */
-  const [sounds, setSounds] = useState<{ id: string; title: string; artist: string; url: string; duration_seconds: number; category: string; license?: string; source?: string }[]>([]);
+  type SoundBrowserItem = {
+    id: string;
+    title: string;
+    artist: string;
+    url: string;
+    duration_seconds: number;
+    category: string;
+    license?: string;
+    source?: string;
+    tags?: string[];
+    description?: string;
+    provider?: 'library' | 'freesound';
+  };
+
+  const [sounds, setSounds] = useState<SoundBrowserItem[]>([]);
   const [soundQuery, setSoundQuery] = useState('');
+  const [soundCategory, setSoundCategory] = useState('Cinematic');
   const [soundProvider, setSoundProvider] = useState<'library' | 'freesound'>('library');
+  const [soundPage, setSoundPage] = useState(1);
+  const [soundPages, setSoundPages] = useState(1);
+  const [soundCount, setSoundCount] = useState(0);
   const [soundBusy, setSoundBusy] = useState(false);
+
+  const soundCategories = [
+    'Cinematic', 'Ambient', 'Nature', 'City', 'Footsteps',
+    'Whoosh', 'Impact', 'Foley', 'UI', 'Crowd',
+  ];
 
   const loadSounds = async () => {
     if (sounds.length || soundBusy) return;
@@ -1801,48 +1824,98 @@ function VideoEditor() {
       .select('id, title, artist, url, duration_seconds, category')
       .order('plays', { ascending: false })
       .limit(30);
-    setSounds((data || []) as never);
+    setSounds((data || []) as SoundBrowserItem[]);
     setSoundBusy(false);
   };
 
-  const searchFreesound = async (query = soundQuery) => {
+  const searchFreesound = async (
+    query = soundQuery,
+    page = 1,
+    append = false,
+    category = soundCategory
+  ) => {
     setSoundBusy(true);
     try {
-      const res = await fetch(`/api/studio/sounds?q=${encodeURIComponent(query.trim() || 'cinematic')}`);
+      const terms = [query.trim(), category !== 'All' ? category : '']
+        .filter(Boolean)
+        .join(' ')
+        .trim() || 'cinematic';
+
+      const params = new URLSearchParams({
+        q: terms,
+        page: String(page),
+        page_size: '24',
+      });
+      const res = await fetch('/api/studio/sounds?' + params.toString(), { cache: 'no-store' });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Could not load sounds.');
-      setSounds((json.results || []).map((s: any) => ({
+      if (!res.ok) throw new Error(json.error || 'Could not load Freesound results.');
+
+      const mapped: SoundBrowserItem[] = (json.results || []).map((s: any) => ({
         id: `freesound-${s.id}`,
         title: s.name,
-        artist: s.username || 'Freesound',
+        artist: s.username || 'Freesound creator',
         url: s.url,
         duration_seconds: Number(s.duration || 15),
-        category: 'Freesound',
+        category: category || 'Freesound',
         license: s.license,
         source: s.source,
-      })));
+        tags: Array.isArray(s.tags) ? s.tags : [],
+        description: s.description || '',
+        provider: 'freesound',
+      }));
+
+      setSounds((prev) => append ? [...prev, ...mapped] : mapped);
+      setSoundPage(Number(json.page) || page);
+      setSoundPages(Number(json.pages) || 1);
+      setSoundCount(Number(json.count) || mapped.length);
     } catch (e) {
-      notify(e instanceof Error ? e.message : 'Could not load sounds.');
+      notify(e instanceof Error ? e.message : 'Could not load Freesound results.');
     } finally {
       setSoundBusy(false);
     }
   };
 
   useEffect(() => {
-    if (tool === 'audio') void loadSounds();
+    if (tool === 'audio' && soundProvider === 'library') void loadSounds();
+    if (tool === 'audio' && soundProvider === 'freesound' && sounds.length === 0) {
+      void searchFreesound('', 1, false, soundCategory);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tool]);
+  }, [tool, soundProvider]);
 
-  const addSoundTrack = (s: { title: string; url: string; duration_seconds: number }, kind: 'music' | 'voiceover') => {
+  const addSoundTrack = (
+    s: {
+      title: string;
+      url: string;
+      duration_seconds: number;
+      provider?: AudioTrack['provider'];
+      sourceUrl?: string;
+      license?: string;
+      creator?: string;
+    },
+    kind: 'music' | 'voiceover'
+  ) => {
     const track: AudioTrack = {
-      id: makeVideoId('aud'), name: s.title, src: s.url, start: 0,
-      trimStart: 0, trimEnd: Math.max(1, Math.min(s.duration_seconds || 15, duration || 15)),
-      volume: 0.8, fadeIn: 0.5, fadeOut: 1, kind,
+      id: makeVideoId('aud'),
+      name: s.title,
+      src: s.url,
+      provider: s.provider,
+      sourceUrl: s.sourceUrl,
+      license: s.license,
+      creator: s.creator,
+      start: 0,
+      trimStart: 0,
+      trimEnd: Math.max(1, Math.min(s.duration_seconds || 15, duration || 15)),
+      volume: 0.8,
+      fadeIn: 0.5,
+      fadeOut: 1,
+      kind,
     };
     updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'Add audio');
     setSelectedClipId(null);
     setSelectedElementId(null);
     setSelectedAudioId(track.id);
+    notify(`“${s.title}” added to the timeline.`);
   };
 
   const updateAudio = (id: string, patch: Partial<AudioTrack>, label: string, coalesceKey?: string) => {
@@ -3064,48 +3137,198 @@ function VideoEditor() {
                         a.onerror = () => res(15);
                         a.src = URL.createObjectURL(file);
                       });
-                      addSoundTrack({ title: file.name, url: up.url, duration_seconds: dur }, 'music');
+                      addSoundTrack({ title: file.name, url: up.url, duration_seconds: dur, provider: 'upload' }, 'music');
                     } catch (err) {
                       notify(`Audio upload failed — ${err instanceof Error ? err.message : 'try again'}`);
+                    } finally {
+                      e.currentTarget.value = '';
                     }
                   }}
                 />
               </label>
             </div>
 
-            <div>
-              <div className="mb-2 flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.03] p-1">
-                <button onClick={() => { setSoundProvider('library'); void loadSounds(); }} className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'library' ? 'bg-white/15 text-white' : 'text-white/45'}`}>My library</button>
-                <button onClick={() => { setSoundProvider('freesound'); void searchFreesound(); }} className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'freesound' ? 'bg-white/15 text-white' : 'text-white/45'}`}>Freesound</button>
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="mb-2 flex items-center gap-1 rounded-lg bg-white/[0.04] p-1">
+                <button
+                  type="button"
+                  onClick={() => { setSoundProvider('library'); void loadSounds(); }}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'library' ? 'bg-white/15 text-white' : 'text-white/45'}`}
+                >
+                  My library
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSoundProvider('freesound');
+                    if (sounds.length === 0) void searchFreesound('', 1, false, soundCategory);
+                  }}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'freesound' ? 'bg-white/15 text-white' : 'text-white/45'}`}
+                >
+                  Freesound
+                </button>
               </div>
-              {soundProvider === 'freesound' && (
-                <form onSubmit={(e) => { e.preventDefault(); void searchFreesound(); }} className="mb-2 flex gap-2">
-                  <input value={soundQuery} onChange={(e) => setSoundQuery(e.target.value)} placeholder="Search music, ambience, SFX…" className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-2 text-xs outline-none focus:border-[#E5798F]" />
-                  <button type="submit" className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold">Search</button>
-                </form>
-              )}
-              <p className="mb-1.5 text-xs font-semibold text-white/60">{soundProvider === 'freesound' ? 'Freesound · CC0 sounds' : 'Sound library'}</p>
-              {soundBusy && <p className="text-xs text-white/50">Loading sounds…</p>}
-              <ul className="space-y-1.5">
-                {sounds.map((s) => (
-                  <li key={s.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-semibold">{s.title}</p>
-                      <p className="truncate text-[10px] text-white/50">{s.artist} · {s.category}{s.license ? ` · ${s.license}` : ''}</p>
-                    </div>
-                    <audio src={s.url} controls preload="none" className="h-8 max-w-[130px]" />
-                    <button onClick={() => addSoundTrack(s, 'music')} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white">
-                      Add
-                    </button>
-                  </li>
-                ))}
-                {!soundBusy && sounds.length === 0 && (
-                  <li className="rounded-lg border border-dashed border-white/15 px-3 py-4 text-center text-xs text-white/50">
-                    {soundProvider === 'freesound' ? 'No results. Try another search.' : 'No sounds in your library yet.'}
-                  </li>
-                )}
-              </ul>
 
+              {soundProvider === 'freesound' ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-bold">Freesound browser</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-white/45">
+                      Search CC0 sounds, preview them, then add the preview directly to your timeline. Nothing is copied into your sound database.
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void searchFreesound(soundQuery, 1, false, soundCategory);
+                    }}
+                    className="flex gap-2"
+                  >
+                    <div className="relative min-w-0 flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                      <input
+                        value={soundQuery}
+                        onChange={(e) => setSoundQuery(e.target.value)}
+                        placeholder="Search sound effects, ambience, music…"
+                        aria-label="Search Freesound"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]"
+                      />
+                    </div>
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
+                      Search
+                    </button>
+                  </form>
+
+                  <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Sound categories">
+                    {soundCategories.map((category) => (
+                      <button
+                        key={category}
+                        type="button"
+                        role="tab"
+                        aria-selected={soundCategory === category}
+                        onClick={() => {
+                          setSoundCategory(category);
+                          void searchFreesound(soundQuery, 1, false, category);
+                        }}
+                        className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold transition ${soundCategory === category ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
+                      >
+                        {category}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[9px] text-white/35">
+                    <span>{soundCount ? `${soundCount.toLocaleString()} CC0 sounds` : 'CC0 sounds'}</span>
+                    {soundPage > 1 && <span>Page {soundPage} / {soundPages}</span>}
+                  </div>
+
+                  {soundBusy && sounds.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-xs text-white/45">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Searching Freesound…
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sounds.map((s) => (
+                        <div key={s.id} className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
+                          <div className="flex items-start gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold">{s.title}</p>
+                              <p className="mt-0.5 truncate text-[10px] text-white/45">
+                                {s.artist} · {fmt(s.duration_seconds)} · {s.license || 'CC0'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addSoundTrack({
+                                title: s.title,
+                                url: s.url,
+                                duration_seconds: s.duration_seconds,
+                                provider: s.provider,
+                                sourceUrl: s.source,
+                                license: s.license,
+                                creator: s.artist,
+                              }, 'music')}
+                              className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold focus-visible:ring-2 focus-visible:ring-white"
+                            >
+                              Add
+                            </button>
+                          </div>
+
+                          <audio
+                            src={s.url}
+                            controls
+                            preload="none"
+                            className="mt-2 h-8 w-full"
+                            aria-label={`Preview ${s.title}`}
+                          />
+
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <div className="min-w-0 truncate text-[9px] text-white/35">
+                              {s.tags?.slice(0, 4).join(' · ') || 'Freesound · CC0'}
+                            </div>
+                            {s.source && (
+                              <a
+                                href={s.source}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="shrink-0 text-[9px] font-semibold text-[#FFB6C1] hover:underline"
+                              >
+                                View source
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {!soundBusy && sounds.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-white/15 px-3 py-5 text-center text-xs text-white/50">
+                          No Freesound results. Try a different search or category.
+                        </div>
+                      )}
+
+                      {soundProvider === 'freesound' && soundPage < soundPages && (
+                        <button
+                          type="button"
+                          onClick={() => void searchFreesound(soundQuery, soundPage + 1, true, soundCategory)}
+                          disabled={soundBusy}
+                          className="w-full rounded-lg border border-white/15 py-2.5 text-[10px] font-semibold disabled:opacity-40"
+                        >
+                          {soundBusy ? 'Loading…' : 'Load more sounds'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-center text-[9px] leading-4 text-white/30">
+                    Freesound results here are filtered to Creative Commons 0. Preview files are used directly; the original Freesound file is not downloaded.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="mb-1.5 text-xs font-semibold text-white/60">Sound library</p>
+                  {soundBusy && <p className="text-xs text-white/50">Loading sounds…</p>}
+                  <ul className="space-y-1.5">
+                    {sounds.map((s) => (
+                      <li key={s.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-semibold">{s.title}</p>
+                          <p className="truncate text-[10px] text-white/50">{s.artist} · {s.category}</p>
+                        </div>
+                        <audio src={s.url} controls preload="none" className="h-8 max-w-[130px]" />
+                        <button onClick={() => addSoundTrack(s, 'music')} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white">
+                          Add
+                        </button>
+                      </li>
+                    ))}
+                    {!soundBusy && sounds.length === 0 && (
+                      <li className="rounded-lg border border-dashed border-white/15 px-3 py-4 text-center text-xs text-white/50">
+                        No sounds in your library yet.
+                      </li>
+                    )}
+                  </ul>
+                </>
+              )}
             </div>
 
             {project.audio.length > 0 && (
@@ -3119,6 +3342,11 @@ function VideoEditor() {
                       <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== a.id) }), 'Remove audio')} aria-label="Remove track" className="text-red-300 focus-visible:ring-2 focus-visible:ring-white">
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
+                    </div>
+                    <div className="mb-2 flex flex-wrap gap-1.5 text-[9px] text-white/35">
+                      {a.provider === 'freesound' && <span className="rounded bg-white/5 px-1.5 py-1">Freesound</span>}
+                      {a.creator && <span className="rounded bg-white/5 px-1.5 py-1">{a.creator}</span>}
+                      {a.license && <span className="rounded bg-white/5 px-1.5 py-1">{a.license}</span>}
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="space-y-1">
