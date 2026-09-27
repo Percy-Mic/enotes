@@ -843,24 +843,6 @@ export default function JournalCanvasStudio() {
   const longPressStart =
     useRef<Point | null>(null);
 
-  useMobileGestures(stageRef, {
-    onThreeFingerTap: () => {
-      if (history.canUndo) {
-        history.undo();
-        showToast('Undo.');
-      }
-    },
-    onThreeFingerSwipe: (direction) => {
-      if (direction === 'left' && history.canUndo) {
-        history.undo();
-        showToast('Undo.');
-      } else if (direction === 'right' && history.canRedo) {
-        history.redo();
-        showToast('Redo.');
-      }
-    },
-  }, true);
-
   const showToast = useCallback(
     (
       message: string,
@@ -887,6 +869,24 @@ export default function JournalCanvasStudio() {
     },
     [],
   );
+
+  useMobileGestures(stageRef, {
+    onThreeFingerTap: () => {
+      if (history.canUndo) {
+        history.undo();
+        showToast('Undo.');
+      }
+    },
+    onThreeFingerSwipe: (direction) => {
+      if (direction === 'left' && history.canUndo) {
+        history.undo();
+        showToast('Undo.');
+      } else if (direction === 'right' && history.canRedo) {
+        history.redo();
+        showToast('Redo.');
+      }
+    },
+  }, true);
 
   useEffect(() => {
     return () => {
