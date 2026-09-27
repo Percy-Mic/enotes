@@ -55,6 +55,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const NO_ASIDE_ROUTES = [
     /^\/notes(\/|$)/,
     /^\/journals(\/|$)/,
+    /^\/communities(\/|$)/,
     /^\/admin(\/|$)/,
   ];
   const asideHidden = NO_ASIDE_ROUTES.some((re) => re.test(pathname));
