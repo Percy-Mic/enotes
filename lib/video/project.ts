@@ -418,6 +418,11 @@ export function normalizeProject(input: unknown): VideoProject {
     const track = (a && typeof a === 'object' ? a : {}) as Partial<AudioTrack> & Record<string, unknown>;
     return {
       id: String(track.id || makeVideoId('aud')), name: String(track.name || 'Audio'), src: String(track.src || ''),
+      track_id: track.track_id ? String(track.track_id) : undefined,
+      provider: track.provider === 'freesound' || track.provider === 'upload' || track.provider === 'recording' ? track.provider : track.provider === 'library' ? 'library' : undefined,
+      sourceUrl: track.sourceUrl ? String(track.sourceUrl) : undefined,
+      license: track.license ? String(track.license) : undefined,
+      creator: track.creator ? String(track.creator) : undefined,
       start: Math.max(0, Number(track.start) || 0), trimStart: Math.max(0, Number(track.trimStart) || 0),
       trimEnd: Math.max(0.1, Number(track.trimEnd) || 0.1), volume: Math.max(0, Math.min(1, Number(track.volume) || 0)),
       fadeIn: Math.max(0, Number(track.fadeIn) || 0), fadeOut: Math.max(0, Number(track.fadeOut) || 0),
@@ -444,7 +449,7 @@ export function normalizeProject(input: unknown): VideoProject {
     : [
         { id: 'track-main', name: 'Main video', kind: 'video', order: 0, muted: false, locked: false },
         { id: 'track-overlay', name: 'Overlays', kind: 'overlay', order: 1, muted: false, locked: false },
-        { id: 'track-audio', name: 'Audio', kind: 'audio', order: 2, muted: false, locked: false },
+        { id: 'track-audio', name: 'A1', kind: 'audio', order: 2, muted: false, locked: false, solo: false },
       ];
 
   /* Legacy projects had one shared audio lane. Keep those clips usable by
