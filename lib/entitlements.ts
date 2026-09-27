@@ -19,6 +19,17 @@ export type EntitlementKey =
   | 'video.export.hd'
   | 'video.export.4k'
   | 'video.advanced_effects'
+  | 'video.keyframes'
+  | 'video.masking'
+  | 'video.blend_modes'
+  | 'video.color_grading'
+  | 'video.luts'
+  | 'video.advanced_audio'
+  | 'video.noise_reduction'
+  | 'video.eq'
+  | 'video.compressor'
+  | 'video.audio_ducking'
+  | 'video.advanced_captions'
   | 'templates.free'
   | 'templates.premium'
   | `template.use:${string}`
@@ -38,6 +49,17 @@ export const PLAN_ENTITLEMENTS: Record<string, EntitlementKey[]> = {
     'video.export.hd',
     'video.export.4k',
     'video.advanced_effects',
+    'video.keyframes',
+    'video.masking',
+    'video.blend_modes',
+    'video.color_grading',
+    'video.luts',
+    'video.advanced_audio',
+    'video.noise_reduction',
+    'video.eq',
+    'video.compressor',
+    'video.audio_ducking',
+    'video.advanced_captions',
     'templates.free',
     'templates.premium',
     'sounds.free',
@@ -55,6 +77,17 @@ export const ENTITLEMENT_LABELS: Partial<Record<EntitlementKey, string>> = {
   'video.export.hd': 'HD export (1440p)',
   'video.export.4k': '4K export',
   'video.advanced_effects': 'Advanced effects & transitions',
+  'video.keyframes': 'Keyframe animation',
+  'video.masking': 'Masking & compositing',
+  'video.blend_modes': 'Blend modes',
+  'video.color_grading': 'Advanced color grading',
+  'video.luts': 'LUT support',
+  'video.advanced_audio': 'Advanced audio controls',
+  'video.noise_reduction': 'Noise reduction',
+  'video.eq': 'EQ controls',
+  'video.compressor': 'Audio compression',
+  'video.audio_ducking': 'Audio ducking',
+  'video.advanced_captions': 'Advanced captions & subtitle tools',
   'templates.premium': 'Premium templates',
   'sounds.premium': 'Premium sound library',
   'storage.large': '50 GB media storage',
@@ -77,9 +110,13 @@ export function useEntitlements(userId: string | null) {
     (async () => {
       const { data } = await supabase
         .from('entitlements')
-        .select('key')
+        .select('key, expires_at')
         .eq('user_id', userId);
-      setEntitlements(new Set(((data || []) as { key: string }[]).map((row) => row.key)));
+      const now = Date.now();
+      const active = ((data || []) as { key: string; expires_at: string | null }[])
+        .filter((row) => !row.expires_at || new Date(row.expires_at).getTime() > now)
+        .map((row) => row.key);
+      setEntitlements(new Set(active));
       setLoading(false);
     })();
   }, [userId]);
