@@ -68,7 +68,7 @@ export default function AdminPage() {
           .eq('status', 'open')
           .order('created_at')
           .limit(100),
-        supabase.from('platform_config').select('key, value'),
+        supabase.from('platform_config').select('key, value').neq('key', 'push_send_secret'),
       ]);
       setPending((tpl || []) as unknown as PendingTemplate[]);
       setReports((rep || []) as unknown as ReportRow[]);
