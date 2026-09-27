@@ -51,14 +51,24 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
   }, []);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return null;
     const q = query.trim().toLowerCase();
-    const all = EMOJI_GROUPS.flatMap((g) => g.emojis);
-    /* No names available client-side; match on category labels for crude search */
-    const labelMatch = EMOJI_GROUPS.filter((g) => g.label.toLowerCase().includes(q)).flatMap(
-      (g) => g.emojis
-    );
-    return Array.from(new Set([...labelMatch, ...all])).slice(0, 96);
+    if (!q) return null;
+
+    /*
+     * The bundled emoji data intentionally contains the glyphs + category
+     * labels rather than a large keyword database. Search therefore matches
+     * category names and the emoji glyph itself instead of pretending every
+     * query matches everything.
+     */
+    const matches = EMOJI_GROUPS
+      .filter((group) => group.label.toLowerCase().includes(q))
+      .flatMap((group) => group.emojis);
+
+    const glyphMatches = EMOJI_GROUPS
+      .flatMap((group) => group.emojis)
+      .filter((emoji) => emoji.toLowerCase().includes(q));
+
+    return Array.from(new Set([...matches, ...glyphMatches]));
   }, [query]);
 
   const pick = (emoji: string) => {
@@ -69,7 +79,7 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
 
   return (
     <div
-      className={`flex h-full min-h-0 w-72 max-w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-xl ${className}`}
+      className={`flex h-full min-h-0 w-full max-w-[min(22rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-xl sm:w-80 ${className}`}
       role="dialog"
       aria-label="Emoji picker"
     >
@@ -85,7 +95,10 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
         />
       </div>
 
-      <div className="no-scrollbar flex gap-1 overflow-x-auto border-b border-[#F0EAEC] px-2 py-1.5">
+      <div
+        className="no-scrollbar flex shrink-0 gap-1 overflow-x-auto border-b border-[#F0EAEC] px-2 py-1.5"
+        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-x' }}
+      >
         <button
           onClick={() => setQuery('')}
           className={`shrink-0 rounded-lg px-2 py-1 text-xs font-semibold ${!query ? 'bg-black/5' : ''}`}
@@ -130,11 +143,22 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
             ))}
           </>
         )}
-        {(filtered || EMOJI_GROUPS.find((g) => g.category === category)?.emojis || []).map((e) => (
+        {filtered === null
+          ? (EMOJI_GROUPS.find((g) => g.category === category)?.emojis || []).map((e) => (
+              <button
+                key={e}
+                onClick={() => pick(e)}
+                className="flex aspect-square min-h-9 items-center justify-center rounded-lg text-[21px] leading-none transition hover:bg-[#FFF7F8] active:scale-90 sm:text-[22px]"
+                aria-label={`Insert ${e}`}
+              >
+                {e}
+              </button>
+            ))
+          : filtered.map((e) => (
           <button
             key={e}
             onClick={() => pick(e)}
-            className="flex aspect-square items-center justify-center rounded-lg text-xl transition hover:bg-[#FFF7F8] active:scale-90"
+            className="flex aspect-square min-h-9 items-center justify-center rounded-lg text-[21px] leading-none transition hover:bg-[#FFF7F8] active:scale-90 sm:text-[22px]"
             aria-label={`Insert ${e}`}
           >
             {e}
