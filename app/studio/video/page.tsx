@@ -849,11 +849,15 @@ function VideoEditor() {
     notify(rippleEnabled ? 'Ripple delete applied.' : 'Clips deleted.');
   };
 
-  const toggleTrackFlag = (trackId: string, flag: 'muted' | 'locked') => {
+  const toggleTrackFlag = (trackId: string, flag: 'muted' | 'locked' | 'solo') => {
     updateProject((p) => ({
       ...p,
-      tracks: p.tracks.map((t) => t.id === trackId ? { ...t, [flag]: !t[flag] } : t),
-    }), flag === 'muted' ? 'Toggle track mute' : 'Toggle track lock');
+      tracks: p.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        if (flag === 'solo') return { ...t, solo: !t.solo };
+        return { ...t, [flag]: !t[flag] };
+      }),
+    }), flag === 'muted' ? 'Toggle track mute' : flag === 'solo' ? 'Toggle track solo' : 'Toggle track lock');
   };
 
   /* ---------- move a video overlay onto the main track ---------- */
@@ -1183,6 +1187,8 @@ function VideoEditor() {
 
   const beginAudioDrag = (e: React.PointerEvent, a: AudioTrack) => {
     if ((e.target as HTMLElement).closest('[data-timeline-handle]')) return;
+    const sourceTrack = project.tracks.find((t) => t.id === a.track_id);
+    if (sourceTrack?.locked) return;
     e.preventDefault();
     e.stopPropagation();
     setPlaying(false);
@@ -1191,18 +1197,42 @@ function VideoEditor() {
     setSelectedElementId(null);
     setPointerDragId(a.id);
     const startX = e.clientX;
+    const startY = e.clientY;
     const startStart = a.start;
+    const startTrackId = a.track_id || project.tracks.find((t) => t.kind === 'audio')?.id;
     let moved = false;
+    let currentTrackId = startTrackId;
+
+    const laneRects = () =>
+      Array.from(timelineRef.current?.querySelectorAll<HTMLElement>('[data-lane-kind="audio"]') || []).map((n) => ({
+        id: n.dataset.laneId || '',
+        top: n.getBoundingClientRect().top,
+        bottom: n.getBoundingClientRect().bottom,
+      }));
+
     const onMove = (ev: PointerEvent) => {
-      if (!moved && Math.abs(ev.clientX - startX) < TAP_SLOP) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < TAP_SLOP) return;
       moved = true;
+
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
       const ns = Math.max(0, startStart + d);
+      const lane = laneRects().find((l) => ev.clientY >= l.top && ev.clientY <= l.bottom);
+
+      if (lane && lane.id !== currentTrackId) {
+        const target = docRef.current.project.tracks.find((t) => t.id === lane.id);
+        if (target && !target.locked) {
+          currentTrackId = target.id;
+          updateAudio(a.id, { start: ns, track_id: target.id }, 'Move audio to track', `audtrack-${a.id}`);
+          return;
+        }
+      }
+
       updateAudio(a.id, { start: ns }, 'Move audio', `audmove-${a.id}`);
     };
+
     const onUp = () => {
       setPointerDragId(null);
-      if (!moved) { openTool('audio'); }
+      if (!moved) openTool('audio');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -1213,6 +1243,8 @@ function VideoEditor() {
   };
 
   const beginAudioResize = (e: React.PointerEvent, a: AudioTrack, edge: 'start' | 'end') => {
+    const track = project.tracks.find((t) => t.id === a.track_id);
+    if (track?.locked) return;
     e.preventDefault();
     e.stopPropagation();
     setSelectedAudioId(a.id);
@@ -1916,7 +1948,36 @@ function VideoEditor() {
       fadeOut: 1,
       kind,
     };
-    updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'Add audio');
+    updateProject((p) => {
+      const end = track.start + Math.max(0.1, track.trimEnd - track.trimStart);
+      const audioTracks = p.tracks.filter((t) => t.kind === 'audio').sort((x, y) => x.order - y.order);
+      let target = audioTracks.find((lane) => !lane.locked && p.audio.every((a) => {
+        if ((a.track_id || audioTracks[0]?.id) !== lane.id) return true;
+        const aEnd = a.start + Math.max(0.1, a.trimEnd - a.trimStart);
+        return end <= a.start || track.start >= aEnd;
+      }));
+
+      let tracks = p.tracks;
+      if (!target) {
+        const nextNumber = audioTracks.length + 1;
+        target = {
+          id: makeVideoId('track'),
+          name: `A${nextNumber}`,
+          kind: 'audio' as const,
+          order: p.tracks.length,
+          muted: false,
+          locked: false,
+          solo: false,
+        };
+        tracks = [...p.tracks, target];
+      }
+
+      return {
+        ...p,
+        tracks,
+        audio: [...p.audio, { ...track, track_id: target.id }],
+      };
+    }, 'Add audio');
     setSelectedClipId(null);
     setSelectedElementId(null);
     setSelectedAudioId(track.id);
@@ -2739,6 +2800,7 @@ function VideoEditor() {
                   <div
                     key={track.id}
                     data-lane-id={track.id}
+                    data-lane-kind="overlay"
                     className="relative flex h-11 items-stretch border-b border-white/10 bg-white/[0.015]"
                   >
                     <div className="sticky left-0 z-30 flex w-16 shrink-0 items-center justify-between border-r border-white/10 bg-[#111]/95 px-1.5 backdrop-blur">
@@ -2797,48 +2859,84 @@ function VideoEditor() {
                 );
               })}
 
-              {/* Audio lane (visually distinct) */}
-              <div data-lane-id="__audio" className="relative flex min-h-[30px] items-stretch border-b border-white/10 bg-emerald-500/[0.04]">
-                <div className="sticky left-0 z-30 flex w-16 shrink-0 items-center border-r border-white/10 bg-[#111]/95 px-2 text-[9px] font-bold text-emerald-200/60 backdrop-blur">AUDIO</div>
-                <div className="relative flex-1">
-                  {project.audio.map((a) => {
-                    const selected = a.id === selectedAudioId;
-                    const dragging = a.id === pointerDragId;
-                    return (
-                      <div
-                        key={a.id}
-                        data-timeline-item="true"
-                        onPointerDown={(e) => beginAudioDrag(e, a)}
-                        className={`absolute top-1 flex h-7 touch-none items-center overflow-hidden rounded border px-1 text-left text-[8px] ${selected ? 'z-20 border-emerald-200 bg-emerald-500/40 ring-1 ring-emerald-200/60' : 'z-10 border-emerald-300/30 bg-emerald-500/20'} ${dragging ? 'opacity-85 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
-                        style={{ left: a.start * pxPerSec, width: Math.max(14, (a.trimEnd - a.trimStart) * pxPerSec) }}
-                        role="button"
-                        aria-label={`${a.kind} ${a.name} from ${fmt(a.start)}${selected ? ', selected' : ''}`}
-                        aria-pressed={selected}
-                        title="Drag to move • edges trim • tap to open audio tools"
-                      >
-                        <span className="pointer-events-none truncate text-emerald-100">🎵 {a.name}</span>
-                        <span
-                          data-timeline-handle="true"
-                          onPointerDown={(e) => beginAudioResize(e, a, 'start')}
-                          className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-ew-resize bg-emerald-200/50"
-                          role="slider"
-                          aria-label="Audio trim start"
-                        />
-                        <span
-                          data-timeline-handle="true"
-                          onPointerDown={(e) => beginAudioResize(e, a, 'end')}
-                          className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-ew-resize bg-emerald-200/50"
-                          role="slider"
-                          aria-label="Audio trim end"
-                        />
+              {/* Audio lanes: overlapping clips are separated into A1/A2/A3…
+                  instead of being painted on top of each other. They still mix
+                  acoustically when they overlap; Mute/Solo controls make the
+                  audible source explicit. */}
+              {project.tracks.filter((track) => track.kind === 'audio').map((track, audioIndex) => {
+                const items = project.audio.filter((a) => (a.track_id || project.tracks.find((t) => t.kind === 'audio')?.id) === track.id);
+                const soloActive = project.tracks.some((t) => t.kind === 'audio' && t.solo);
+                const audible = !track.muted && (!soloActive || !!track.solo);
+                return (
+                  <div
+                    key={track.id}
+                    data-lane-id={track.id}
+                    data-lane-kind="audio"
+                    className={`relative flex h-14 items-stretch border-b border-white/10 ${audible ? 'bg-emerald-500/[0.055]' : 'bg-red-500/[0.025]'}`}
+                  >
+                    <div className="sticky left-0 z-30 flex w-16 shrink-0 items-center justify-between border-r border-white/10 bg-[#111]/95 px-1.5 backdrop-blur">
+                      <div className="min-w-0">
+                        <span className={`block text-[9px] font-black ${audible ? 'text-emerald-200' : 'text-red-200/60'}`}>A${audioIndex + 1}</span>
+                        <span className="block truncate text-[7px] text-white/30">{items.length ? `${items.length} clip${items.length === 1 ? '' : 's'}` : 'empty'}</span>
                       </div>
-                    );
-                  })}
-                  {project.audio.length === 0 && (
-                    <span className="pointer-events-none absolute left-2 top-2.5 text-[9px] text-emerald-200/20">Music and voiceovers land here</span>
-                  )}
-                </div>
-              </div>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <button
+                          onClick={() => toggleTrackFlag(track.id, 'muted')}
+                          className={`rounded p-1 ${track.muted ? 'bg-red-500/30 text-red-200' : 'text-white/35 hover:text-white'}`}
+                          aria-label={track.muted ? 'Unmute audio track' : 'Mute audio track'}
+                          title={track.muted ? 'Unmute' : 'Mute track'}
+                        >
+                          {track.muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+                        </button>
+                        <button
+                          onClick={() => toggleTrackFlag(track.id, 'solo')}
+                          className={`rounded px-1 py-0.5 text-[7px] font-black ${track.solo ? 'bg-amber-400 text-black' : 'text-white/35 hover:text-white'}`}
+                          aria-label={track.solo ? 'Disable solo' : 'Solo audio track'}
+                          title="Solo"
+                        >S</button>
+                      </div>
+                    </div>
+                    <div className="relative flex-1 overflow-hidden">
+                      {items.map((a) => {
+                        const selected = a.id === selectedAudioId;
+                        const dragging = a.id === pointerDragId;
+                        const clipLen = Math.max(0.1, a.trimEnd - a.trimStart);
+                        const fadeIn = Math.min(clipLen / 2, Math.max(0, a.fadeIn));
+                        const fadeOut = Math.min(clipLen / 2, Math.max(0, a.fadeOut));
+                        const audibleClip = audible && a.volume > 0;
+                        const bars = Array.from({ length: 28 }, (_, i) => {
+                          const wave = 0.25 + 0.75 * Math.abs(Math.sin((i + a.id.length) * 1.73));
+                          return wave;
+                        });
+                        return (
+                          <div
+                            key={a.id}
+                            data-timeline-item="true"
+                            onPointerDown={(ev) => beginAudioDrag(ev, a)}
+                            className={`absolute top-1 h-12 touch-none overflow-hidden rounded-lg border px-1 text-left text-[8px] shadow-inner transition ${selected ? 'z-20 border-emerald-100 bg-emerald-500/45 ring-1 ring-emerald-100/70' : audibleClip ? 'z-10 border-emerald-300/30 bg-emerald-500/20' : 'z-10 border-red-300/20 bg-red-500/10 opacity-60'} ${dragging ? 'opacity-85 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
+                            style={{ left: a.start * pxPerSec, width: Math.max(24, clipLen * pxPerSec) }}
+                            role="button"
+                            aria-label={`${a.kind} ${a.name} on A${audioIndex + 1} from ${fmt(a.start)}${selected ? ', selected' : ''}`}
+                            aria-pressed={selected}
+                            title="Drag horizontally to move • drag vertically to switch A tracks • edges trim"
+                          >
+                            <div className="absolute inset-x-0 bottom-0 flex h-5 items-end gap-px px-1 opacity-50">
+                              {bars.map((h, i) => <span key={i} className="min-w-px flex-1 rounded-t bg-emerald-100" style={{ height: `${Math.round(h * 100)}%` }} />)}
+                            </div>
+                            {fadeIn > 0 && <span className="absolute inset-y-0 left-0 w-1/5 bg-gradient-to-r from-white/20 to-transparent" title={`Fade in ${fadeIn.toFixed(1)}s`} />}
+                            {fadeOut > 0 && <span className="absolute inset-y-0 right-0 w-1/5 bg-gradient-to-l from-white/20 to-transparent" title={`Fade out ${fadeOut.toFixed(1)}s`} />}
+                            <span className="relative z-10 block truncate px-1 pt-1 font-semibold text-emerald-50">{a.kind === 'voiceover' ? 'VO' : '♪'} {a.name}</span>
+                            <span className="relative z-10 block truncate px-1 text-[7px] text-white/45">{a.provider || 'audio'} · {Math.round(a.volume * 100)}%</span>
+                            <span data-timeline-handle="true" onPointerDown={(ev) => beginAudioResize(ev, a, 'start')} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize bg-emerald-200/40" role="slider" aria-label="Audio trim start" />
+                            <span data-timeline-handle="true" onPointerDown={(ev) => beginAudioResize(ev, a, 'end')} className="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-emerald-200/40" role="slider" aria-label="Audio trim end" />
+                          </div>
+                        );
+                      })}
+                      {items.length === 0 && <span className="pointer-events-none absolute left-2 top-5 text-[8px] text-white/20">Drop audio here</span>}
+                    </div>
+                  </div>
+                );
+              })}
 
               {/* playhead line across all lanes */}
               <div
