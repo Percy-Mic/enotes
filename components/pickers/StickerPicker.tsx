@@ -29,7 +29,7 @@ export default function StickerPicker({ onPick, className = '' }: StickerPickerP
   }, [query]);
 
   return (
-    <div className={`flex max-h-72 min-h-0 flex-col ${className}`}>
+    <div className={`flex h-full min-h-0 flex-col ${className}`}>
       <div className="shrink-0 border-b bg-[#FFFDF9] p-2">
         <input
           value={query}
@@ -39,7 +39,7 @@ export default function StickerPicker({ onPick, className = '' }: StickerPickerP
           aria-label="Search stickers"
         />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', scrollbarWidth: 'thin' }}>
         <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-6">
           {filtered.map(([name, glyph]) => (
             <button
