@@ -203,9 +203,17 @@ export function useMobileGestures<T extends HTMLElement>(
       const moved = distance(current, { x: event.clientX, y: event.clientY });
 
       if (pointers.size === 1 && longPressPointer === event.pointerId && !longPressFired) {
+        const start = longPressStart || current;
         clearLongPress();
         if (elapsed <= TAP_MAX_MS && moved <= TAP_MAX_MOVE) {
-          const start = longPressStart || current;
+          // A normal tap intentionally has no gesture callback.
+        } else if (moved >= SWIPE_MIN_DISTANCE) {
+          const dx = event.clientX - start.x;
+          const dy = event.clientY - start.y;
+          const direction = Math.abs(dx) >= Math.abs(dy)
+            ? (dx < 0 ? 'left' : 'right')
+            : (dy < 0 ? 'up' : 'down');
+          handlersRef.current.onSwipe?.(direction, Math.max(Math.abs(dx), Math.abs(dy)));
         }
       }
 
@@ -243,17 +251,6 @@ export function useMobileGestures<T extends HTMLElement>(
         multiTouchMoved = false;
         cancelLongPress();
       } else if (pointers.size === 1) {
-        // A one-finger swipe is only emitted when no multi-touch gesture took over.
-        const remaining = Array.from(pointers.values())[0];
-        const start = longPressStart || remaining;
-        const dx = event.clientX - start.x;
-        const dy = event.clientY - start.y;
-        if (!multiTouchMoved && Math.max(Math.abs(dx), Math.abs(dy)) >= SWIPE_MIN_DISTANCE) {
-          const direction = Math.abs(dx) >= Math.abs(dy)
-            ? (dx < 0 ? 'left' : 'right')
-            : (dy < 0 ? 'up' : 'down');
-          handlersRef.current.onSwipe?.(direction, Math.max(Math.abs(dx), Math.abs(dy)));
-        }
         clearLongPress();
       }
     };
