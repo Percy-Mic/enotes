@@ -2332,15 +2332,15 @@ function VideoEditor() {
         {/* ---------- preview stage ---------- */}
         <section ref={stageRef} className="shrink-0 px-3 pt-2">
           <div className="mx-auto flex w-fit items-center justify-center">
-            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black shadow-lg">
+            <div className="relative overflow-visible rounded-2xl border border-white/10 bg-black shadow-lg">
               {/* enter fullscreen preview */}
               <button
                 onClick={() => setFullscreen(true)}
                 aria-label="Fullscreen preview"
                 title="Fullscreen preview (Esc to exit)"
-                className="absolute right-2 top-2 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white/90 backdrop-blur transition hover:bg-black/75 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                className="absolute -top-11 right-0 z-30 flex h-9 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
               >
-                <Maximize2 className="h-4 w-4" />
+                <Maximize2 className="h-4 w-4" /><span className="hidden sm:inline">Fullscreen</span>
               </button>
               <canvas
                 ref={canvasRef}
@@ -2360,7 +2360,7 @@ function VideoEditor() {
                   className="pointer-events-none absolute"
                   style={{
                     left: (clipFrame.cx - clipFrame.w / 2) * previewScale,
-                    top: 44 + (clipFrame.cy - clipFrame.h / 2) * previewScale,
+                    top: (clipFrame.cy - clipFrame.h / 2) * previewScale,
                     width: clipFrame.w * previewScale,
                     height: clipFrame.h * previewScale,
                     transform: `rotate(${selectedClip.transform.rotation}deg)`,
@@ -2398,7 +2398,7 @@ function VideoEditor() {
                   className="pointer-events-none absolute"
                   style={{
                     left: selectedElement.x * previewScale,
-                    top: 44 + selectedElement.y * previewScale,
+                    top: selectedElement.y * previewScale,
                     width: selectedElement.width * previewScale,
                     height: selectedElement.height * previewScale,
                     transform: `rotate(${selectedElement.rotation}deg)`,
