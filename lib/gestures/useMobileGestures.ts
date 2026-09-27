@@ -80,6 +80,8 @@ export function useMobileGestures<T extends HTMLElement>(
     let gestureStartDistance = 0;
     let gestureStartAngle = 0;
     let lastCenter: GesturePoint | null = null;
+    let lastDistance = 0;
+    let lastAngle = 0;
     let multiTouchMoved = false;
 
     const clearLongPress = () => {
@@ -112,6 +114,8 @@ export function useMobileGestures<T extends HTMLElement>(
       gestureStartDistance = distance(a, b);
       gestureStartAngle = angle(a, b);
       lastCenter = gestureStartCenter;
+      lastDistance = gestureStartDistance;
+      lastAngle = gestureStartAngle;
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -163,13 +167,17 @@ export function useMobileGestures<T extends HTMLElement>(
       if (pointers.size === 2) {
         const currentDistance = distance(a, b);
         if (gestureStartDistance > 1) {
-          handlersRef.current.onPinch?.(currentDistance / gestureStartDistance, center);
+          const incrementalScale = lastDistance > 1 ? currentDistance / lastDistance : 1;
+          handlersRef.current.onPinch?.(incrementalScale, center);
+          lastDistance = currentDistance;
         }
 
+        const currentAngle = angle(a, b);
         handlersRef.current.onRotate?.(
-          normalizeAngle(angle(a, b) - gestureStartAngle),
+          normalizeAngle(currentAngle - lastAngle),
           center,
         );
+        lastAngle = currentAngle;
 
         if (lastCenter) {
           handlersRef.current.onTwoFingerPan?.(
@@ -214,6 +222,8 @@ export function useMobileGestures<T extends HTMLElement>(
         gestureStartDistance = 0;
         gestureStartAngle = 0;
         lastCenter = null;
+        lastDistance = 0;
+        lastAngle = 0;
         multiTouchMoved = false;
         cancelLongPress();
       } else if (pointers.size === 1) {
