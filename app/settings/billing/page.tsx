@@ -23,7 +23,7 @@ const PLANS: { id: string; name: string; price: string; blurb: string; perks: st
   {
     id: 'pro',
     name: 'Pro',
-    price: '$6/mo',
+    price: 'Pro',
     blurb: 'For creators who want the full studio.',
     perks: ['4K export & HD quality', 'Advanced effects (shake, pulse)', 'Premium templates & sounds', '50 GB media storage', 'Ad-free'],
   },
@@ -41,6 +41,7 @@ export default function BillingSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [proPrice, setProPrice] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -51,6 +52,9 @@ export default function BillingSettingsPage() {
         .select('plan, status, current_period_end')
         .eq('user_id', user.id)
         .maybeSingle();
+      const { data: billingConfig } = await supabase.from('platform_config').select('value').eq('key', 'billing').maybeSingle();
+      const billingValue = billingConfig?.value as { pro?: { amount_cents?: number } } | null;
+      if (billingValue?.pro?.amount_cents) setProPrice(billingValue.pro.amount_cents / 100);
       if (data && data.status === 'active') setCurrent(data.plan);
       setLoading(false);
     })();
@@ -112,7 +116,7 @@ export default function BillingSettingsPage() {
                   <h2 className="flex items-center gap-1.5 text-base font-bold">
                     {plan.id === 'pro' && <Sparkles className="h-4 w-4 text-[#E5798F]" />} {plan.name}
                   </h2>
-                  <p className="mt-0.5 text-sm font-bold text-[#E5798F]">{plan.price}</p>
+                  <p className="mt-0.5 text-sm font-bold text-[#E5798F]">{plan.id === 'pro' && proPrice !== null ? `₱${proPrice.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 30 days` : plan.price}</p>
                   <p className="mt-1 text-xs text-[#6B6B6B]">{plan.blurb}</p>
                   <ul className="mt-3 space-y-1.5">
                     {plan.perks.map((perk) => (
@@ -149,8 +153,8 @@ export default function BillingSettingsPage() {
         )}
 
         <p className="mt-6 text-center text-[11px] text-[#9B9B9B]">
-          Payments are processed by the provider's hosted checkout. Card details never touch eNotes servers.
-          Access changes only after the provider confirms payment via webhook.
+          Payments for Pro are processed through Maya's hosted checkout. Payment details never touch eNotes servers.
+          Pro access is granted only after Maya confirms the payment through the server webhook.
         </p>
       </div>
     </main>
