@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Smile } from 'lucide-react';
-import { EMOJI_CATEGORY_LABELS, EMOJI_GROUPS, type EmojiCategory } from '@/lib/assets';
+import { EMOJI_GROUPS, type EmojiCategory } from '@/lib/assets';
 
 const RECENTS_KEY = 'enotes:recent-emojis';
 const MAX_RECENTS = 24;
