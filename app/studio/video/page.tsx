@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ArrowRight, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
-  Image as ImageIcon, Loader2, Lock, Mic, MicOff, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw,
-  Scissors, Search, SkipBack, SkipForward, Smile, Sparkles, Sticker, Trash2, Type, Undo2,
+  Image as ImageIcon, Layers, Loader2, Lock, Mic, MicOff, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw,
+  Scissors, Search, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Trash2, Type, Undo2,
   Upload, Users, VolumeX, Volume2, X, Save, Share2, Maximize2, Minimize2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
@@ -14,8 +14,6 @@ import { useHistory, useHistoryShortcuts } from '@/lib/editor/history';
 import { useEntitlements } from '@/lib/entitlements';
 import { uploadFile } from '@/lib/storage/upload';
 import { normalizeVideoDuration, ExportCancelledError } from '@/lib/video/renderer';
-import EmojiPicker from '@/components/pickers/EmojiPicker';
-import StickerPicker from '@/components/pickers/StickerPicker';
 import SharePostPicker from '@/components/community/SharePostPicker';
 import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
@@ -64,13 +62,13 @@ interface EditorDoc {
   project: VideoProject;
 }
 
-const TOOLS = ['media', 'text', 'stickers', 'audio', 'motion', 'look', 'export'] as const;
+const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'export'] as const;
 type Tool = (typeof TOOLS)[number];
 
 const TOOL_LABELS: Record<Tool, string> = {
   media: 'Media',
   text: 'Text',
-  stickers: 'Stickers',
+  overlays: 'Overlays',
   audio: 'Audio',
   motion: 'Motion',
   look: 'Effects',
@@ -179,12 +177,6 @@ function VideoEditor() {
   const [stockVideos, setStockVideos] = useState<{ id: string; url: string; thumbnail: string; width: number; height: number; duration: number; sourceUrl: string; photographer: string }[]>([]);
   const [stockBusy, setStockBusy] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
-  const [gifQuery, setGifQuery] = useState('');
-  const [gifItems, setGifItems] = useState<{ id: string; url: string; preview: string; width: number; height: number; description: string }[]>([]);
-  const [gifBusy, setGifBusy] = useState(false);
-  const [gifOffset, setGifOffset] = useState(0);
-  const [gifNext, setGifNext] = useState<string | null>(null);
-  const [gifError, setGifError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   /** Active crop session: which entity is being cropped + its starting crop
@@ -718,24 +710,49 @@ function VideoEditor() {
     setSelectedClipId(clip.id); setSelectedElementId(null); notify('Stock footage added to the main timeline.');
   }, [notify, updateProject]);
 
-  const loadGifs = useCallback(async (query = gifQuery, reset = true) => {
-    setGifBusy(true); setGifError(null);
+  const startPracticeProject = useCallback(async () => {
+    setStockBusy(true);
+    setStockError(null);
     try {
-      const offset = reset ? 0 : Number(gifNext || gifOffset || 0);
-      const params = new URLSearchParams({ offset: String(offset) });
-      if (query.trim()) params.set('query', query.trim());
-      const response = await fetch('/api/gifs?' + params.toString());
-      const data = await response.json();
-      if (!response.ok || data.error) throw new Error(data.error || 'GIF search failed.');
-      setGifItems((prev) => reset ? (data.gifs || []) : [...prev, ...(data.gifs || [])]);
-      setGifNext(data.next || null); setGifOffset(offset);
-    } catch (error) { setGifError(error instanceof Error ? error.message : 'GIF search failed.'); }
-    finally { setGifBusy(false); }
-  }, [gifNext, gifOffset, gifQuery]);
+      const queries = ['city night', 'person walking', 'nature landscape', 'close up hands', 'street movement'];
+      const results = await Promise.all(
+        queries.map(async (query) => {
+          const params = new URLSearchParams({ query, page: '1' });
+          const response = await fetch('/api/studio/stock-videos?' + params.toString(), { cache: 'no-store' });
+          const data = await response.json();
+          if (!response.ok || data.error) throw new Error(data.error || 'Practice footage search failed.');
+          return Array.isArray(data.videos) ? data.videos[0] : null;
+        })
+      );
+      const clips = results.filter(Boolean).map((item: any) => {
+        const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
+        return {
+          id: makeVideoId('clip'), src: String(item.url), name: 'Practice · ' + (item.photographer || 'Pexels'),
+          sourceDuration, trimStart: 0, trimEnd: Math.min(sourceDuration, 6), speed: 1, volume: 1, muted: false,
+          source_width: Number(item.width) || undefined, source_height: Number(item.height) || undefined,
+          transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
+          audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
+        } as VideoClip;
+      });
+      if (clips.length < 3) throw new Error('Not enough stock footage was returned. Try again.');
+      setDoc((prev) => ({
+        ...prev,
+        title: 'Cinematic Practice — Untitled',
+        project: normalizeProject({ ...emptyProject(prev.project.aspect), clips }),
+      }), 'Create practice project');
+      setSelectedClipId(clips[0].id);
+      setSelectedElementId(null);
+      notify('Practice project created. The footage is raw — build the sequence yourself.');
+    } catch (error) {
+      setStockError(error instanceof Error ? error.message : 'Could not create practice project.');
+    } finally {
+      setStockBusy(false);
+    }
+  }, [notify, setDoc]);
 
   useEffect(() => {
     if (tool === 'media' && stockVideos.length === 0) void searchStockVideos(true);
-    if (tool === 'stickers' && gifItems.length === 0) void loadGifs('', true);
+    // Professional editor: no GIF/emoji/sticker browser in the video workflow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
@@ -1182,24 +1199,6 @@ function VideoEditor() {
     updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add text');
     setSelectedElementId(el.id);
     setTool('text');
-  };
-
-  const addGlyphElement = (content: string, size = 120, label: string) => {
-    const start = playheadRef.current;
-    /* projectDuration floors at 0.1, so `duration > 0` is always true —
-       gate on real content instead, or overlays land as 0.2s slivers
-       the user can barely grab on an otherwise empty timeline */
-    const hasContent = project.clips.length + project.elements.length + project.audio.length > 0;
-    const end = hasContent ? Math.min(duration, start + 3) : start + 3;
-    const el: TimelineElement = {
-      id: makeVideoId('el'), kind: 'sticker', content, src: null, track_id: project.tracks[0]?.id,
-      start, end,
-      x: project.canvas.width / 2 - size / 2, y: project.canvas.height / 2 - size / 2,
-      width: size, height: size, rotation: 0, opacity: 1, z: project.elements.length + 1,
-      animation: 'pop',
-    };
-    updateProject((p) => ({ ...p, elements: [...p.elements, el] }), label);
-    setSelectedElementId(el.id);
   };
 
   const addGifElement = useCallback((item: { url: string; width: number; height: number; description: string }) => {
@@ -2139,7 +2138,7 @@ function VideoEditor() {
   const timelineWidth = Math.max(duration * pxPerSec + 180, 560);
 
   /* which tool owns the selected overlay's inspector */
-  const inspectorTool: Tool = selectedElement?.kind === 'text' ? 'text' : 'stickers';
+  const inspectorTool: Tool = selectedElement?.kind === 'text' ? 'text' : 'overlays';
 
   /* geometry for the on-canvas clip frame */
   const clipFrame = selectedClip && !playing && !cropMode
@@ -2580,7 +2579,7 @@ function VideoEditor() {
                             title="Drag to move in time or across tracks • edges trim"
                           >
                             <span className="pointer-events-none truncate">
-                              {el.kind === 'text' ? `T ${el.content}` : el.kind === 'sticker' ? el.content.slice(0, 3) : el.kind === 'video' ? '🎬 video' : el.kind === 'shape' ? '◇' : '🖼 image'}
+                              {el.kind === 'text' ? `T ${el.content}` : el.kind === 'video' ? 'VIDEO' : el.kind === 'shape' ? 'SHAPE' : 'IMAGE'}
                             </span>
                             <span
                               data-timeline-handle="true"
@@ -2748,6 +2747,17 @@ function VideoEditor() {
                 Template placeholders ({placeholders.length}) — import media, then tap a placeholder to fill the next one.
               </div>
             )}
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => void startPracticeProject()} disabled={stockBusy} className="rounded-xl border border-[#E5798F]/40 bg-[#E5798F]/10 px-3 py-3 text-left text-xs font-bold text-white disabled:opacity-50">
+                <span className="block">Practice project</span>
+                <span className="mt-1 block text-[9px] font-normal text-white/45">Free stock footage, ready to edit</span>
+              </button>
+              <Link href="/studio/templates" className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-left text-xs font-bold text-white hover:bg-white/[0.07]">
+                <span className="block">Browse templates</span>
+                <span className="mt-1 block text-[9px] font-normal text-white/45">Editable project templates</span>
+              </Link>
+            </div>
+
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#E5798F] py-6 text-sm font-bold text-white shadow-lg transition hover:bg-[#d96a81]">
               <Upload className="h-5 w-5" /> Import raw video
               <input
@@ -2759,7 +2769,7 @@ function VideoEditor() {
               />
             </label>
             <p className="text-center text-[11px] text-white/40">
-              Raw video files only — trim, reverse, speed-ramp, and layer them on the timeline.
+              Original files stay untouched. Edit non-destructively with trims, speed, transforms, effects and layers.
             </p>
             {importing && (
               <div className="rounded-xl bg-white/10 p-3 text-xs">
@@ -2775,7 +2785,7 @@ function VideoEditor() {
               {stockError && <p className="mt-2 rounded-lg bg-red-500/10 p-2 text-[10px] text-red-200">{stockError}</p>}
               {stockBusy && stockVideos.length === 0 ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-[#FFB6C1]" /></div> : <div className="mt-2 grid max-h-56 grid-cols-3 gap-1.5 overflow-y-auto overscroll-contain">{stockVideos.map((v) => <button key={v.id} type="button" onClick={() => addStockVideo(v)} className="group relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black text-left" title={'Add footage by ' + v.photographer}>{v.thumbnail ? <img src={v.thumbnail} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /> : <video src={v.url} muted preload="metadata" className="h-full w-full object-cover" />}<span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1.5 py-1 text-[8px] text-white">{v.duration ? fmt(v.duration) : 'video'} · {v.photographer}</span></button>)}</div>}
               {stockVideos.length > 0 && <button type="button" onClick={() => void searchStockVideos(false)} disabled={stockBusy} className="mt-2 w-full rounded-lg border border-white/15 py-2 text-[10px] font-semibold disabled:opacity-40">{stockBusy ? 'Loading…' : 'Load more footage'}</button>}
-              <p className="mt-2 text-center text-[9px] text-white/35">Photos/videos provided by Pexels · credit the creator when possible.</p>
+              <p className="mt-2 text-center text-[9px] text-white/35">Stock footage provided by Pexels · credit the creator when possible.</p>
             </div>
             {/* fill placeholders with imported library entries */}
             {placeholders.length > 0 && (
@@ -2846,20 +2856,11 @@ function VideoEditor() {
           </div>
         )}
 
-        {tool === 'stickers' && (
+        {tool === 'overlays' && (
           <div className="space-y-3">
-            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-2"><div className="mb-2 flex items-center justify-between gap-2"><p className="text-xs font-semibold text-white/60">GIFs</p><span className="text-[9px] text-white/30">Powered by GIPHY</span></div><div className="flex gap-2"><input value={gifQuery} onChange={(e) => setGifQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void loadGifs(gifQuery, true); }} placeholder="Search GIFs…" className="min-w-0 flex-1 rounded-lg bg-white/10 px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-[#E5798F]" /><button type="button" onClick={() => void loadGifs(gifQuery, true)} className="rounded-lg bg-[#E5798F] px-3 text-xs font-bold"><Search className="h-4 w-4" /></button></div>{gifError && <p className="mt-2 rounded-lg bg-red-500/10 p-2 text-[10px] text-red-200">{gifError}</p>}<div className="mt-2 grid max-h-64 grid-cols-3 gap-1.5 overflow-y-auto overscroll-contain">{gifItems.map((g) => <button key={g.id} type="button" onClick={() => addGifElement(g)} className="aspect-square overflow-hidden rounded-lg border border-white/10 bg-black hover:border-[#E5798F]"><img src={g.preview || g.url} alt={g.description} loading="lazy" className="h-full w-full object-cover" /></button>)}{gifBusy && <div className="col-span-3 flex justify-center py-4"><Loader2 className="h-5 w-5 animate-spin text-[#FFB6C1]" /></div>}</div>{gifNext && !gifBusy && <button type="button" onClick={() => void loadGifs(gifQuery, false)} className="mt-2 w-full rounded-lg border border-white/15 py-2 text-[10px] font-semibold">Load more GIFs</button>}</div>
-            <div className="rounded-xl bg-white/5 p-2">
-              <p className="mb-1 px-1 text-xs font-semibold text-white/60">Emoji</p>
-              <EmojiPicker
-                onPick={(emoji) => addGlyphElement(emoji, 120, 'Add emoji')}
-              />
-            </div>
-            <div className="rounded-xl bg-white/5 p-2">
-              <p className="mb-1 px-1 text-xs font-semibold text-white/60">Stickers</p>
-              <StickerPicker
-                onPick={(value) => addGlyphElement(value, 140, 'Add sticker')}
-              />
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-sm font-bold">Layers & overlays</p>
+              <p className="mt-1 text-[10px] leading-4 text-white/45">Add video and image layers above the main edit. Every layer remains editable, transformable and keyframe-ready.</p>
             </div>
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#E5798F]/40 py-4 text-xs font-semibold text-white/80">
               <Film className="h-4 w-4" /> Add video overlay
@@ -2871,7 +2872,7 @@ function VideoEditor() {
               />
             </label>
             <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-white/20 py-4 text-xs font-semibold text-white/70">
-              <ImageIcon className="h-4 w-4" /> Add image overlay
+              <ImageIcon className="h-4 w-4" /> Add image layer
               <input
                 type="file"
                 accept="image/*"
@@ -3402,10 +3403,10 @@ function VideoEditor() {
           [
             ['media', <Film key="f" className="h-5 w-5" />],
             ['text', <Type key="t" className="h-5 w-5" />],
-            ['stickers', <Smile key="s" className="h-5 w-5" />],
+            ['overlays', <Layers key="o" className="h-5 w-5" />],
             ['audio', <Music key="m" className="h-5 w-5" />],
             ['motion', <Sparkles key="mo" className="h-5 w-5" />],
-            ['look', <Sticker key="l" className="h-5 w-5" />],
+            ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
             ['export', <Upload key="e" className="h-5 w-5" />],
           ] as [Tool, React.ReactNode][]
         ).map(([id, icon]) => (
