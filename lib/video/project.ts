@@ -248,6 +248,8 @@ export interface AudioTrack {
   id: string;
   name: string;
   src: string;
+  /** Timeline lane used by this audio clip. */
+  track_id?: string;
   /** Optional source metadata for stock/library audio. */
   provider?: 'library' | 'freesound' | 'upload' | 'recording';
   sourceUrl?: string;
