@@ -175,6 +175,11 @@ function VideoEditor() {
   const [snapEnabled, setSnapEnabled] = useState(true);
   const [rippleEnabled, setRippleEnabled] = useState(false);
   const [tool, setTool] = useState<Tool>('media');
+  const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
+  const openTool = useCallback((next: Tool) => {
+    setTool(next);
+    setToolDrawerOpen(true);
+  }, []);
   const [stockQuery, setStockQuery] = useState('nature');
   const [stockProvider, setStockProvider] = useState<'all' | 'pexels' | 'pixabay'>('all');
   const [stockOrientation, setStockOrientation] = useState<'all' | 'landscape' | 'portrait' | 'square'>('all');
@@ -1197,7 +1202,7 @@ function VideoEditor() {
     };
     const onUp = () => {
       setPointerDragId(null);
-      if (!moved) { setTool('audio'); }
+      if (!moved) { openTool('audio'); }
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -1247,7 +1252,7 @@ function VideoEditor() {
     };
     updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add text');
     setSelectedElementId(el.id);
-    setTool('text');
+    openTool('text');
   };
 
   const addGifElement = useCallback((item: { url: string; width: number; height: number; description: string }) => {
@@ -1730,14 +1735,14 @@ function VideoEditor() {
     if (!selectedClip) return;
     setPlaying(false);
     setCropMode({ type: 'clip', id: selectedClip.id, initial: selectedClip.transform.crop });
-    setTool('look');
+    openTool('look');
   };
 
   const startElementCrop = () => {
     if (!selectedElement) return;
     setPlaying(false);
     setCropMode({ type: 'element', id: selectedElement.id, initial: selectedElement.crop ?? null });
-    setTool(selectedElement.kind === 'text' ? 'text' : 'overlays');
+    openTool(selectedElement.kind === 'text' ? 'text' : 'overlays');
   };
 
   const applyCropChange = (next: CropRect | null) => {
@@ -2354,7 +2359,7 @@ function VideoEditor() {
           <Save className="h-3.5 w-3.5" /> Save
         </button>
         <button
-          onClick={() => { setTool('export'); }}
+          onClick={() => { openTool('export'); }}
           className="flex items-center gap-1.5 rounded-lg bg-[#E5798F] px-3 py-1.5 text-xs font-bold text-white focus-visible:ring-2 focus-visible:ring-white"
           title="Export"
         >
@@ -2883,12 +2888,12 @@ function VideoEditor() {
               <button onClick={() => rotateSelectedClip(-90)} className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Rotate counterclockwise" aria-label="Rotate counterclockwise"><RotateCcw className="h-3.5 w-3.5" /></button>
               <button onClick={() => rotateSelectedClip(90)} className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Rotate clockwise" aria-label="Rotate clockwise"><RotateCw className="h-3.5 w-3.5" /></button>
               <button onClick={() => duplicateClip(selectedClip)} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><Copy className="h-3.5 w-3.5" /> Duplicate</button>
-              <button onClick={() => setTool('look')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Filters, effects, transitions">Adjust</button>
+              <button onClick={() => openTool('look')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Filters, effects, transitions">Adjust</button>
               <button onClick={() => deleteClip(selectedClip.id)} className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-white"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
             </div>
           ) : selectedElement ? (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Overlay tools">
-              <button onClick={() => setTool(inspectorTool)} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Open the inspector">Edit {selectedElement.kind}</button>
+              <button onClick={() => openTool(inspectorTool)} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Open the inspector">Edit {selectedElement.kind}</button>
               {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && (
                 <button onClick={startElementCrop} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Crop this media">
                   <Crop className="h-3.5 w-3.5" /> Crop
@@ -2907,7 +2912,7 @@ function VideoEditor() {
             </div>
           ) : selectedAudio ? (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Audio tools">
-              <button onClick={() => setTool('audio')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">Edit audio</button>
+              <button onClick={() => openTool('audio')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">Edit audio</button>
               <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">Start here</button>
               <button
                 onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')}
@@ -2925,7 +2930,36 @@ function VideoEditor() {
       </div>
 
       {/* ---------- tool panels ---------- */}
-      <section className="min-h-[120px] shrink-0 basis-[30dvh] overflow-y-auto overscroll-contain border-t border-white/10 px-3 py-3">
+      {toolDrawerOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Close editor tools"
+            onClick={() => setToolDrawerOpen(false)}
+            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]"
+          />
+          <section
+            className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-50 max-h-[72dvh] overflow-hidden rounded-t-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:top-[57px] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
+            aria-label={`${TOOL_LABELS[tool]} tools`}
+          >
+            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-3">
+              <div className="h-1 w-10 rounded-full bg-white/20 md:hidden" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-bold">{TOOL_LABELS[tool]}</p>
+                <p className="hidden text-[9px] text-white/35 md:block">Editor controls</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToolDrawerOpen(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                aria-label="Close tools"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="h-[calc(72dvh-48px)] overflow-y-auto overscroll-contain px-3 py-3 pb-6 md:h-[calc(100dvh-57px)]">
+
         {tool === 'media' && (
           <div className="space-y-3">
             {placeholders.length > 0 && (
@@ -3764,7 +3798,10 @@ function VideoEditor() {
             </div>
           </div>
         )}
-      </section>
+            </div>
+          </section>
+        </>
+      )}
 
       {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
       <nav
@@ -3784,7 +3821,10 @@ function VideoEditor() {
         ).map(([id, icon]) => (
           <button
             key={id}
-            onClick={() => setTool(id)}
+            onClick={() => {
+              if (tool === id && toolDrawerOpen) setToolDrawerOpen(false);
+              else openTool(id);
+            }}
             className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] ${tool === id ? 'text-[#FFB6C1]' : 'text-white/50'}`}
             aria-current={tool === id}
           >
@@ -3795,7 +3835,7 @@ function VideoEditor() {
       </nav>
 
       {toast && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-50 flex justify-center px-6">
+        <div className="pointer-events-none fixed inset-x-0 bottom-[calc(76px+env(safe-area-inset-bottom))] z-[60] md:bottom-6 flex justify-center px-6">
           <p className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-black shadow-lg">{toast}</p>
         </div>
       )}
