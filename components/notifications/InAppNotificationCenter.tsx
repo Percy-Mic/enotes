@@ -12,10 +12,6 @@ import {
   Reply,
   Sparkles,
   X,
-  Phone,
-  Reply,
-  Sparkles,
-  X,
 } from 'lucide-react';
 import Avatar from '@/components/social/Avatar';
 import { supabase } from '@/lib/supabase/client';
