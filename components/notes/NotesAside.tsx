@@ -13,9 +13,35 @@ import type { NoteRow } from '@/app/notes/page';
  * write goes through the same `notes` table (RLS: user_id = auth.uid()).
  */
 
+function htmlToText(html: string): string {
+  if (!html) return '';
+
+  if (typeof window === 'undefined') {
+    return html
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<\/p>/gi, ' ')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#039;/gi, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  const container = document.createElement('div');
+  container.innerHTML = html;
+
+  return (container.textContent || container.innerText || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function excerpt(content: string, len = 90): string {
-  const flat = content.replace(/\s+/g, ' ').trim();
-  return flat.length > len ? `${flat.slice(0, len)}…` : flat;
+  const text = htmlToText(content);
+  return text.length > len ? `${text.slice(0, len)}…` : text;
 }
 
 export default function NotesAside() {
