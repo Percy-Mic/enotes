@@ -69,7 +69,7 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
 
   return (
     <div
-      className={`flex w-72 max-w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-xl ${className}`}
+      className={`flex h-full min-h-0 w-72 max-w-[min(18rem,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-xl ${className}`}
       role="dialog"
       aria-label="Emoji picker"
     >
@@ -109,7 +109,10 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
         ))}
       </div>
 
-      <div className="no-scrollbar grid max-h-56 grid-cols-8 gap-0.5 overflow-y-auto p-2">
+      <div
+        className="no-scrollbar min-h-0 flex-1 grid grid-cols-8 gap-0.5 overflow-y-auto overscroll-contain p-2"
+        style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', scrollbarWidth: 'thin' }}
+      >
         {recents.length > 0 && !query && category === 'smileys' && (
           <>
             <div className="col-span-8 px-1 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#9B9B9B]">
