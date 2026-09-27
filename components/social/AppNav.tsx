@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Bell, BookOpen, Compass, Home, ImagePlus, MessageCircle, NotebookPen, Pencil, Plus, ShieldCheck, StickyNote, User, Users, X } from 'lucide-react';
+import { Bell, BookOpen, Compass, Home, ImagePlus, MessageCircle, NotebookPen, Pencil, Plus, Settings, ShieldCheck, StickyNote, User, Users, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { THEME_ICONS, THEME_LABELS } from '@/components/ThemeToggle';
 import { useTheme } from '@/lib/theme';
@@ -181,7 +181,7 @@ export default function AppNav() {
               Post
             </Link>
 
-            <DownloadAppButton />
+            <Link\n              href="/settings"\n              aria-label="Settings"\n              title="Settings"\n              className="flex h-10 items-center gap-1.5 rounded-xl border border-[#E8E2E4] bg-white px-3.5 text-sm font-semibold text-[#555555] shadow-sm transition hover:bg-[#FFF7F8] hover:text-[#111111]"\n            >\n              <Settings className="h-4 w-4 shrink-0" />\n              Settings\n            </Link>\n\n            <DownloadAppButton />
 
             {isAdmin && (
               <Link
@@ -285,7 +285,7 @@ export default function AppNav() {
             >
               <Users className="h-4.5 w-4.5 text-[#E5798F]" /> Communities
             </Link>
-            <DownloadAppButton compact />
+            <Link\n              href="/settings"\n              onClick={() => setSheetOpen(false)}\n              className="flex min-h-[48px] items-center gap-3 px-4 text-sm font-semibold text-[#111111] transition hover:bg-[#FFF7F8]"\n            >\n              <Settings className="h-4.5 w-4.5 text-[#E5798F]" /> Settings\n            </Link>\n            <DownloadAppButton compact />
             <button
               type="button"
               onClick={cycleThemeMobile}
