@@ -10,6 +10,7 @@ import {
   Upload, Users, VolumeX, Volume2, X, Save, Share2, Maximize2, Minimize2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { useMobileGestures } from '@/lib/gestures/useMobileGestures';
 import { useHistory, useHistoryShortcuts } from '@/lib/editor/history';
 import { useEntitlements } from '@/lib/entitlements';
 import { uploadFile } from '@/lib/storage/upload';
@@ -976,6 +977,45 @@ function VideoEditor() {
   const timelineRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1); // 0.5× … 3× around the 46px base
   const pxPerSec = BASE_PX_PER_SEC * zoom;
+
+  useMobileGestures(timelineRef, {
+    onPinch: (scale, center) => {
+      setZoom((value) => Math.max(0.5, Math.min(3, value * scale)));
+      const el = timelineRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const relativeX = center.x - rect.left;
+        el.scrollLeft = Math.max(0, el.scrollLeft + relativeX * (scale - 1));
+      }
+    },
+    onTwoFingerPan: (delta) => {
+      const el = timelineRef.current;
+      if (!el) return;
+      el.scrollLeft -= delta.x;
+      el.scrollTop -= delta.y;
+    },
+    onTwoFingerTap: () => {
+      setZoom(1);
+      notify('Timeline zoom reset to 100%.');
+    },
+    onThreeFingerTap: () => {
+      history.undo();
+      notify('Undo.');
+    },
+    onThreeFingerSwipe: (direction) => {
+      if (direction === 'left') {
+        history.undo();
+        notify('Undo.');
+      } else if (direction === 'right') {
+        history.redo();
+        notify('Redo.');
+      }
+    },
+    onLongPress: () => {
+      setRippleEnabled((value) => !value);
+      notify(`Ripple editing ${rippleEnabled ? 'off' : 'on'}.`);
+    },
+  }, true);
   const [pointerDragId, setPointerDragId] = useState<string | null>(null);
 
   /** Convert a clientX into timeline seconds (accounts for scroll + labels). */
