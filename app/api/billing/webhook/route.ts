@@ -69,33 +69,68 @@ async function verifyMayaPayment(paymentId: string) {
 
 async function grantPro(userId: string, payment: {
   id?: string;
+  requestReferenceNumber?: string;
   totalAmount?: { value?: string | number; currency?: string };
+  metadata?: { billing_period_days?: string };
 }) {
   const supabase = getAdminClient();
-  const now = new Date();
-  const periodEnd = new Date(now);
-  periodEnd.setUTCDate(periodEnd.getUTCDate() + 30);
+  const paymentId = payment.id ?? '';
+  if (!paymentId) throw new Error('Maya payment has no payment id');
 
+  const { data: alreadyPaid, error: existingTransactionError } = await supabase
+    .from('billing_transactions')
+    .select('id, status')
+    .eq('provider', 'maya')
+    .eq('provider_payment_id', paymentId)
+    .maybeSingle();
+
+  if (existingTransactionError) throw existingTransactionError;
+  if (alreadyPaid?.status === 'paid') return;
+
+  const now = new Date();
+  const billingPeriodDays = Math.max(1, Number(payment.metadata?.billing_period_days ?? 30) || 30);
   const amount = Number(payment.totalAmount?.value ?? 0);
   const currency = String(payment.totalAmount?.currency ?? 'PHP');
 
-  const { error: transactionError } = await supabase
+  const { data: existingSubscription, error: existingSubscriptionError } = await supabase
+    .from('subscriptions')
+    .select('id, current_period_end')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (existingSubscriptionError) throw existingSubscriptionError;
+
+  const currentEnd = existingSubscription?.current_period_end
+    ? new Date(existingSubscription.current_period_end)
+    : null;
+  const periodStart = currentEnd && currentEnd > now ? currentEnd : now;
+  const periodEnd = new Date(periodStart);
+  periodEnd.setUTCDate(periodEnd.getUTCDate() + billingPeriodDays);
+
+  const { data: transaction, error: transactionError } = await supabase
     .from('billing_transactions')
     .upsert({
       user_id: userId,
       provider: 'maya',
-      provider_payment_id: payment.id ?? '',
+      provider_payment_id: paymentId,
+      provider_checkout_id: paymentId,
+      request_reference_number: payment.requestReferenceNumber ?? null,
+      transaction_type: 'pro_subscription',
       plan: 'pro',
       status: 'paid',
       amount_cents: Math.round(amount * 100),
       currency,
-      billing_period_days: 30,
+      billing_period_days: billingPeriodDays,
       paid_at: now.toISOString(),
-      period_start: now.toISOString(),
+      period_start: periodStart.toISOString(),
       period_end: periodEnd.toISOString(),
+      metadata: { user_id: userId, plan: 'pro', transaction_type: 'pro_subscription' },
       provider_payload: payment,
       updated_at: now.toISOString(),
-    }, { onConflict: 'provider,provider_payment_id' });
+    }, { onConflict: 'provider,provider_payment_id' })
+    .select('id')
+    .single();
+
   if (transactionError) throw transactionError;
 
   const { data: existing } = await supabase
@@ -131,11 +166,15 @@ async function grantPro(userId: string, payment: {
     plan: 'pro',
     status: 'active',
     provider: 'maya',
-    provider_subscription_id: payment.id ?? null,
+    provider_subscription_id: null,
+    provider_transaction_id: paymentId,
     price_cents: Math.round(amount * 100),
     currency,
+    billing_period_days: billingPeriodDays,
+    started_at: periodStart.toISOString(),
     current_period_end: periodEnd.toISOString(),
     canceled_at: null,
+    metadata: { auto_renew: false, transaction_id: transaction.id },
     updated_at: now.toISOString(),
   };
 
@@ -180,6 +219,22 @@ export async function POST(request: Request) {
     const payment = await verifyMayaPayment(paymentId);
 
     if (payment.paymentStatus !== 'PAYMENT_SUCCESS') {
+      const supabase = getAdminClient();
+      const statusMap: Record<string, string> = {
+        PAYMENT_FAILED: 'failed',
+        PAYMENT_EXPIRED: 'expired',
+        PAYMENT_CANCELLED: 'cancelled',
+      };
+      await supabase
+        .from('billing_transactions')
+        .update({
+          status: statusMap[payment.paymentStatus ?? ''] ?? 'pending',
+          provider_payload: payment,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('provider', 'maya')
+        .eq('provider_payment_id', paymentId);
+
       return NextResponse.json({
         received: true,
         status: payment.paymentStatus ?? 'unknown',
