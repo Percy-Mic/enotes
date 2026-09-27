@@ -30,6 +30,7 @@ const IMMERSIVE_ROUTES = [
   /^\/$/,
   /^\/auth(\/|$)/,
   /^\/notes\/[^/]+$/,
+  /^\/journals(\/|$)/,
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
