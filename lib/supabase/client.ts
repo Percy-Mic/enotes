@@ -18,11 +18,19 @@ if (!supabaseKey) {
 }
 
 /*
- * Keep both Supabase key naming conventions supported.
+ * Browser/client Supabase configuration.
  *
- * - New Supabase projects use NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.
- * - Existing enotes deployments may still use NEXT_PUBLIC_SUPABASE_ANON_KEY.
+ * Prefer the current publishable key. The legacy anon key remains a
+ * compatibility fallback so existing local/deployment environments do not
+ * break during the migration.
  *
- * This lets the repository migrate without forcing a local .env.local rename.
+ * This same key selection must also be used by middleware so the browser
+ * client and SSR client always identify the same Supabase project.
  */
-export const supabase = createBrowserClient(supabaseUrl, supabaseKey);
+export const supabase = createBrowserClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
