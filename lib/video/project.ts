@@ -447,7 +447,18 @@ export function normalizeProject(input: unknown): VideoProject {
         { id: 'track-audio', name: 'Audio', kind: 'audio', order: 2, muted: false, locked: false },
       ];
 
-  return { version: 2, aspect, canvas, clips, elements, audio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted) };
+  /* Legacy projects had one shared audio lane. Keep those clips usable by
+     assigning them to the first audio lane; newer projects can have A1/A2/…
+     lanes so overlapping clips remain visually distinguishable. */
+  const audioTracks = safeTracks.filter((t) => t.kind === 'audio');
+  const firstAudioId = audioTracks[0]?.id;
+  const normalizedAudio = audio.map((a) => ({
+    ...a,
+    track_id: a.track_id && audioTracks.some((t) => t.id === a.track_id)
+      ? a.track_id
+      : firstAudioId,
+  }));
+  return { version: 2, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted) };
 }
 
 export function addTimelineTrack<T extends VideoClip | AudioTrack | TimelineElement>(
