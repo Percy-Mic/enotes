@@ -53,8 +53,15 @@ export default function BillingSettingsPage() {
   const [busyPlan, setBusyPlan] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [proPrice, setProPrice] = useState<number | null>(null);
+  const [proPeriodDays, setProPeriodDays] = useState(30);
+  const [proAutoRenew, setProAutoRenew] = useState(false);
+  const [periodEnd, setPeriodEnd] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<string | null>(null);
 
   useEffect(() => {
+    const status = new URLSearchParams(window.location.search).get('status');
+    if (status) setPaymentStatus(status);
+
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -64,9 +71,19 @@ export default function BillingSettingsPage() {
         .eq('user_id', user.id)
         .maybeSingle();
       const { data: billingConfig } = await supabase.from('platform_config').select('value').eq('key', 'billing').maybeSingle();
-      const billingValue = billingConfig?.value as { pro?: { amount_cents?: number } } | null;
+      const billingValue = billingConfig?.value as {
+        pro?: { amount_cents?: number; billing_period_days?: number; auto_renew?: boolean };
+      } | null;
       if (billingValue?.pro?.amount_cents) setProPrice(billingValue.pro.amount_cents / 100);
-      if (data && data.status === 'active') setCurrent(data.plan);
+      if (billingValue?.pro?.billing_period_days) setProPeriodDays(billingValue.pro.billing_period_days);
+      setProAutoRenew(billingValue?.pro?.auto_renew === true);
+
+      const activeEnd = data?.current_period_end ? new Date(data.current_period_end) : null;
+      const isActive = data?.status === 'active' && !!activeEnd && activeEnd.getTime() > Date.now();
+      if (isActive) {
+        setCurrent(data.plan);
+        setPeriodEnd(data.current_period_end);
+      }
       setLoading(false);
     })();
   }, []);
@@ -105,6 +122,35 @@ export default function BillingSettingsPage() {
           Free stays useful forever. Pro unlocks the advanced creator tools across enotes.
         </p>
 
+        {paymentStatus === 'success' && (
+          <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            Payment submitted. Pro access is activated after Maya confirms the payment with enotes.
+          </div>
+        )}
+        {paymentStatus === 'failed' && (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            The payment was not completed. You can try again when checkout is available.
+          </div>
+        )}
+        {paymentStatus === 'cancelled' && (
+          <div className="mt-4 rounded-2xl border border-[#E8E2E4] bg-white px-4 py-3 text-sm text-[#6B6B6B]">
+            Checkout was cancelled. No Pro access was added.
+          </div>
+        )}
+
+        {current === 'pro' && periodEnd && (
+          <div className="mt-4 rounded-2xl border border-[#E8E2E4] bg-white px-4 py-3">
+            <p className="text-sm font-bold">Pro is active</p>
+            <p className="mt-0.5 text-xs text-[#6B6B6B]">
+              Access until {new Date(periodEnd).toLocaleDateString('en-PH', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+              })}. {proAutoRenew ? 'Automatic renewal is enabled.' : 'This is prepaid access and does not renew automatically.'}
+            </p>
+          </div>
+        )}
+
         {loading ? (
           <div className="mt-6 flex justify-center"><Loader2 className="h-6 w-6 animate-spin text-[#E5798F]" /></div>
         ) : (
@@ -127,7 +173,7 @@ export default function BillingSettingsPage() {
                   <h2 className="flex items-center gap-1.5 text-base font-bold">
                     {plan.id === 'pro' && <Sparkles className="h-4 w-4 text-[#E5798F]" />} {plan.name}
                   </h2>
-                  <p className="mt-0.5 text-sm font-bold text-[#E5798F]">{plan.id === 'pro' && proPrice !== null ? `₱${proPrice.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / 30 days` : plan.price}</p>
+                  <p className="mt-0.5 text-sm font-bold text-[#E5798F]">{plan.id === 'pro' && proPrice !== null ? `₱${proPrice.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / ${proPeriodDays} days` : plan.price}</p>
                   <p className="mt-1 text-xs text-[#6B6B6B]">{plan.blurb}</p>
                   <ul className="mt-3 space-y-1.5">
                     {plan.perks.map((perk) => (
@@ -164,8 +210,8 @@ export default function BillingSettingsPage() {
         )}
 
         <p className="mt-6 text-center text-[11px] text-[#9B9B9B]">
-          Payments for Pro are processed through Maya's hosted checkout. Payment details never touch eNotes servers.
-          Pro access is granted only after Maya confirms the payment through the server webhook.
+          Pro is prepaid for the displayed period and does not renew automatically unless the plan configuration explicitly says otherwise.
+          Payments are processed through Maya's hosted checkout. Payment details are handled by Maya, and Pro access is granted only after server-side payment confirmation.
         </p>
       </div>
     </main>
