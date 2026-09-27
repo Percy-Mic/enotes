@@ -872,17 +872,17 @@ export default function JournalCanvasStudio() {
 
   useMobileGestures(stageRef, {
     onThreeFingerTap: () => {
-      if (history.canUndo) {
-        history.undo();
+      if (canUndo) {
+        undo();
         showToast('Undo.');
       }
     },
     onThreeFingerSwipe: (direction) => {
-      if (direction === 'left' && history.canUndo) {
-        history.undo();
+      if (direction === 'left' && canUndo) {
+        undo();
         showToast('Undo.');
-      } else if (direction === 'right' && history.canRedo) {
-        history.redo();
+      } else if (direction === 'right' && canRedo) {
+        redo();
         showToast('Redo.');
       }
     },
