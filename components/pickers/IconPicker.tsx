@@ -42,7 +42,7 @@ export default function IconPicker({
 
   return (
     <div
-      className={`flex w-[min(18rem,calc(100vw-2rem))] max-w-full flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-xl ${className}`}
+      className={`flex h-full min-h-0 w-[min(18rem,calc(100vw-2rem))] max-w-full flex-col overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-xl ${className}`}
       role="dialog"
       aria-label="Icon picker"
     >
@@ -68,7 +68,7 @@ export default function IconPicker({
 
       {/* Icons */}
       <div
-        className="no-scrollbar grid max-h-64 grid-cols-6 gap-1.5 overflow-y-auto overscroll-contain p-2"
+        className="no-scrollbar min-h-0 flex-1 grid grid-cols-6 gap-1.5 overflow-y-auto overscroll-contain p-2" style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', scrollbarWidth: 'thin' }}
         role="list"
         aria-label="Available icons"
       >
