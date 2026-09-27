@@ -53,6 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const immersive = IMMERSIVE_ROUTES.some((re) => re.test(pathname));
 
   const NO_ASIDE_ROUTES = [
+    /^\/notes(\/|$)/,
     /^\/journals(\/|$)/,
     /^\/admin(\/|$)/,
   ];
