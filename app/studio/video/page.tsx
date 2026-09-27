@@ -171,6 +171,9 @@ function VideoEditor() {
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  const [rippleEnabled, setRippleEnabled] = useState(false);
   const [tool, setTool] = useState<Tool>('media');
   const [stockQuery, setStockQuery] = useState('nature');
   const [stockProvider, setStockProvider] = useState<'all' | 'pexels' | 'pixabay'>('all');
@@ -828,6 +831,26 @@ function VideoEditor() {
     }, 'Reorder main-track clips', `reorder-${id}`);
   };
 
+  const toggleSelectedId = (id: string, additive = true) => {
+    setSelectedIds((prev) => additive ? (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]) : [id]);
+  };
+
+  const deleteSelectedClips = () => {
+    const ids = selectedIds.length ? selectedIds : (selectedClipId ? [selectedClipId] : []);
+    if (!ids.length) return;
+    updateProject((p) => ({ ...p, clips: p.clips.filter((c) => !ids.includes(c.id)) }), rippleEnabled ? 'Ripple delete clips' : 'Delete clips');
+    setSelectedIds([]);
+    setSelectedClipId(null);
+    notify(rippleEnabled ? 'Ripple delete applied.' : 'Clips deleted.');
+  };
+
+  const toggleTrackFlag = (trackId: string, flag: 'muted' | 'locked') => {
+    updateProject((p) => ({
+      ...p,
+      tracks: p.tracks.map((t) => t.id === trackId ? { ...t, [flag]: !t[flag] } : t),
+    }), flag === 'muted' ? 'Toggle track mute' : 'Toggle track lock');
+  };
+
   /* ---------- move a video overlay onto the main track ---------- */
   const moveVideoOverlayToMainTrack = (el: TimelineElement, targetIndex?: number) => {
     if (el.kind !== 'video' || !el.src) return notify('Only video overlays can be moved to the main track.');
@@ -912,6 +935,22 @@ function VideoEditor() {
       },
     }, 'Noise reduction', `noise-${selectedClip.id}`);
   };
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+      else if (e.key.toLowerCase() === 's' && !mod) { e.preventDefault(); splitAtPlayhead(); }
+      else if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedIds.length || selectedClipId)) { e.preventDefault(); deleteSelectedClips(); }
+      else if (mod && e.key.toLowerCase() === 'd' && selectedClip) { e.preventDefault(); duplicateClip(selectedClip); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); seekTo(Math.max(0, playheadRef.current - (e.shiftKey ? 1 : 1/30))); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); seekTo(Math.min(duration, playheadRef.current + (e.shiftKey ? 1 : 1/30))); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deleteSelectedClips, duplicateClip, duration, selectedClip, selectedClipId, selectedIds, splitAtPlayhead, togglePlay, seekTo]);
 
   /* ============================================================
      TIMELINE — pointer-driven (mouse, touch and stylus share one
@@ -1044,6 +1083,8 @@ function VideoEditor() {
 
   /** Drag an overlay chip: horizontal = time, vertical = lane switch. */
   const beginOverlayItemDrag = (e: React.PointerEvent, el: TimelineElement) => {
+    const track = project.tracks.find((t) => t.id === (el.track_id || project.tracks[0]?.id));
+    if (track?.locked) return;
     if ((e.target as HTMLElement).closest('[data-timeline-handle]')) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1102,6 +1143,8 @@ function VideoEditor() {
 
   /** Resize an overlay item in time (left edge = start, right = end). */
   const beginOverlayItemResize = (e: React.PointerEvent, el: TimelineElement, edge: 'start' | 'end') => {
+    const track = project.tracks.find((t) => t.id === (el.track_id || project.tracks[0]?.id));
+    if (track?.locked) return;
     e.preventDefault();
     e.stopPropagation();
     setPlaying(false);
@@ -2520,13 +2563,13 @@ function VideoEditor() {
                 <div className="relative flex min-w-0 flex-1 items-stretch gap-1 p-1">
                   {project.clips.map((clip) => {
                     const w = Math.max(42, clipDuration(clip) * pxPerSec);
-                    const selected = clip.id === selectedClipId;
+                    const selected = clip.id === selectedClipId || selectedIds.includes(clip.id);
                     const dragging = clip.id === pointerDragId;
                     return (
                       <div
                         key={clip.id}
                         data-timeline-item="true"
-                        onPointerDown={(e) => beginClipDrag(e, clip)}
+                        onPointerDown={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleSelectedId(clip.id); setSelectedClipId(clip.id); setSelectedElementId(null); return; } setSelectedIds([clip.id]); beginClipDrag(e, clip); }}
                         className={`relative shrink-0 touch-none overflow-hidden rounded-md border transition-shadow ${selected ? 'border-[#E5798F] bg-[#E5798F]/35 ring-1 ring-[#E5798F]/60' : 'border-white/15 bg-white/10'} ${dragging ? 'opacity-80 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
                         style={{ width: w }}
                         role="button"
@@ -2597,6 +2640,10 @@ function VideoEditor() {
                   >
                     <div className="sticky left-0 z-30 flex w-16 shrink-0 items-center justify-between border-r border-white/10 bg-[#111]/95 px-1.5 backdrop-blur">
                       <span className="truncate text-[9px] font-bold text-white/50">{track.name}</span>
+                       <div className="flex shrink-0 items-center gap-0.5">
+                         <button onClick={() => toggleTrackFlag(track.id, 'muted')} className={`rounded p-1 ${track.muted ? 'bg-red-500/30 text-red-200' : 'text-white/35 hover:text-white'}`} aria-label={track.muted ? 'Unmute track' : 'Mute track'}>{track.muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}</button>
+                         <button onClick={() => toggleTrackFlag(track.id, 'locked')} className={`rounded p-1 ${track.locked ? 'bg-amber-500/30 text-amber-200' : 'text-white/35 hover:text-white'}`} aria-label={track.locked ? 'Unlock track' : 'Lock track'}><Lock className="h-3 w-3" /></button>
+                       </div>
                       {project.tracks.length > 1 && (
                         <button onClick={() => deleteEditorTrack(track.id)} className="rounded p-1 text-white/25 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Remove track" aria-label={`Remove ${track.name}`}>
                           <X className="h-3 w-3" />
