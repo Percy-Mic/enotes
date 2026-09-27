@@ -68,37 +68,56 @@ async function grantPro(userId: string, payment: {
   const amount = Number(payment.totalAmount?.value ?? 0);
   const currency = String(payment.totalAmount?.currency ?? 'PHP');
 
-  const { error: entitlementError } = await supabase
+  const { data: existing } = await supabase
     .from('entitlements')
-    .upsert(
-      PRO_ENTITLEMENTS.map((key) => ({
-        user_id: userId,
-        key,
-        source: 'plan',
-        source_id: payment.id ?? null,
-      })),
-      { onConflict: 'user_id,key' }
-    );
+    .select('key')
+    .eq('user_id', userId);
 
-  if (entitlementError) throw entitlementError;
+  const have = new Set((existing ?? []).map((row) => row.key));
+  const missing = PRO_ENTITLEMENTS
+    .filter((key) => !have.has(key))
+    .map((key) => ({
+      user_id: userId,
+      key,
+      source: 'plan',
+      source_id: payment.id ?? null,
+      expires_at: periodEnd.toISOString(),
+    }));
 
-  const { error: subscriptionError } = await supabase
+  if (missing.length) {
+    const { error } = await supabase.from('entitlements').insert(missing);
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('entitlements')
+      .update({ expires_at: periodEnd.toISOString(), source_id: payment.id ?? null })
+      .eq('user_id', userId)
+      .in('key', PRO_ENTITLEMENTS);
+    if (error) throw error;
+  }
+
+  const subscriptionPayload = {
+    user_id: userId,
+    plan: 'pro',
+    status: 'active',
+    provider: 'maya',
+    provider_subscription_id: payment.id ?? null,
+    price_cents: Math.round(amount * 100),
+    currency,
+    current_period_end: periodEnd.toISOString(),
+    canceled_at: null,
+    updated_at: now.toISOString(),
+  };
+
+  const { data: existingSubscription } = await supabase
     .from('subscriptions')
-    .upsert(
-      {
-        user_id: userId,
-        plan: 'pro',
-        status: 'active',
-        provider: 'maya',
-        provider_subscription_id: payment.id ?? null,
-        price_cents: Math.round(amount * 100),
-        currency,
-        current_period_end: periodEnd.toISOString(),
-        canceled_at: null,
-        updated_at: now.toISOString(),
-      },
-      { onConflict: 'user_id' }
-    );
+    .select('id')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const { error: subscriptionError } = existingSubscription
+    ? await supabase.from('subscriptions').update(subscriptionPayload).eq('id', existingSubscription.id)
+    : await supabase.from('subscriptions').insert(subscriptionPayload);
 
   if (subscriptionError) throw subscriptionError;
 }
