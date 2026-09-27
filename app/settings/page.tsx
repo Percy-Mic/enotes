@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useMe, useUserSettings } from '@/lib/hooks';
 import Avatar from '@/components/social/Avatar';
 
-type Section = 'account' | 'privacy' | 'notifications' | 'appearance' | 'media' | 'security' | 'data';
+type Section = 'account' | 'privacy' | 'notifications' | 'appearance' | 'media' | 'security' | 'billing' | 'data';
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactNode }[] = [
   { id: 'account', label: 'Account', icon: <User className="h-4 w-4" /> },
@@ -398,84 +398,3 @@ export default function SettingsPage() {
                 <input type="color" value={settings.accent_color} onChange={(e) => set({ accent_color: e.target.value })} className="h-10 w-10 cursor-pointer rounded-full border p-0.5" aria-label="Custom accent color" />
               </div>
             </div>
-            <p className="px-1 text-xs text-[#6B6B6B]">Per-chat themes live inside each conversation → menu → “Chat theme”.</p>
-          </div>
-        )}
-
-        {/* ============ MEDIA ============ */}
-        {section === 'media' && settings && (
-          <div className="space-y-3">
-            <Toggle label="Autoplay videos" description="Videos start playing automatically in the feed and chat." checked={settings.autoplay_media} onChange={(v) => set({ autoplay_media: v })} />
-            <p className="rounded-xl border border-[#E8E2E4] bg-white p-3.5 text-xs leading-relaxed text-[#6B6B6B]">
-              Upload limits: 25 MB per file. Photos, videos, GIFs, audio and PDFs are supported depending on context.
-              Large files are stored in Supabase Storage — never inside the database.
-            </p>
-          </div>
-        )}
-
-        {/* ============ SECURITY ============ */}
-        {section === 'security' && (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-[#E8E2E4] bg-white p-3.5">
-              <p className="text-sm font-semibold">Change password</p>
-              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password (min 6 characters)" autoComplete="new-password" className="mt-2 w-full rounded-lg border border-[#E8E2E4] px-4 py-2.5 text-sm focus:border-[#1E90FF] focus:outline-none" />
-              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Repeat new password" autoComplete="new-password" className="mt-2 w-full rounded-lg border border-[#E8E2E4] px-4 py-2.5 text-sm focus:border-[#1E90FF] focus:outline-none" />
-              <button onClick={changePassword} className="mt-2 min-h-[42px] w-full rounded-xl bg-black py-2.5 text-sm font-semibold text-[#FFB6C1]">Update password</button>
-            </div>
-
-            <div className="rounded-xl border border-[#E8E2E4] bg-white p-3.5">
-              <p className="text-sm font-semibold">Change email</p>
-              <p className="mt-0.5 text-xs text-[#6B6B6B]">We'll send a confirmation link to the new address.</p>
-              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="new@email.com" autoComplete="email" className="mt-2 w-full rounded-lg border border-[#E8E2E4] px-4 py-2.5 text-sm focus:border-[#1E90FF] focus:outline-none" />
-              <button onClick={changeEmail} className="mt-2 min-h-[42px] w-full rounded-xl border border-[#E8E2E4] py-2.5 text-sm font-semibold transition hover:bg-gray-50">Send confirmation</button>
-            </div>
-
-            <div className="rounded-xl border border-[#E8E2E4] bg-white p-3.5">
-              <p className="text-sm font-semibold">Sessions</p>
-              <p className="mt-0.5 text-xs text-[#6B6B6B]">Sign out of this and every other device.</p>
-              <button onClick={signOutEverywhere} className="mt-2 flex min-h-[42px] w-full items-center justify-center gap-2 rounded-xl border border-red-200 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50">
-                <LogOut className="h-4 w-4" /> Sign out everywhere
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ============ DATA ============ */}
-        {section === 'data' && (
-          <div className="space-y-3">
-            <div className="rounded-xl border border-[#E8E2E4] bg-white p-3.5">
-              <p className="text-sm font-semibold">Export your data</p>
-              <p className="mt-0.5 text-xs text-[#6B6B6B]">Download a JSON file with your profile, journals, posts, comments and messages.</p>
-              <button onClick={exportData} disabled={exporting} className="mt-2 min-h-[42px] w-full rounded-xl bg-black py-2.5 text-sm font-semibold text-[#FFB6C1] disabled:opacity-50">
-                {exporting ? 'Preparing…' : 'Download export'}
-              </button>
-            </div>
-
-            <div className="rounded-2xl border border-red-200 bg-red-50/60 p-4">
-              <p className="flex items-center gap-2 text-sm font-bold text-red-700"><Trash2 className="h-4 w-4" /> Delete account</p>
-              <p className="mt-1 text-xs leading-relaxed text-red-600/90">
-                Permanently removes your profile, journals, pages, posts, stories, comments and messages. This cannot be undone.
-              </p>
-              {!confirmDelete ? (
-                <button onClick={() => setConfirmDelete(true)} className="mt-3 min-h-[44px] w-full rounded-xl border border-red-300 bg-white py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-50">
-                  Delete my account…
-                </button>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  <p className="text-xs font-semibold text-red-700">Are you absolutely sure?</p>
-                  <div className="flex gap-2">
-                    <button onClick={() => setConfirmDelete(false)} disabled={deleting} className="min-h-[44px] flex-1 rounded-xl border border-[#E8E2E4] bg-white py-2.5 text-sm font-semibold disabled:opacity-50">Keep my account</button>
-                    <button onClick={deleteAccount} disabled={deleting} className="min-h-[44px] flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-50">
-                      {deleting ? 'Deleting…' : 'Yes, delete everything'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-    </main>
-  );
-}
