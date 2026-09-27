@@ -2642,7 +2642,12 @@ function VideoEditor() {
               {/* crop mode surface — move/resize the region that survives */}
               {cropMode && cropRect && previewScale > 0 && (
                 <CropOverlay
-                  base={cropRect}
+                  base={{
+                    left: cropRect.left * previewScale,
+                    top: cropRect.top * previewScale,
+                    width: cropRect.width * previewScale,
+                    height: cropRect.height * previewScale,
+                  }}
                   crop={
                     cropMode.type === 'clip'
                       ? project.clips.find((c) => c.id === cropMode.id)?.transform.crop ?? null
@@ -4085,23 +4090,23 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
     const overlay = ref.current;
     if (!overlay) return;
     const rect = overlay.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    /* canvas units per screen px (works at every zoom / DPR / preview size) */
-    const ux = base.width / rect.width;
-    const uy = base.height / rect.height;
+    if (rect.width === 0 || rect.height === 0 || base.width <= 0 || base.height <= 0) return;
+
+    /*
+     * `base` is already in screen/CSS pixels. The previous implementation
+     * calculated movement against the entire preview, which made crop
+     * handles inaccurate whenever the media frame did not fill the canvas.
+     * Use the actual cropable media frame as the coordinate system.
+     */
     const start = { x: e.clientX, y: e.clientY };
     const startCrop = { ...current };
     const MIN = 0.06; // surviving region never shrinks below 6% per axis
-
-    const toFrac = (clientX: number, clientY: number) => ({
-      fx: (clientX - rect.left) * ux / base.width,
-      fy: (clientY - rect.top) * uy / base.height,
-    });
+    const dxFromScreen = (clientX: number) => (clientX - start.x) / base.width;
+    const dyFromScreen = (clientY: number) => (clientY - start.y) / base.height;
 
     const onMove = (ev: PointerEvent) => {
-      const { fx, fy } = toFrac(ev.clientX, ev.clientY);
-      const dx = fx - (start.x - rect.left) * ux / base.width;
-      const dy = fy - (start.y - rect.top) * uy / base.height;
+      const dx = dxFromScreen(ev.clientX);
+      const dy = dyFromScreen(ev.clientY);
       let { top, right, bottom, left } = startCrop;
 
       if (mode === 'move') {
