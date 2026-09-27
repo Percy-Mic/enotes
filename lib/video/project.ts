@@ -101,6 +101,7 @@ export interface TimelineTrack {
   order: number;
   muted?: boolean;
   locked?: boolean;
+  solo?: boolean;
 }
 
 /* ---------- keyframes ----------
