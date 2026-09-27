@@ -173,8 +173,9 @@ function VideoEditor() {
   const [selectedAudioId, setSelectedAudioId] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>('media');
   const [stockQuery, setStockQuery] = useState('nature');
+  const [stockProvider, setStockProvider] = useState<'all' | 'pexels' | 'pixabay'>('all');
   const [stockOrientation, setStockOrientation] = useState<'all' | 'landscape' | 'portrait' | 'square'>('all');
-  const [stockVideos, setStockVideos] = useState<{ id: string; url: string; thumbnail: string; width: number; height: number; duration: number; sourceUrl: string; photographer: string }[]>([]);
+  const [stockVideos, setStockVideos] = useState<{ id: string; url: string; thumbnail: string; width: number; height: number; duration: number; sourceUrl: string; photographer: string; provider: 'pexels' | 'pixabay' }[]>([]);
   const [stockBusy, setStockBusy] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -686,7 +687,11 @@ function VideoEditor() {
     setStockBusy(true); setStockError(null);
     try {
       const page = reset ? 1 : Math.max(1, Number((window as any).__enotesStockPage || 1) + 1);
-      const params = new URLSearchParams({ query: stockQuery.trim() || 'nature', page: String(page) });
+      const params = new URLSearchParams({
+        query: stockQuery.trim() || 'nature',
+        page: String(page),
+        provider: stockProvider,
+      });
       if (stockOrientation !== 'all') params.set('orientation', stockOrientation);
       const response = await fetch('/api/studio/stock-videos?' + params.toString());
       const data = await response.json();
@@ -695,12 +700,12 @@ function VideoEditor() {
       (window as any).__enotesStockPage = page;
     } catch (error) { setStockError(error instanceof Error ? error.message : 'Stock video search failed.'); }
     finally { setStockBusy(false); }
-  }, [stockOrientation, stockQuery]);
+  }, [stockOrientation, stockProvider, stockQuery]);
 
-  const addStockVideo = useCallback((item: { url: string; width: number; height: number; duration: number; photographer: string }) => {
+  const addStockVideo = useCallback((item: { url: string; width: number; height: number; duration: number; photographer: string; provider: 'pexels' | 'pixabay' }) => {
     const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
     const clip: VideoClip = {
-      id: makeVideoId('clip'), src: item.url, name: 'Pexels · ' + item.photographer,
+      id: makeVideoId('clip'), src: item.url, name: (item.provider === 'pixabay' ? 'Pixabay · ' : 'Pexels · ') + item.photographer,
       sourceDuration, trimStart: 0, trimEnd: Math.min(sourceDuration, 30), speed: 1, volume: 1, muted: false,
       source_width: item.width || undefined, source_height: item.height || undefined,
       transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
@@ -717,7 +722,7 @@ function VideoEditor() {
       const queries = ['city night', 'person walking', 'nature landscape', 'close up hands', 'street movement'];
       const results = await Promise.all(
         queries.map(async (query) => {
-          const params = new URLSearchParams({ query, page: '1' });
+          const params = new URLSearchParams({ query, page: '1', provider: 'all' });
           const response = await fetch('/api/studio/stock-videos?' + params.toString(), { cache: 'no-store' });
           const data = await response.json();
           if (!response.ok || data.error) throw new Error(data.error || 'Practice footage search failed.');
@@ -2780,12 +2785,33 @@ function VideoEditor() {
               </div>
             )}
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-              <div className="mb-2 flex items-center justify-between gap-2"><div><p className="text-sm font-bold">Stock footage</p><p className="text-[10px] text-white/40">Search real source video and place it on the timeline.</p></div><span className="text-[9px] font-semibold text-white/35">PEXELS</span></div>
-              <div className="flex gap-2"><div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" /><input value={stockQuery} onChange={(e) => setStockQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void searchStockVideos(true); }} placeholder="Search footage…" className="w-full rounded-lg bg-white/10 py-2 pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-[#E5798F]" /></div><select value={stockOrientation} onChange={(e) => { const v = e.target.value as typeof stockOrientation; setStockOrientation(v); window.setTimeout(() => void searchStockVideos(true), 0); }} className="rounded-lg bg-white/10 px-2 text-xs outline-none"><option value="all" className="text-black">All</option><option value="portrait" className="text-black">Portrait</option><option value="landscape" className="text-black">Landscape</option><option value="square" className="text-black">Square</option></select></div>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div><p className="text-sm font-bold">Stock footage</p><p className="text-[10px] text-white/40">Search real source video and place it on the timeline.</p></div>
+                <span className="text-[9px] font-semibold uppercase text-white/35">{stockProvider === 'all' ? 'Pexels + Pixabay' : stockProvider}</span>
+              </div>
+              <div className="mb-2 flex gap-1 rounded-lg bg-white/[0.04] p-1">
+                {(['all', 'pexels', 'pixabay'] as const).map((provider) => (
+                  <button
+                    key={provider}
+                    type="button"
+                    onClick={() => {
+                      setStockProvider(provider);
+                      window.setTimeout(() => void searchStockVideos(true), 0);
+                    }}
+                    className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold capitalize ${stockProvider === provider ? 'bg-white/15 text-white' : 'text-white/45 hover:text-white/75'}`}
+                  >
+                    {provider === 'all' ? 'All sources' : provider}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" /><input value={stockQuery} onChange={(e) => setStockQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void searchStockVideos(true); }} placeholder="Search footage…" className="w-full rounded-lg bg-white/10 py-2 pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-[#E5798F]" /></div>
+                <select value={stockOrientation} onChange={(e) => { const v = e.target.value as typeof stockOrientation; setStockOrientation(v); window.setTimeout(() => void searchStockVideos(true), 0); }} className="rounded-lg bg-white/10 px-2 text-xs outline-none"><option value="all" className="text-black">All</option><option value="portrait" className="text-black">Portrait</option><option value="landscape" className="text-black">Landscape</option><option value="square" className="text-black">Square</option></select>
+              </div>
               {stockError && <p className="mt-2 rounded-lg bg-red-500/10 p-2 text-[10px] text-red-200">{stockError}</p>}
               {stockBusy && stockVideos.length === 0 ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-[#FFB6C1]" /></div> : <div className="mt-2 grid max-h-56 grid-cols-3 gap-1.5 overflow-y-auto overscroll-contain">{stockVideos.map((v) => <button key={v.id} type="button" onClick={() => addStockVideo(v)} className="group relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black text-left" title={'Add footage by ' + v.photographer}>{v.thumbnail ? <img src={v.thumbnail} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /> : <video src={v.url} muted preload="metadata" className="h-full w-full object-cover" />}<span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1.5 py-1 text-[8px] text-white">{v.duration ? fmt(v.duration) : 'video'} · {v.photographer}</span></button>)}</div>}
               {stockVideos.length > 0 && <button type="button" onClick={() => void searchStockVideos(false)} disabled={stockBusy} className="mt-2 w-full rounded-lg border border-white/15 py-2 text-[10px] font-semibold disabled:opacity-40">{stockBusy ? 'Loading…' : 'Load more footage'}</button>}
-              <p className="mt-2 text-center text-[9px] text-white/35">Stock footage provided by Pexels · credit the creator when possible.</p>
+              <p className="mt-2 text-center text-[9px] text-white/35">Stock footage provided by Pexels and Pixabay · keep the provider/creator attribution visible.</p>
             </div>
             {/* fill placeholders with imported library entries */}
             {placeholders.length > 0 && (
