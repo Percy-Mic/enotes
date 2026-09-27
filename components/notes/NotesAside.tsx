@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Lock, Pin, Plus } from 'lucide-react';
+import { Loader2, Lock, Pin, Plus, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import type { NoteRow } from '@/app/notes/page';
 
@@ -166,26 +166,59 @@ export default function NotesAside() {
             No notes yet — write your first one above.
           </p>
         ) : (
-          <ul className="space-y-1.5">
+          <div className="space-y-3">
             {notes.map((note) => (
-              <li key={note.id}>
-                <Link
-                  href={`/notes/${note.id}`}
-                  className="block rounded-xl border border-transparent px-3 py-2.5 transition hover:border-[#F1DDE2] hover:bg-[#FDF0F3]"
-                >
-                  <span className="flex items-center gap-1.5 text-sm font-semibold text-[#111111]">
-                    {note.pinned && <Pin className="h-3 w-3 shrink-0 text-[#E5798F]" />}
-                    <span className="truncate">{note.title || 'Untitled note'}</span>
-                  </span>
-                  {(note.content && note.content.trim() !== (note.title || '').trim()) && (
-                    <span className="mt-0.5 block truncate text-xs text-[#6B6B6B]">
-                      {excerpt(note.content)}
+              <Link
+                key={note.id}
+                href={`/notes/${note.id}`}
+                className="group block overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white p-3.5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#F1DDE2] hover:shadow-md"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {note.pinned && (
+                        <Pin className="h-3.5 w-3.5 shrink-0 fill-[#E5798F] text-[#E5798F]" />
+                      )}
+                      <h3 className="min-w-0 truncate text-sm font-bold text-slate-900">
+                        {note.title || 'Untitled note'}
+                      </h3>
+                    </div>
+
+                    <span className="mt-2 inline-flex max-w-full items-center rounded-full bg-[#FFF0F3] px-2.5 py-1 text-[10px] font-semibold capitalize text-[#E5798F]">
+                      {note.category || 'general'}
                     </span>
+                  </div>
+
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#FFF0F3] text-[#E5798F]">
+                    <Pin className="h-3.5 w-3.5 fill-current" />
+                  </div>
+                </div>
+
+                <p className="mt-3 line-clamp-3 min-h-[3.75rem] text-sm leading-5 text-[#6B6B6B]">
+                  {excerpt(note.content) || 'Empty note'}
+                </p>
+
+                <div className="mt-3 flex items-center justify-between gap-2 border-t border-[#F1ECEE] pt-3">
+                  <span className="truncate text-[11px] text-[#9B9B9B]">
+                    {(() => {
+                      const date = new Date(note.updated_at);
+                      if (Number.isNaN(date.getTime())) return '';
+                      const diff = Date.now() - date.getTime();
+                      if (diff < 60_000) return 'Just now';
+                      if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+                      if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+                      if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+                      return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+                    })()}
+                  </span>
+
+                  {note.favorite && (
+                    <Star className="h-3.5 w-3.5 shrink-0 fill-[#E5798F] text-[#E5798F]" />
                   )}
-                </Link>
-              </li>
+                </div>
+              </Link>
             ))}
-          </ul>
+          </div>
         )}
       </div>
     </aside>
