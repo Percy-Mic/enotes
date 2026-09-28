@@ -3185,6 +3185,7 @@ function VideoEditor() {
                       : project.elements.find((el) => el.id === cropMode.id)?.crop ?? null
                   }
                   onChange={applyCropChange}
+                  onRotate={(degrees) => setCropRotation(degrees)}
                   onApply={() => { setCropMode(null); notify('Crop applied — it renders in the export too.'); }}
                   onCancel={cancelCrop}
                   onReset={() => applyCropChange(null)}
@@ -4803,6 +4804,12 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
         </div>
         <div
           onPointerDown={beginRotateScrub}
+          onPointerMove={(e) => {
+            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const ratio = clampNum((e.clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+            setRot(-180 + ratio * 360);
+          }}
           className="relative h-8 touch-none rounded-lg bg-white/[0.04]"
           role="slider"
           tabIndex={0}
@@ -4837,10 +4844,11 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
     </aside>
   );
 }
-function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
+function CropOverlay({ base, crop, onChange, onRotate, onApply, onCancel, onReset }: {
   base: { left: number; top: number; width: number; height: number };
   crop: CropRect | null;
   onChange: (next: CropRect | null) => void;
+  onRotate?: (degrees: number) => void;
   onApply: () => void;
   onCancel: () => void;
   onReset: () => void;
@@ -4856,9 +4864,10 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
   };
 
   const multiTouchRef = useRef(false);
+  const rotationGestureRef = useRef(0);
 
   useMobileGestures(ref, {
-    onMultiTouchStart: () => { multiTouchRef.current = true; },
+    onMultiTouchStart: () => { multiTouchRef.current = true; rotationGestureRef.current = current ? 0 : 0; },
     onMultiTouchEnd: () => { multiTouchRef.current = false; },
     onPinch: (scale, center) => {
       const factor = clampNum(scale, 0.82, 1.22);
@@ -4873,6 +4882,12 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
       const left = clampNum(cx - (cx - current.left) * (nextWidth / Math.max(0.001, visibleWidth)), 0, 1 - nextWidth);
       const top = clampNum(cy - (cy - current.top) * (nextHeight / Math.max(0.001, visibleHeight)), 0, 1 - nextHeight);
       onChange({ left, right: 1 - left - nextWidth, top, bottom: 1 - top - nextHeight });
+    },
+    onRotate: (degrees) => {
+      if (!onRotate) return;
+      rotationGestureRef.current += degrees;
+      const next = ((rotationGestureRef.current + 180) % 360 + 360) % 360 - 180;
+      onRotate(next);
     },
   });
 
