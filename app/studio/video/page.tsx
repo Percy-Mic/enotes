@@ -809,14 +809,31 @@ function VideoEditor() {
       const queries = ['city night', 'person walking', 'nature landscape', 'close up hands', 'street movement'];
       const results = await Promise.all(
         queries.map(async (query) => {
-          const params = new URLSearchParams({ query, page: '1', provider: 'all' });
+          // Pexels/Pixabay rank popular results, so page=1 + [0] returned
+          // the same footage every time. Rotate the page and pick a random
+          // result to make each new practice project genuinely fresh.
+          const pageNumber = 1 + Math.floor(Math.random() * 5);
+          const params = new URLSearchParams({
+            query,
+            page: String(pageNumber),
+            provider: 'all',
+          });
           const response = await fetch('/api/studio/stock-videos?' + params.toString(), { cache: 'no-store' });
           const data = await response.json();
           if (!response.ok || data.error) throw new Error(data.error || 'Practice footage search failed.');
-          return Array.isArray(data.videos) ? data.videos[0] : null;
+          const videos = Array.isArray(data.videos) ? data.videos.filter((v: any) => v && v.url) : [];
+          if (!videos.length) return null;
+          return videos[Math.floor(Math.random() * videos.length)];
         })
       );
-      const clips = results.filter(Boolean).map((item: any) => {
+
+      const uniqueResults = results
+        .filter(Boolean)
+        .filter((item: any, index: number, list: any[]) =>
+          list.findIndex((candidate: any) => candidate?.url === item?.url) === index
+        );
+
+      const clips = uniqueResults.map((item: any) => {
         const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
         return {
           id: makeVideoId('clip'), src: String(item.url), name: 'Practice · ' + (item.photographer || 'Pexels'),
@@ -1406,7 +1423,14 @@ function VideoEditor() {
         const ns = Math.max(0, Math.min(startTrimE - 0.2, startTrimS + d));
         updateAudio(a.id, { trimStart: ns }, 'Trim audio start', `audtrim-${a.id}`);
       } else {
-        const ne = Math.max(startTrimS + 0.2, startTrimE + d);
+        const sourceDuration = Math.max(
+          startTrimE,
+          Number(a.sourceDuration) || startTrimE
+        );
+        const ne = Math.max(
+          startTrimS + 0.2,
+          Math.min(sourceDuration, startTrimE + d)
+        );
         updateAudio(a.id, { trimEnd: ne }, 'Trim audio end', `audtrim-${a.id}`);
       }
     };
@@ -2090,8 +2114,9 @@ function VideoEditor() {
       license: s.license,
       creator: s.creator,
       start: 0,
+      sourceDuration: Math.max(0.1, Number(s.duration_seconds) || 15),
       trimStart: 0,
-      trimEnd: Math.max(1, Math.min(s.duration_seconds || 15, duration || 15)),
+      trimEnd: Math.max(1, Math.min(Number(s.duration_seconds) || 15, duration || Number(s.duration_seconds) || 15)),
       volume: 0.8,
       fadeIn: 0.5,
       fadeOut: 1,
