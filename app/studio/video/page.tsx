@@ -63,7 +63,7 @@ interface EditorDoc {
   project: VideoProject;
 }
 
-const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'export'] as const;
+const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'crop', 'export'] as const;
 type Tool = (typeof TOOLS)[number];
 
 const TOOL_LABELS: Record<Tool, string> = {
@@ -73,6 +73,7 @@ const TOOL_LABELS: Record<Tool, string> = {
   audio: 'Audio',
   motion: 'Motion',
   look: 'Effects',
+  crop: 'Crop',
   export: 'Export',
 };
 
@@ -1999,14 +2000,14 @@ function VideoEditor() {
     if (!selectedClip) return;
     setPlaying(false);
     setCropMode({ type: 'clip', id: selectedClip.id, initial: selectedClip.transform.crop });
-    openTool('look');
+    openTool('crop');
   };
 
   const startElementCrop = () => {
     if (!selectedElement) return;
     setPlaying(false);
     setCropMode({ type: 'element', id: selectedElement.id, initial: selectedElement.crop ?? null });
-    openTool(selectedElement.kind === 'text' ? 'text' : 'overlays');
+    openTool('crop');
   };
 
   const applyCropChange = (next: CropRect | null) => {
@@ -2026,6 +2027,87 @@ function VideoEditor() {
     if (!cropMode) return;
     applyCropChange(cropMode.initial);
     setCropMode(null);
+  };
+
+
+  /* ---------- PRO CROP WORKSPACE ----------
+     Crop editing is deliberately separated from the normal Effects/Overlay
+     inspector. The crop window remains directly manipulable on the preview,
+     while this panel provides exact aspect presets, numeric edge controls,
+     straighten/rotation, flips and quick framing actions. */
+  const currentCrop: CropRect | null = cropMode
+    ? cropMode.type === 'clip'
+      ? project.clips.find((c) => c.id === cropMode.id)?.transform.crop ?? null
+      : project.elements.find((el) => el.id === cropMode.id)?.crop ?? null
+    : null;
+
+  const cropSourceAspect = useMemo(() => {
+    if (!cropMode) return project.canvas.width / Math.max(1, project.canvas.height);
+    if (cropMode.type === 'clip') {
+      const clip = project.clips.find((c) => c.id === cropMode.id);
+      return clip?.source_width && clip?.source_height
+        ? clip.source_width / clip.source_height
+        : project.canvas.width / Math.max(1, project.canvas.height);
+    }
+    const el = project.elements.find((x) => x.id === cropMode.id);
+    return el ? el.width / Math.max(1, el.height) : project.canvas.width / Math.max(1, project.canvas.height);
+  }, [cropMode, project.canvas.height, project.canvas.width, project.clips, project.elements]);
+
+  const setCropRotation = (rotation: number) => {
+    if (!cropMode) return;
+    if (cropMode.type === 'clip') {
+      const clip = docRef.current.project.clips.find((c) => c.id === cropMode.id);
+      if (clip) updateClip(clip.id, { transform: { ...clip.transform, rotation }, }, 'Straighten video', `crop-rotate-${clip.id}`);
+    } else {
+      const el = docRef.current.project.elements.find((x) => x.id === cropMode.id);
+      if (el) updateElement(el.id, { rotation }, 'Straighten media', `crop-rotate-${el.id}`);
+    }
+  };
+
+  const setCropFlip = (axis: 'horizontal' | 'vertical') => {
+    if (!cropMode) return;
+    if (cropMode.type === 'clip') {
+      const clip = docRef.current.project.clips.find((c) => c.id === cropMode.id);
+      if (clip) updateClip(clip.id, { transform: { ...clip.transform, [axis === 'horizontal' ? 'flip_h' : 'flip_v']: !clip.transform[axis === 'horizontal' ? 'flip_h' : 'flip_v'] } }, `Flip video ${axis}`);
+    } else {
+      const el = docRef.current.project.elements.find((x) => x.id === cropMode.id);
+      if (el) updateElement(el.id, { [axis === 'horizontal' ? 'flip_h' : 'flip_v']: !el[axis === 'horizontal' ? 'flip_h' : 'flip_v'] }, `Flip media ${axis}`);
+    }
+  };
+
+  const cropToAspect = (targetAspect: number | null) => {
+    if (!cropMode) return;
+    if (targetAspect == null) {
+      applyCropChange(null);
+      return;
+    }
+    const existing = currentCrop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    const currentAspect = croppedAspect(cropSourceAspect, existing);
+    if (!Number.isFinite(targetAspect) || targetAspect <= 0) return;
+    let next = { ...existing };
+    if (Math.abs(currentAspect - targetAspect) < 0.001) return;
+    if (currentAspect > targetAspect) {
+      /* Too wide: remove width symmetrically until target is reached. */
+      const visibleW = 1 - existing.left - existing.right;
+      const visibleH = 1 - existing.top - existing.bottom;
+      const wantedW = (targetAspect * visibleH) / Math.max(0.001, cropSourceAspect);
+      const remove = Math.max(0, visibleW - wantedW);
+      next.left = existing.left + remove / 2;
+      next.right = existing.right + remove / 2;
+    } else {
+      /* Too tall: remove height symmetrically until target is reached. */
+      const visibleW = 1 - existing.left - existing.right;
+      const wantedH = (visibleW * cropSourceAspect) / targetAspect;
+      const remove = Math.max(0, visibleH - wantedH);
+      next.top = existing.top + remove / 2;
+      next.bottom = existing.bottom + remove / 2;
+    }
+    applyCropChange(sanitizeCrop(next));
+  };
+
+  const updateCropEdge = (edge: keyof CropRect, value: number) => {
+    const base = currentCrop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+    applyCropChange(sanitizeCrop({ ...base, [edge]: clampNum(value, 0, 0.45) }));
   };
 
   /* close crop mode if its target disappeared (deleted / moved tracks) */
@@ -2801,6 +2883,21 @@ function VideoEditor() {
               )}
 
               {/* crop mode surface — move/resize the region that survives */}
+              {cropMode && (
+                <CropWorkspace
+                  crop={currentCrop}
+                  sourceAspect={cropSourceAspect}
+                  onChange={applyCropChange}
+                  onEdgeChange={updateCropEdge}
+                  onAspect={cropToAspect}
+                  onRotate={setCropRotation}
+                  onFlip={setCropFlip}
+                  onReset={() => applyCropChange(null)}
+                  onCancel={cancelCrop}
+                  onApply={() => { setCropMode(null); notify('Crop applied — all crop and transform settings are preserved.'); }}
+                />
+              )}
+
               {cropMode && cropRect && previewScale > 0 && (
                 <CropOverlay
                   base={{
@@ -4227,6 +4324,78 @@ function ClipThumb({ clip }: { clip: VideoClip }) {
    will export. Nothing here is CSS pretending: drawFrame() crops
    the source itself via drawImage source-rect math.
    ============================================================ */
+function CropWorkspace({ crop, sourceAspect, onChange, onEdgeChange, onAspect, onRotate, onFlip, onReset, onCancel, onApply }: {
+  crop: CropRect | null;
+  sourceAspect: number;
+  onChange: (next: CropRect | null) => void;
+  onEdgeChange: (edge: keyof CropRect, value: number) => void;
+  onAspect: (aspect: number | null) => void;
+  onRotate: (rotation: number) => void;
+  onFlip: (axis: 'horizontal' | 'vertical') => void;
+  onReset: () => void;
+  onCancel: () => void;
+  onApply: () => void;
+}) {
+  const c = crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+  const [rotation, setRotation] = useState(0);
+  const visibleW = 1 - c.left - c.right;
+  const visibleH = 1 - c.top - c.bottom;
+  const cropAspect = croppedAspect(sourceAspect, c);
+  const setRot = (v: number) => { setRotation(v); onRotate(v); };
+  const aspectPresets = [
+    { label: 'Free', value: null }, { label: 'Original', value: sourceAspect },
+    { label: '16:9', value: 16 / 9 }, { label: '9:16', value: 9 / 16 },
+    { label: '1:1', value: 1 }, { label: '4:5', value: 4 / 5 },
+    { label: '4:3', value: 4 / 3 }, { label: '21:9', value: 21 / 9 },
+  ];
+  return (
+    <aside className="absolute bottom-2 left-2 z-[55] w-[min(420px,calc(100%-1rem))] max-h-[42dvh] overflow-y-auto rounded-2xl border border-white/15 bg-black/90 p-3 text-white shadow-2xl backdrop-blur-xl" aria-label="Professional crop controls">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="text-sm font-bold">Crop & Frame</p>
+          <p className="text-[10px] text-white/45">Drag the crop window, or use precise controls.</p>
+        </div>
+        <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] tabular-nums text-white/60">{cropAspect.toFixed(2)}:1</span>
+      </div>
+      <div className="mt-3">
+        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-white/45">Aspect ratio</p>
+        <div className="grid grid-cols-4 gap-1.5">
+          {aspectPresets.map((p) => (
+            <button key={p.label} onClick={() => onAspect(p.value)} className="rounded-lg bg-white/10 px-2 py-2 text-[10px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">{p.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+        {(['top','right','bottom','left'] as const).map((edge) => (
+          <label key={edge} className="text-[10px] text-white/55">
+            <span className="mb-1 flex justify-between"><span>{edge[0].toUpperCase() + edge.slice(1)}</span><span>{Math.round(c[edge] * 100)}%</span></span>
+            <input type="range" min="0" max="0.45" step="0.005" value={c[edge]} onChange={(e) => onEdgeChange(edge, Number(e.target.value))} className="w-full" />
+          </label>
+        ))}
+      </div>
+      <div className="mt-3">
+        <div className="mb-1.5 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-wide text-white/45">Straighten</p><span className="text-[10px] tabular-nums text-white/55">{rotation}°</span></div>
+        <input type="range" min="-45" max="45" step="0.1" value={rotation} onChange={(e) => setRot(Number(e.target.value))} className="w-full" />
+        <div className="mt-1 flex gap-1.5">
+          <button onClick={() => setRot(rotation - 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">↶ 90°</button>
+          <button onClick={() => setRot(rotation + 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">90° ↷</button>
+          <button onClick={() => setRot(0)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">0°</button>
+        </div>
+      </div>
+      <div className="mt-3 flex gap-1.5">
+        <button onClick={() => onFlip('horizontal')} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold"><FlipHorizontal className="mr-1 inline h-3 w-3" />Flip H</button>
+        <button onClick={() => onFlip('vertical')} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold"><FlipVertical className="mr-1 inline h-3 w-3" />Flip V</button>
+        <button onClick={() => onChange(null)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">Full frame</button>
+      </div>
+      <div className="mt-3 flex gap-1.5 border-t border-white/10 pt-3">
+        <button onClick={onCancel} className="flex-1 rounded-lg border border-white/15 bg-white/5 py-2 text-xs font-semibold">Cancel</button>
+        <button onClick={onReset} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold">Reset</button>
+        <button onClick={onApply} className="flex-1 rounded-lg bg-[#E5798F] py-2 text-xs font-bold">Apply</button>
+      </div>
+    </aside>
+  );
+}
+
 function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
   base: { left: number; top: number; width: number; height: number };
   crop: CropRect | null;
