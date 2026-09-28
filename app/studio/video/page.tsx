@@ -4,7 +4,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, ArrowRight, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
+  ArrowLeft, ArrowRight, Bot, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
   Image as ImageIcon, Layers, Loader2, Lock, Mic, MicOff, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw,
   Scissors, Search, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Trash2, Type, Undo2,
   Upload, Users, VolumeX, Volume2, X, Save, Share2, Maximize2, Minimize2,
@@ -4667,7 +4667,7 @@ function VideoEditor() {
 
       {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
       <nav
-        className="sticky bottom-0 z-40 grid grid-cols-7 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
+        className="sticky bottom-0 z-40 grid grid-cols-8 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur"
         aria-label="Editor tools"
       >
         {(
@@ -4678,6 +4678,7 @@ function VideoEditor() {
             ['audio', <Music key="m" className="h-5 w-5" />],
             ['motion', <Sparkles key="mo" className="h-5 w-5" />],
             ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
+            ['ai', <Bot key="ai" className="h-5 w-5" />],
             ['export', <Upload key="e" className="h-5 w-5" />],
           ] as [Tool, React.ReactNode][]
         ).map(([id, icon]) => (
