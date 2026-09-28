@@ -1714,7 +1714,7 @@ function VideoEditor() {
   const canvasMultiTouchRef = useRef(false);
 
   /* ---------- overlay gestures on the canvas ---------- */
-  const beginElementGesture = (el: TimelineElement, gesture: Gesture, e: React.PointerEvent<HTMLCanvasElement>) => {
+  const beginElementGesture = (el: TimelineElement, gesture: Gesture, e: React.PointerEvent<HTMLElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     e.preventDefault();
@@ -1832,7 +1832,7 @@ function VideoEditor() {
      axis-scale, offset from center). Move = offset_x/y, corner =
      uniform scale, edges = scale_x/scale_y, top handle = rotation.
      The same numbers drive the export, so the box IS the truth. */
-  const beginClipGesture = (clip: VideoClip, gesture: Gesture, e: React.PointerEvent<HTMLCanvasElement>) => {
+  const beginClipGesture = (clip: VideoClip, gesture: Gesture, e: React.PointerEvent<HTMLElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     e.preventDefault();
@@ -2988,6 +2988,58 @@ function VideoEditor() {
                     outline: '1.5px dashed rgba(255,182,193,0.95)',
                   }}
                 >
+                  {/* Real touch targets: the visible dots are only visual. */}
+                  {([
+                    { gesture: 'resize-nw' as Gesture, cls: '-left-6 -top-6', label: 'Resize video top-left' },
+                    { gesture: 'resize-ne' as Gesture, cls: '-right-6 -top-6', label: 'Resize video top-right' },
+                    { gesture: 'resize-sw' as Gesture, cls: '-left-6 -bottom-6', label: 'Resize video bottom-left' },
+                    { gesture: 'resize-se' as Gesture, cls: '-right-6 -bottom-6', label: 'Resize video bottom-right' },
+                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 -top-6 -translate-x-1/2', label: 'Stretch video top' },
+                    { gesture: 'resize-s' as Gesture, cls: 'bottom-[-24px] left-1/2 -translate-x-1/2', label: 'Stretch video bottom' },
+                    { gesture: 'resize-w' as Gesture, cls: '-left-6 top-1/2 -translate-y-1/2', label: 'Stretch video left' },
+                    { gesture: 'resize-e' as Gesture, cls: 'right-[-24px] top-1/2 -translate-y-1/2', label: 'Stretch video right' },
+                  ]).map((h) => (
+                    <span
+                      key={h.gesture}
+                      className={'pointer-events-auto absolute z-40 h-12 w-12 touch-none ' + h.cls}
+                      onPointerDown={(e) => beginClipGesture(selectedClip, h.gesture, e)}
+                      aria-label={h.label}
+                      role="button"
+                    />
+                  ))}
+                  <span
+                    className="pointer-events-auto absolute z-40 left-1/2 -top-[58px] h-12 w-12 -translate-x-1/2 touch-none"
+                    onPointerDown={(e) => beginClipGesture(selectedClip, 'rotate', e)}
+                    aria-label="Rotate video"
+                    role="button"
+                  />
+
+                  {/* Real touch targets: the visible dots are only visual. */}
+                  {([
+                    { gesture: 'resize-nw' as Gesture, cls: '-left-6 -top-6', label: 'Resize overlay top-left' },
+                    { gesture: 'resize-ne' as Gesture, cls: '-right-6 -top-6', label: 'Resize overlay top-right' },
+                    { gesture: 'resize-sw' as Gesture, cls: '-left-6 -bottom-6', label: 'Resize overlay bottom-left' },
+                    { gesture: 'resize-se' as Gesture, cls: '-right-6 -bottom-6', label: 'Resize overlay bottom-right' },
+                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 -top-6 -translate-x-1/2', label: 'Stretch overlay top' },
+                    { gesture: 'resize-s' as Gesture, cls: 'bottom-[-24px] left-1/2 -translate-x-1/2', label: 'Stretch overlay bottom' },
+                    { gesture: 'resize-w' as Gesture, cls: '-left-6 top-1/2 -translate-y-1/2', label: 'Stretch overlay left' },
+                    { gesture: 'resize-e' as Gesture, cls: 'right-[-24px] top-1/2 -translate-y-1/2', label: 'Stretch overlay right' },
+                  ]).map((h) => (
+                    <span
+                      key={h.gesture}
+                      className={'pointer-events-auto absolute z-40 h-12 w-12 touch-none ' + h.cls}
+                      onPointerDown={(e) => beginElementGesture(selectedElement, h.gesture, e)}
+                      aria-label={h.label}
+                      role="button"
+                    />
+                  ))}
+                  <span
+                    className="pointer-events-auto absolute z-40 left-1/2 -top-[58px] h-12 w-12 -translate-x-1/2 touch-none"
+                    onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
+                    aria-label="Rotate overlay"
+                    role="button"
+                  />
+
                   {([
                     { cls: 'left-0 top-0' },
                     { cls: 'right-0 top-0' },
@@ -3046,23 +3098,6 @@ function VideoEditor() {
                     <RotateCw className="h-3.5 w-3.5 text-white" />
                   </span>
                 </div>
-              )}
-
-              {/* crop mode surface — move/resize the region that survives */}
-              {cropMode && (
-                <CropWorkspace
-                  crop={currentCrop}
-                  sourceAspect={cropSourceAspect}
-                  rotation={cropMode.type === 'clip' ? (project.clips.find((c) => c.id === cropMode.id)?.transform.rotation ?? 0) : (project.elements.find((el) => el.id === cropMode.id)?.rotation ?? 0)}
-                  onChange={applyCropChange}
-                  onEdgeChange={updateCropEdge}
-                  onAspect={cropToAspect}
-                  onRotate={setCropRotation}
-                  onFlip={setCropFlip}
-                  onReset={() => applyCropChange(null)}
-                  onCancel={cancelCrop}
-                  onApply={() => { setCropMode(null); notify('Crop applied — all crop and transform settings are preserved.'); }}
-                />
               )}
 
               {cropMode && cropRect && previewScale > 0 && (
@@ -3148,6 +3183,26 @@ function VideoEditor() {
               )}
             </div>
           </div>
+
+          {cropMode && (
+              {/* crop mode surface — move/resize the region that survives */}
+              {cropMode && (
+                <CropWorkspace
+                  crop={currentCrop}
+                  sourceAspect={cropSourceAspect}
+                  rotation={cropMode.type === 'clip' ? (project.clips.find((c) => c.id === cropMode.id)?.transform.rotation ?? 0) : (project.elements.find((el) => el.id === cropMode.id)?.rotation ?? 0)}
+                  onChange={applyCropChange}
+                  onEdgeChange={updateCropEdge}
+                  onAspect={cropToAspect}
+                  onRotate={setCropRotation}
+                  onFlip={setCropFlip}
+                  onReset={() => applyCropChange(null)}
+                  onCancel={cancelCrop}
+                  onApply={() => { setCropMode(null); notify('Crop applied — all crop and transform settings are preserved.'); }}
+                />
+              )}
+
+          )}
 
               <p className="mx-auto max-w-md px-2 pb-1 text-center text-[10px] leading-4 text-white/35 sm:hidden">
                 Drag to move · pinch to resize · two-finger twist to rotate · long-press to select
@@ -4522,7 +4577,7 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
   ];
   return (
     <aside
-      className="absolute inset-x-0 bottom-0 z-[55] max-h-[48dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-white/15 bg-black/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-white shadow-2xl backdrop-blur-xl md:bottom-2 md:left-2 md:right-auto md:w-[min(420px,calc(100%-1rem))] md:max-h-[42dvh] md:rounded-2xl md:pb-3"
+      className="relative z-[55] mx-auto mt-2 w-full max-w-[420px] max-h-[36dvh] overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-black/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-white shadow-2xl backdrop-blur-xl md:max-h-[34dvh] md:pb-3"
       style={{ touchAction: 'pan-y' }}
       aria-label="Professional crop controls"
     >
