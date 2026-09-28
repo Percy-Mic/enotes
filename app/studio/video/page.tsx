@@ -83,8 +83,8 @@ const LABEL_W = 64;
 const BASE_PX_PER_SEC = 46;
 /** Tap/slop threshold separating taps from drags. */
 const TAP_SLOP = 8;
-/** Handle hit tolerance in canvas units (grows for small previews). */
-const HANDLE_PX = 26;
+/** Screen-space touch target for transform handles. Keep the visible handle compact; the hit area is larger. */
+const HANDLE_PX = 32;
 /** Distance of the rotate handle above the top edge (canvas units). */
 const ROTATE_HANDLE_DY = 34;
 
@@ -1970,6 +1970,126 @@ function VideoEditor() {
     setSelectedClipId(null);
   };
 
+
+  /* Mobile direct-manipulation gestures.
+     One finger stays on the existing move/resize/rotate path.
+     Two fingers add pinch-to-scale, rotate-to-rotate, and pan-to-move.
+     The gesture helper only listens to touch/stylus pointers, so desktop
+     mouse interaction remains unchanged. */
+  useMobileGestures(canvasRef, {
+    onPinch: (scale) => {
+      if (cropMode) return;
+      const element = docRef.current.project.elements.find((el) => el.id === selectedElementId);
+      if (element) {
+        const factor = clampNum(scale, 0.85, 1.15);
+        const centerX = element.x + element.width / 2;
+        const centerY = element.y + element.height / 2;
+        const width = clampNum(element.width * factor, 24, 1400);
+        const height = clampNum(element.height * factor, 24, 1400);
+        updateElement(
+          element.id,
+          {
+            width: Math.round(width),
+            height: Math.round(height),
+            x: Math.round(centerX - width / 2),
+            y: Math.round(centerY - height / 2),
+          },
+          'Pinch resize overlay',
+          `pinch-size-${element.id}`,
+        );
+        return;
+      }
+
+      const clip = docRef.current.project.clips.find((item) => item.id === selectedClipId);
+      if (clip) {
+        const factor = clampNum(scale, 0.85, 1.15);
+        updateClip(
+          clip.id,
+          { transform: { ...clip.transform, scale: clampNum(clip.transform.scale * factor, 0.1, 4) } },
+          'Pinch resize video',
+          `pinch-scale-${clip.id}`,
+        );
+      }
+    },
+    onRotate: (degrees) => {
+      if (cropMode) return;
+      const element = docRef.current.project.elements.find((el) => el.id === selectedElementId);
+      if (element) {
+        const rotation = Math.round(element.rotation + degrees);
+        updateElement(element.id, { rotation }, 'Two-finger rotate overlay', `pinch-rotate-${element.id}`);
+        return;
+      }
+
+      const clip = docRef.current.project.clips.find((item) => item.id === selectedClipId);
+      if (clip) {
+        const rotation = Math.round(clip.transform.rotation + degrees);
+        updateClip(
+          clip.id,
+          { transform: { ...clip.transform, rotation } },
+          'Two-finger rotate video',
+          `pinch-rotate-clip-${clip.id}`,
+        );
+      }
+    },
+    onTwoFingerPan: (delta) => {
+      if (cropMode) return;
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      const scaleX = project.canvas.width / rect.width;
+      const scaleY = project.canvas.height / rect.height;
+
+      const element = docRef.current.project.elements.find((el) => el.id === selectedElementId);
+      if (element) {
+        updateElement(
+          element.id,
+          {
+            x: Math.round(element.x + delta.x * scaleX),
+            y: Math.round(element.y + delta.y * scaleY),
+          },
+          'Two-finger move overlay',
+          `pinch-pan-${element.id}`,
+        );
+        return;
+      }
+
+      const clip = docRef.current.project.clips.find((item) => item.id === selectedClipId);
+      if (clip) {
+        updateClip(
+          clip.id,
+          {
+            transform: {
+              ...clip.transform,
+              offset_x: Math.round(clip.transform.offset_x + delta.x * scaleX),
+              offset_y: Math.round(clip.transform.offset_y + delta.y * scaleY),
+            },
+          },
+          'Two-finger move video',
+          `pinch-pan-clip-${clip.id}`,
+        );
+      }
+    },
+    onLongPress: (point) => {
+      if (cropMode) return;
+      const p = canvasPoint(point);
+      if (!p) return;
+      const hit = elementAt(p.x, p.y);
+      if (hit) {
+        setSelectedElementId(hit.id);
+        setSelectedClipId(null);
+        setSelectedAudioId(null);
+        return;
+      }
+      const clip = clipAt(p.x, p.y);
+      if (clip) {
+        setSelectedClipId(clip.id);
+        setSelectedElementId(null);
+        setSelectedAudioId(null);
+      }
+    },
+  }, !cropMode);
+
   /* live canvas scale for screen-space selection handles */
   const [previewScale, setPreviewScale] = useState(0);
   useEffect(() => {
@@ -2799,11 +2919,11 @@ function VideoEditor() {
               <canvas
                 ref={canvasRef}
                 onPointerDown={canvasPointerDown}
-                className="block bg-black"
+                className="block select-none bg-black"
                 style={{
                   aspectRatio: `${project.canvas.width} / ${project.canvas.height}`,
-                  maxHeight: 'min(48dvh, 620px)',
-                  maxWidth: 'min(100%, 92vw)',
+                  maxHeight: 'min(52dvh, 620px)',
+                  maxWidth: 'min(100%, 94vw)',
                   touchAction: 'none',
                 }}
                 aria-label="Video preview — tap the video or an overlay to select, drag to move, corner to resize, edge to stretch, top handle to rotate"
@@ -2829,14 +2949,14 @@ function VideoEditor() {
                   ]).map((c, i) => (
                     <span
                       key={i}
-                      className={`absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow ${c.cls}`}
+                      className={`absolute h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow ${c.cls}`}
                     />
                   ))}
-                  <span className="absolute left-1/2 top-0 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute bottom-0 left-1/2 h-3.5 w-3.5 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute left-0 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute right-0 top-1/2 h-3.5 w-3.5 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[34px] items-center justify-center rounded-full border-2 border-white bg-[#FFB6C1] shadow">
+                  <span className="absolute left-1/2 top-0 h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
+                  <span className="absolute bottom-0 left-1/2 h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
+                  <span className="absolute left-0 top-1/2 h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
+                  <span className="absolute right-0 top-1/2 h-5 w-5 sm:h-3.5 sm:w-3.5 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
+                  <span className="absolute left-1/2 top-0 flex h-9 w-9 sm:h-7 sm:w-7 -translate-x-1/2 -translate-y-[34px] items-center justify-center rounded-full border-2 border-white bg-[#FFB6C1] shadow">
                     <RotateCw className="h-3.5 w-3.5 text-white" />
                   </span>
                   <span className="absolute -top-5 left-0 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-bold text-white/90">
@@ -2875,7 +2995,7 @@ function VideoEditor() {
                   <span className="absolute bottom-0 left-1/2 h-3.5 w-3.5 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
                   <span className="absolute left-0 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
                   <span className="absolute right-0 top-1/2 h-3.5 w-3.5 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
-                  <span className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[34px] items-center justify-center rounded-full border-2 border-white bg-[#E5798F] shadow">
+                  <span className="absolute left-1/2 top-0 flex h-9 w-9 sm:h-7 sm:w-7 -translate-x-1/2 -translate-y-[34px] items-center justify-center rounded-full border-2 border-white bg-[#E5798F] shadow">
                     <RotateCw className="h-3.5 w-3.5 text-white" />
                   </span>
                 </div>
@@ -2982,6 +3102,9 @@ function VideoEditor() {
             </div>
           </div>
 
+              <p className="mx-auto max-w-md px-2 pb-1 text-center text-[10px] leading-4 text-white/35 sm:hidden">
+                Drag to move · pinch to resize · two-finger twist to rotate · long-press to select
+              </p>
           {/* transport */}
           <div className="flex items-center justify-center gap-3 py-1.5">
             <button onClick={() => seekTo(playheadRef.current - 1 / 30)} aria-label="Previous frame" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
@@ -3107,14 +3230,14 @@ function VideoEditor() {
                         <span
                           data-timeline-handle="true"
                           onPointerDown={(e) => startTrim(e, clip, 'start')}
-                          className="absolute inset-y-0 left-0 z-30 w-2.5 cursor-ew-resize touch-none bg-gradient-to-r from-[#FFB6C1]/90 to-transparent"
+                          className="absolute inset-y-0 left-0 z-30 w-3.5 sm:w-2.5 cursor-ew-resize touch-none bg-gradient-to-r from-[#FFB6C1]/90 to-transparent"
                           role="slider"
                           aria-label={`Trim start of ${clip.name}`}
                         />
                         <span
                           data-timeline-handle="true"
                           onPointerDown={(e) => startTrim(e, clip, 'end')}
-                          className="absolute inset-y-0 right-0 z-30 w-2.5 cursor-ew-resize touch-none bg-gradient-to-l from-[#FFB6C1]/90 to-transparent"
+                          className="absolute inset-y-0 right-0 z-30 w-3.5 sm:w-2.5 cursor-ew-resize touch-none bg-gradient-to-l from-[#FFB6C1]/90 to-transparent"
                           role="slider"
                           aria-label={`Trim end of ${clip.name}`}
                         />
@@ -3173,7 +3296,7 @@ function VideoEditor() {
                             <span
                               data-timeline-handle="true"
                               onPointerDown={(e) => beginOverlayItemResize(e, el, 'start')}
-                              className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-ew-resize bg-white/40"
+                              className="absolute inset-y-0 left-0 z-10 w-3 sm:w-1.5 cursor-ew-resize bg-white/40"
                               role="slider"
                               aria-label="Overlay start"
                             />
@@ -3263,7 +3386,7 @@ function VideoEditor() {
                             {fadeOut > 0 && <span className="absolute inset-y-0 right-0 w-1/5 bg-gradient-to-l from-white/20 to-transparent" title={`Fade out ${fadeOut.toFixed(1)}s`} />}
                             <span className="relative z-10 block truncate px-1 pt-1 font-semibold text-emerald-50">{a.kind === 'voiceover' ? 'VO' : '♪'} {a.name}</span>
                             <span className="relative z-10 block truncate px-1 text-[7px] text-white/45">{a.provider || 'audio'} · {Math.round(a.volume * 100)}%</span>
-                            <span data-timeline-handle="true" onPointerDown={(ev) => beginAudioResize(ev, a, 'start')} className="absolute inset-y-0 left-0 z-20 w-2 cursor-ew-resize bg-emerald-200/40" role="slider" aria-label="Audio trim start" />
+                            <span data-timeline-handle="true" onPointerDown={(ev) => beginAudioResize(ev, a, 'start')} className="absolute inset-y-0 left-0 z-20 w-3 sm:w-2 cursor-ew-resize bg-emerald-200/40" role="slider" aria-label="Audio trim start" />
                             <span data-timeline-handle="true" onPointerDown={(ev) => beginAudioResize(ev, a, 'end')} className="absolute inset-y-0 right-0 z-20 w-2 cursor-ew-resize bg-emerald-200/40" role="slider" aria-label="Audio trim end" />
                           </div>
                         );
