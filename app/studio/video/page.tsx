@@ -88,6 +88,7 @@ const HANDLE_PX = 32;
 /** Distance of the rotate handle above the top edge (canvas units). */
 const ROTATE_HANDLE_DY = 34;
 
+const EDITOR_ACTION_PILL = "flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-white/[0.07] px-3 text-[10px] font-semibold text-white/80 active:bg-white/[0.13] focus-visible:ring-2 focus-visible:ring-[#FFB6C1]";
 function fmt(t: number): string {
   const s = Math.max(0, t);
   const m = Math.floor(s / 60);
@@ -3051,32 +3052,6 @@ function VideoEditor() {
                     role="button"
                   />
 
-                  {/* Real touch targets: the visible dots are only visual. */}
-                  {([
-                    { gesture: 'resize-nw' as Gesture, cls: '-left-6 -top-6', label: 'Resize overlay top-left' },
-                    { gesture: 'resize-ne' as Gesture, cls: '-right-6 -top-6', label: 'Resize overlay top-right' },
-                    { gesture: 'resize-sw' as Gesture, cls: '-left-6 -bottom-6', label: 'Resize overlay bottom-left' },
-                    { gesture: 'resize-se' as Gesture, cls: '-right-6 -bottom-6', label: 'Resize overlay bottom-right' },
-                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 -top-6 -translate-x-1/2', label: 'Stretch overlay top' },
-                    { gesture: 'resize-s' as Gesture, cls: 'bottom-[-24px] left-1/2 -translate-x-1/2', label: 'Stretch overlay bottom' },
-                    { gesture: 'resize-w' as Gesture, cls: '-left-6 top-1/2 -translate-y-1/2', label: 'Stretch overlay left' },
-                    { gesture: 'resize-e' as Gesture, cls: 'right-[-24px] top-1/2 -translate-y-1/2', label: 'Stretch overlay right' },
-                  ]).map((h) => (
-                    <span
-                      key={h.gesture}
-                      className={'pointer-events-auto absolute z-40 h-12 w-12 touch-none ' + h.cls}
-                      onPointerDown={(e) => beginElementGesture(selectedElement, h.gesture, e)}
-                      aria-label={h.label}
-                      role="button"
-                    />
-                  ))}
-                  <span
-                    className="pointer-events-auto absolute z-40 left-1/2 -top-[58px] h-12 w-12 -translate-x-1/2 touch-none"
-                    onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
-                    aria-label="Rotate overlay"
-                    role="button"
-                  />
-
                   {([
                     { cls: 'left-0 top-0' },
                     { cls: 'right-0 top-0' },
@@ -3117,8 +3092,30 @@ function VideoEditor() {
                   }}
                 >
                   {([
-                    { cls: 'left-0 top-0' },
-                    { cls: 'right-0 top-0' },
+                    { gesture: 'resize-nw' as Gesture, cls: '-left-6 -top-6', label: 'Resize overlay top-left' },
+                    { gesture: 'resize-ne' as Gesture, cls: '-right-6 -top-6', label: 'Resize overlay top-right' },
+                    { gesture: 'resize-sw' as Gesture, cls: '-left-6 -bottom-6', label: 'Resize overlay bottom-left' },
+                    { gesture: 'resize-se' as Gesture, cls: '-right-6 -bottom-6', label: 'Resize overlay bottom-right' },
+                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 -top-6 -translate-x-1/2', label: 'Stretch overlay top' },
+                    { gesture: 'resize-s' as Gesture, cls: 'bottom-[-24px] left-1/2 -translate-x-1/2', label: 'Stretch overlay bottom' },
+                    { gesture: 'resize-w' as Gesture, cls: '-left-6 top-1/2 -translate-y-1/2', label: 'Stretch overlay left' },
+                    { gesture: 'resize-e' as Gesture, cls: 'right-[-24px] top-1/2 -translate-y-1/2', label: 'Stretch overlay right' },
+                  ]).map((h) => (
+                    <span
+                      key={h.gesture}
+                      className={'pointer-events-auto absolute z-40 h-12 w-12 touch-none ' + h.cls}
+                      onPointerDown={(e) => beginElementGesture(selectedElement, h.gesture, e)}
+                      aria-label={h.label}
+                      role="button"
+                    />
+                  ))}
+                  <span
+                    className="pointer-events-auto absolute z-40 left-1/2 -top-[58px] h-12 w-12 -translate-x-1/2 touch-none"
+                    onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
+                    aria-label="Rotate overlay"
+                    role="button"
+                  />
+                  {([          { cls: 'right-0 top-0' },
                     { cls: 'left-0 bottom-0' },
                     { cls: 'right-0 bottom-0' },
                   ]).map((c, i) => (
@@ -3543,82 +3540,68 @@ function VideoEditor() {
             </div>
           </div>
 
-          {/* contextual selection toolbar — only when something is selected */}
-          {selectedClip ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Clip tools">
-              <button onClick={splitAtPlayhead} title="Split at playhead (S)" className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
-                <Scissors className="h-3.5 w-3.5" /> Split
-              </button>
-              <label className="flex items-center gap-1.5 rounded-lg bg-white/10 px-2.5 py-2 text-xs">
-                <span className="text-white/60">Speed</span>
-                <select
-                  value={String(selectedClip.speed)}
-                  onChange={(e) => updateClip(selectedClip.id, { speed: Number(e.target.value) }, 'Change speed')}
-                  aria-label="Clip speed"
-                  className="rounded bg-transparent text-xs outline-none"
-                >
-                  {SPEED_OPTIONS.map((s) => (
-                    <option key={s} value={s} className="text-black">{s}×</option>
-                  ))}
-                </select>
-              </label>
-              <button onClick={startClipCrop} title="Crop this video (renders in the export)" className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
-                <Crop className="h-3.5 w-3.5" /> Crop
-              </button>
-              <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} aria-label="Mute clip audio" title="Mute/unmute original audio" className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
-                {selectedClip.muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-              </button>
-              <button
-                onClick={() => void reverseSelectedClip()}
-                disabled={preparingReverse === selectedClip.id}
-                className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:cursor-wait disabled:opacity-60 ${selectedClip.reverse ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
-                title={selectedClip.reverse ? 'Disable reverse playback' : 'Prepare and reverse playback'}
-              >
-                {preparingReverse === selectedClip.id ? 'Preparing…' : selectedClip.reverse ? 'Normal' : 'Reverse'}
-              </button>
-              <button onClick={() => moveClip(selectedClip.id, -1)} aria-label="Move clip left" title="Move clip left" className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><ArrowLeft className="h-3.5 w-3.5" /></button>
-              <button onClick={() => moveClip(selectedClip.id, 1)} aria-label="Move clip right" title="Move clip right" className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><ArrowRight className="h-3.5 w-3.5" /></button>
-              <button onClick={() => rotateSelectedClip(-90)} className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Rotate counterclockwise" aria-label="Rotate counterclockwise"><RotateCcw className="h-3.5 w-3.5" /></button>
-              <button onClick={() => rotateSelectedClip(90)} className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Rotate clockwise" aria-label="Rotate clockwise"><RotateCw className="h-3.5 w-3.5" /></button>
-              <button onClick={() => duplicateClip(selectedClip)} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><Copy className="h-3.5 w-3.5" /> Duplicate</button>
-              <button onClick={() => openTool('look')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Filters, effects, transitions">Adjust</button>
-              <button onClick={() => deleteClip(selectedClip.id)} className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-white"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
-            </div>
-          ) : selectedElement ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Overlay tools">
-              <button onClick={() => openTool(inspectorTool)} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Open the inspector">Edit {selectedElement.kind}</button>
-              {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && (
-                <button onClick={startElementCrop} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Crop this media">
-                  <Crop className="h-3.5 w-3.5" /> Crop
-                </button>
+          {/* contextual editor actions — direct, thumb-friendly, and selection-aware */}
+          {(selectedClip || selectedElement || selectedAudio) ? (
+            <div className="mt-1.5 -mx-1 border-t border-white/10 bg-[#101010]/96 px-1.5 pt-1.5 backdrop-blur-xl" aria-label="Contextual editor actions">
+              {selectedClip && (
+                <>
+                  <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
+                    {[
+                      { label: 'Edit', icon: <Scissors className="h-4 w-4" />, action: () => openTool('motion') },
+                      { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => openTool('audio') },
+                      { label: 'Text', icon: <Type className="h-4 w-4" />, action: () => { addTextElement(); } },
+                      { label: 'Effects', icon: <Sparkles className="h-4 w-4" />, action: () => openTool('look') },
+                      { label: 'Magic', icon: <Sparkles className="h-4 w-4" />, action: () => { openTool('motion'); notify('Magic tools are ready in Motion — keyframes, speed and transform stay on-canvas.'); } },
+                      { label: 'Captions', icon: <Type className="h-4 w-4" />, action: () => { openTool('text'); notify('Add editable captions directly on the video. Automatic speech-to-text can be connected later without changing the project format.'); } },
+                    ].map((item) => (
+                      <button
+                        key={item.label}
+                        onClick={item.action}
+                        className="flex min-w-[64px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 text-[9px] font-semibold text-white/65 active:bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                        aria-label={item.label}
+                      >
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.07] text-white/90">{item.icon}</span>
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 pt-1">
+                    <button onClick={splitAtPlayhead} className={`${EDITOR_ACTION_PILL}`}><Scissors className="h-4 w-4" />Split</button>
+                    <button onClick={() => openTool('media')} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Replace</button>
+                    <button onClick={() => deleteClip(selectedClip.id)} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Delete</button>
+                    <button onClick={() => updateClip(selectedClip.id, { speed: selectedClip.speed >= 2 ? 1 : selectedClip.speed * 2 }, 'Change speed')} className={`${EDITOR_ACTION_PILL}`}><SkipForward className="h-4 w-4" />Speed {selectedClip.speed}×</button>
+                    <button onClick={startClipCrop} className={`${EDITOR_ACTION_PILL}`}><Crop className="h-4 w-4" />Crop</button>
+                    <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={`${EDITOR_ACTION_PILL}`}>{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Mute'}</button>
+                    <button onClick={() => duplicateClip(selectedClip)} className={`${EDITOR_ACTION_PILL}`}><Copy className="h-4 w-4" />Duplicate</button>
+                    <button onClick={() => void reverseSelectedClip()} disabled={preparingReverse === selectedClip.id} className={`${EDITOR_ACTION_PILL} disabled:opacity-40`}>{preparingReverse === selectedClip.id ? 'Preparing…' : 'Reverse'}</button>
+                  </div>
+                </>
               )}
-              <button onClick={() => duplicateElement(selectedElement)} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><Copy className="h-3.5 w-3.5" /> Duplicate</button>
-              <button onClick={() => updateElement(selectedElement.id, { z: Math.max(...project.elements.map((e) => e.z), 0) + 1 }, 'Bring to front')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Bring to front">Front</button>
-              <button onClick={() => updateElement(selectedElement.id, { z: Math.max(1, Math.min(...project.elements.map((e) => e.z)) - 1) }, 'Send to back')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Send to back">Back</button>
-              <button onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')} aria-label="Rotate counterclockwise" className="rounded-lg bg-white/10 p-2 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"><RotateCcw className="h-3.5 w-3.5" /></button>
-              {selectedElement.kind === 'video' && (
-                <button onClick={() => moveVideoOverlayToMainTrack(selectedElement)} className="flex items-center gap-1 rounded-lg bg-[#E5798F] px-3 py-2 text-xs font-bold focus-visible:ring-2 focus-visible:ring-white">
-                  <Film className="h-3.5 w-3.5" /> To main track
-                </button>
+
+              {selectedElement && (
+                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
+                  <button onClick={() => openTool(inspectorTool)} className={`${EDITOR_ACTION_PILL}`}><Type className="h-4 w-4" />Edit</button>
+                  {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button onClick={startElementCrop} className={`${EDITOR_ACTION_PILL}`}><Crop className="h-4 w-4" />Crop</button>}
+                  <button onClick={() => duplicateElement(selectedElement)} className={`${EDITOR_ACTION_PILL}`}><Copy className="h-4 w-4" />Duplicate</button>
+                  <button onClick={() => updateElement(selectedElement.id, { z: Math.max(...project.elements.map((e) => e.z), 0) + 1 }, 'Bring to front')} className={`${EDITOR_ACTION_PILL}`}><ArrowRight className="h-4 w-4 rotate-[-90deg]" />Front</button>
+                  <button onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')} className={`${EDITOR_ACTION_PILL}`}><RotateCcw className="h-4 w-4" />Rotate</button>
+                  {selectedElement.kind === 'video' && <button onClick={() => moveVideoOverlayToMainTrack(selectedElement)} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Main track</button>}
+                  <button onClick={() => deleteElement(selectedElement.id)} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Delete</button>
+                </div>
               )}
-              <button onClick={() => deleteElement(selectedElement.id)} className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-white"><Trash2 className="h-3.5 w-3.5" /> Delete</button>
-            </div>
-          ) : selectedAudio ? (
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5" aria-label="Audio tools">
-              <button onClick={() => openTool('audio')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">Edit audio</button>
-              <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">Start here</button>
-              <button
-                onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')}
-                className="flex items-center gap-1 rounded-lg bg-red-500/20 px-3 py-2 text-xs font-semibold text-red-200 focus-visible:ring-2 focus-visible:ring-white"
-              >
-                <Trash2 className="h-3.5 w-3.5" /> Remove
-              </button>
+
+              {selectedAudio && (
+                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
+                  <button onClick={() => openTool('audio')} className={`${EDITOR_ACTION_PILL}`}><Music className="h-4 w-4" />Edit</button>
+                  <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className={`${EDITOR_ACTION_PILL}`}><Play className="h-4 w-4" />Start here</button>
+                  <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Delete</button>
+                </div>
+              )}
             </div>
           ) : (
-            <p className="mt-1.5 text-center text-[10px] text-white/30">
-              Tap a clip, overlay or audio track to edit it · nothing selected
-            </p>
+            <p className="mt-1.5 text-center text-[10px] text-white/25">Select a clip, overlay or audio to reveal contextual editing tools.</p>
           )}
+
         </section>
       </div>
 
@@ -4136,15 +4119,14 @@ function VideoEditor() {
             ) : selectedClip ? (
               <div className="space-y-3 rounded-xl bg-white/5 p-3">
                 <p className="text-xs font-semibold text-white/70">Selected video layer</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <Slider label="X" min={-project.canvas.width} max={project.canvas.width} value={selectedClip.transform.offset_x}
-                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: v } }, 'Move X', `mx-${selectedClip.id}`)} />
-                  <Slider label="Y" min={-project.canvas.height} max={project.canvas.height} value={selectedClip.transform.offset_y}
-                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_y: v } }, 'Move Y', `my-${selectedClip.id}`)} />
-                  <Slider label="Scale" min={0.1} max={3} step={0.01} value={selectedClip.transform.scale}
-                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: v } }, 'Scale clip', `ms-${selectedClip.id}`)} />
-                  <Slider label="Rotation" min={-180} max={180} value={selectedClip.transform.rotation}
-                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: v } }, 'Rotate clip', `mr-${selectedClip.id}`)} />
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <p className="text-[10px] leading-4 text-white/45">Transform is direct on the preview: drag to move, pinch to scale, and twist with two fingers to rotate. Use the compact handles for precise one-axis or corner resizing.</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button onClick={() => rotateSelectedClip(-90)} className={`${EDITOR_ACTION_PILL}`}><RotateCcw className="h-4 w-4" />90°</button>
+                    <button onClick={() => rotateSelectedClip(90)} className={`${EDITOR_ACTION_PILL}`}><RotateCw className="h-4 w-4" />90°</button>
+                    <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_h: !selectedClip.transform.flip_h } }, 'Flip horizontal')} className={`${EDITOR_ACTION_PILL}`}><FlipHorizontal className="h-4 w-4" />Flip</button>
+                    <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_v: !selectedClip.transform.flip_v } }, 'Flip vertical')} className={`${EDITOR_ACTION_PILL}`}><FlipVertical className="h-4 w-4" />Flip V</button>
+                  </div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                   <div className="mb-2 flex items-center justify-between">
@@ -4596,12 +4578,51 @@ function VideoEditor() {
 function Slider({ label, min, max, step = 1, value, onChange }: {
   label: string; min: number; max: number; step?: number; value: number; onChange: (v: number) => void;
 }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const clampValue = (v: number) => {
+    const snapped = Math.round(v / step) * step;
+    return Number(clampNum(snapped, min, max).toFixed(4));
+  };
+  const setFromClientX = (clientX: number) => {
+    const rect = trackRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0) return;
+    onChange(clampValue(min + ((clientX - rect.left) / rect.width) * (max - min)));
+  };
   return (
-    <label className="space-y-1">
-      <span className="flex justify-between text-white/60">
-        {label} <span className="tabular-nums">{value}</span>
+    <label className="block select-none">
+      <span className="mb-1.5 flex items-center justify-between text-[10px] font-semibold text-white/55">
+        <span>{label}</span>
+        <span className="rounded-full bg-white/[0.07] px-1.5 py-0.5 tabular-nums text-white/70">{Number(value.toFixed(2))}</span>
       </span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full" />
+      <div
+        ref={trackRef}
+        role="slider"
+        tabIndex={0}
+        aria-label={label}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          setFromClientX(e.clientX);
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) setFromClientX(e.clientX);
+        }}
+        onKeyDown={(e) => {
+          const delta = step * (e.shiftKey ? 10 : 1);
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { e.preventDefault(); onChange(clampValue(value - delta)); }
+          if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { e.preventDefault(); onChange(clampValue(value + delta)); }
+          if (e.key === 'Home') { e.preventDefault(); onChange(min); }
+          if (e.key === 'End') { e.preventDefault(); onChange(max); }
+        }}
+        className="group relative h-7 w-full touch-none cursor-pointer"
+      >
+        <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/10" />
+        <span className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#E5798F]" style={{ width: `${((value - min) / Math.max(0.0001, max - min)) * 100}%` }} />
+        <span className="absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow-lg transition-transform group-active:scale-110" style={{ left: `${((value - min) / Math.max(0.0001, max - min)) * 100}%` }} />
+      </div>
     </label>
   );
 }
@@ -4653,69 +4674,116 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
 }) {
   const c = crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
   const [rotation, setRotation] = useState(initialRotation);
-  useEffect(() => setRotation(initialRotation), [initialRotation]);
-  const visibleW = 1 - c.left - c.right;
-  const visibleH = 1 - c.top - c.bottom;
-  const cropAspect = croppedAspect(sourceAspect, c);
-  const setRot = (v: number) => { setRotation(v); onRotate(v); };
+  const rotationRef = useRef(initialRotation);
+  useEffect(() => {
+    setRotation(initialRotation);
+    rotationRef.current = initialRotation;
+  }, [initialRotation]);
+
   const aspectPresets = [
-    { label: 'Original', value: null }, { label: '16:9', value: 16 / 9 },
-    { label: '9:16', value: 9 / 16 }, { label: '1:1', value: 1 },
-    { label: '4:5', value: 4 / 5 }, { label: '4:3', value: 4 / 3 },
-    { label: '3:2', value: 3 / 2 }, { label: '21:9', value: 21 / 9 },
+    { label: 'Original', value: null, icon: '◫' },
+    { label: '16:9', value: 16 / 9, icon: '▭' },
+    { label: '9:16', value: 9 / 16, icon: '▯' },
+    { label: '1:1', value: 1, icon: '□' },
+    { label: '4:5', value: 4 / 5, icon: '▯' },
+    { label: '4:3', value: 4 / 3, icon: '▭' },
+    { label: '3:2', value: 3 / 2, icon: '▭' },
+    { label: '21:9', value: 21 / 9, icon: '▬' },
   ];
+
+  const setRot = (v: number) => {
+    const next = ((v + 180) % 360 + 360) % 360 - 180;
+    setRotation(next);
+    rotationRef.current = next;
+    onRotate(next);
+  };
+
+  const beginRotateScrub = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const update = (clientX: number) => {
+      const ratio = clampNum((clientX - rect.left) / Math.max(1, rect.width), 0, 1);
+      setRot(-180 + ratio * 360);
+    };
+    update(e.clientX);
+  };
+
   return (
     <aside
-      className="relative z-[55] mx-auto mt-2 w-full max-w-[420px] max-h-[36dvh] overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-black/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-white shadow-2xl backdrop-blur-xl md:max-h-[34dvh] md:pb-3"
+      className="relative z-[55] mx-auto mt-2 w-full max-w-[520px] rounded-2xl border border-white/10 bg-[#0b0b0b]/98 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-white shadow-2xl backdrop-blur-xl md:pb-3"
       style={{ touchAction: 'pan-y' }}
       aria-label="Professional crop controls"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <p className="text-sm font-bold">Crop & Frame</p>
-          <p className="text-[10px] text-white/45">Drag the crop window, or use precise controls.</p>
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#E5798F]/15 text-[#FFB6C1]"><Crop className="h-4 w-4" /></div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold">Crop</p>
+          <p className="text-[10px] text-white/40">Drag the frame. Pinch to resize. Two fingers rotate.</p>
         </div>
-        <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] tabular-nums text-white/60">{cropAspect.toFixed(2)}:1</span>
+        <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] font-semibold text-white/55">{Math.round(rotation)}°</span>
       </div>
+
       <div className="mt-3">
-        <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-white/45">Aspect ratio</p>
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-white/35">Frame</p>
+          <span className="text-[9px] text-white/30">No coordinates needed</span>
+        </div>
+        <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
           {aspectPresets.map((p) => (
-            <button key={p.label} onClick={() => { if (Number.isNaN(p.value as number)) return; onAspect(p.value); }} className="rounded-lg bg-white/10 px-2 py-2 text-[10px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">{p.label}</button>
+            <button
+              key={p.label}
+              onClick={() => onAspect(p.value)}
+              aria-pressed={p.value == null ? !crop : Math.abs(croppedAspect(sourceAspect, c) - p.value) < 0.03}
+              className="flex min-w-[58px] shrink-0 flex-col items-center gap-1 rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-2 text-[9px] font-semibold text-white/65 active:bg-[#E5798F]/20 aria-pressed:bg-[#E5798F]/20 aria-pressed:text-white"
+            >
+              <span className="text-base leading-none">{p.icon}</span>
+              {p.label}
+            </button>
           ))}
         </div>
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
-        {(['top','right','bottom','left'] as const).map((edge) => (
-          <label key={edge} className="text-[10px] text-white/55">
-            <span className="mb-1 flex justify-between"><span>{edge[0].toUpperCase() + edge.slice(1)}</span><span>{Math.round(c[edge] * 100)}%</span></span>
-            <input type="range" min="0" max="0.45" step="0.005" value={c[edge]} onChange={(e) => onEdgeChange(edge, Number(e.target.value))} className="w-full" />
-          </label>
-        ))}
-      </div>
-      <div className="mt-3">
-        <div className="mb-1.5 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-wide text-white/45">Straighten</p><span className="text-[10px] tabular-nums text-white/55">{rotation}°</span></div>
-        <input type="range" min="-180" max="180" step="0.1" value={rotation} onChange={(e) => setRot(Number(e.target.value))} className="w-full" aria-label="Crop rotation" />
-        <div className="mt-1 flex gap-1.5">
-          <button onClick={() => setRot(rotation - 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold active:bg-white/20">↶ 90°</button>
-          <button onClick={() => setRot(rotation + 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold active:bg-white/20">90° ↷</button>
-          <button onClick={() => setRot(0)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold active:bg-white/20">0°</button>
+
+      <div className="mt-3 rounded-xl bg-white/[0.035] px-3 py-2.5">
+        <div className="mb-1.5 flex items-center justify-between text-[9px] font-semibold text-white/40">
+          <span>Straighten</span><span className="tabular-nums text-white/65">{Math.round(rotation)}°</span>
+        </div>
+        <div
+          onPointerDown={beginRotateScrub}
+          className="relative h-8 touch-none rounded-lg bg-white/[0.04]"
+          role="slider"
+          tabIndex={0}
+          aria-label="Straighten"
+          aria-valuemin={-180}
+          aria-valuemax={180}
+          aria-valuenow={rotation}
+        >
+          <div className="absolute inset-x-2 top-1/2 h-px bg-white/15" />
+          <div className="absolute left-1/2 top-1/2 h-5 w-px -translate-y-1/2 bg-white/35" />
+          <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/35" />
+          <span className="absolute top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" style={{ left: `${((rotation + 180) / 360) * 100}%` }} />
+        </div>
+        <div className="mt-2 flex gap-1.5">
+          <button onClick={() => setRot(rotation - 90)} className={`${EDITOR_ACTION_PILL} flex-1 justify-center`}>↶ 90°</button>
+          <button onClick={() => setRot(rotation + 90)} className={`${EDITOR_ACTION_PILL} flex-1 justify-center`}>90° ↷</button>
+          <button onClick={() => setRot(0)} className={`${EDITOR_ACTION_PILL} flex-1 justify-center`}>Reset</button>
         </div>
       </div>
-      <div className="mt-3 flex gap-1.5">
-        <button onClick={() => onFlip('horizontal')} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold"><FlipHorizontal className="mr-1 inline h-3 w-3" />Flip H</button>
-        <button onClick={() => onFlip('vertical')} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold"><FlipVertical className="mr-1 inline h-3 w-3" />Flip V</button>
-        <button onClick={() => onChange(null)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">Full frame</button>
+
+      <div className="mt-2 flex gap-1.5">
+        <button onClick={() => onFlip('horizontal')} className={`${EDITOR_ACTION_PILL} flex-1 justify-center`}><FlipHorizontal className="h-4 w-4" />Flip</button>
+        <button onClick={() => onFlip('vertical')} className={`${EDITOR_ACTION_PILL} flex-1 justify-center`}><FlipVertical className="h-4 w-4" />Flip vertical</button>
+        <button onClick={() => onChange(null)} className={`${EDITOR_ACTION_PILL} flex-1 justify-center`}>Full frame</button>
       </div>
+
       <div className="mt-3 flex gap-1.5 border-t border-white/10 pt-3">
-        <button onClick={onCancel} className="flex-1 rounded-lg border border-white/15 bg-white/5 py-2 text-xs font-semibold">Cancel</button>
-        <button onClick={onReset} className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold">Reset</button>
-        <button onClick={onApply} className="flex-1 rounded-lg bg-[#E5798F] py-2 text-xs font-bold">Apply</button>
+        <button onClick={onCancel} className={`${EDITOR_ACTION_PILL} flex-1 justify-center`}>Cancel</button>
+        <button onClick={onReset} className={`${EDITOR_ACTION_PILL} justify-center`}>Reset</button>
+        <button onClick={onApply} className="flex-1 rounded-xl bg-[#E5798F] py-2.5 text-xs font-bold">Apply</button>
       </div>
     </aside>
   );
 }
-
 function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
   base: { left: number; top: number; width: number; height: number };
   crop: CropRect | null;
@@ -4821,7 +4889,7 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
       aria-label="Crop editor — drag the window or handles, then apply"
     >
       {/* dim the area that will be cut */}
-      <div className="pointer-events-none absolute inset-0 bg-black/15" />
+      <div className="pointer-events-none absolute inset-0 bg-black/[0.08]" />
       {/* surviving window */}
       <div
         className="absolute touch-none border-2 border-white bg-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.18)]"
