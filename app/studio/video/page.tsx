@@ -3184,24 +3184,21 @@ function VideoEditor() {
             </div>
           </div>
 
+          {/* crop mode controls stay below the preview so they never cover the media */}
           {cropMode && (
-              {/* crop mode surface — move/resize the region that survives */}
-              {cropMode && (
-                <CropWorkspace
-                  crop={currentCrop}
-                  sourceAspect={cropSourceAspect}
-                  rotation={cropMode.type === 'clip' ? (project.clips.find((c) => c.id === cropMode.id)?.transform.rotation ?? 0) : (project.elements.find((el) => el.id === cropMode.id)?.rotation ?? 0)}
-                  onChange={applyCropChange}
-                  onEdgeChange={updateCropEdge}
-                  onAspect={cropToAspect}
-                  onRotate={setCropRotation}
-                  onFlip={setCropFlip}
-                  onReset={() => applyCropChange(null)}
-                  onCancel={cancelCrop}
-                  onApply={() => { setCropMode(null); notify('Crop applied — all crop and transform settings are preserved.'); }}
-                />
-              )}
-
+            <CropWorkspace
+              crop={currentCrop}
+              sourceAspect={cropSourceAspect}
+              rotation={cropMode.type === 'clip' ? (project.clips.find((c) => c.id === cropMode.id)?.transform.rotation ?? 0) : (project.elements.find((el) => el.id === cropMode.id)?.rotation ?? 0)}
+              onChange={applyCropChange}
+              onEdgeChange={updateCropEdge}
+              onAspect={cropToAspect}
+              onRotate={setCropRotation}
+              onFlip={setCropFlip}
+              onReset={() => applyCropChange(null)}
+              onCancel={cancelCrop}
+              onApply={() => { setCropMode(null); notify('Crop applied — all crop and transform settings are preserved.'); }}
+            />
           )}
 
               <p className="mx-auto max-w-md px-2 pb-1 text-center text-[10px] leading-4 text-white/35 sm:hidden">
