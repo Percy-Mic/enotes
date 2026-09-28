@@ -4514,13 +4514,17 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
   const cropAspect = croppedAspect(sourceAspect, c);
   const setRot = (v: number) => { setRotation(v); onRotate(v); };
   const aspectPresets = [
-    { label: 'Free', value: Number.NaN }, { label: 'Original', value: null },
-    { label: '16:9', value: 16 / 9 }, { label: '9:16', value: 9 / 16 },
-    { label: '1:1', value: 1 }, { label: '4:5', value: 4 / 5 },
-    { label: '4:3', value: 4 / 3 }, { label: '21:9', value: 21 / 9 },
+    { label: 'Original', value: null }, { label: '16:9', value: 16 / 9 },
+    { label: '9:16', value: 9 / 16 }, { label: '1:1', value: 1 },
+    { label: '4:5', value: 4 / 5 }, { label: '4:3', value: 4 / 3 },
+    { label: '3:2', value: 3 / 2 }, { label: '21:9', value: 21 / 9 },
   ];
   return (
-    <aside className="absolute bottom-2 left-2 z-[55] w-[min(420px,calc(100%-1rem))] max-h-[42dvh] overflow-y-auto rounded-2xl border border-white/15 bg-black/90 p-3 text-white shadow-2xl backdrop-blur-xl" aria-label="Professional crop controls">
+    <aside
+      className="absolute inset-x-0 bottom-0 z-[55] max-h-[48dvh] overflow-y-auto overscroll-contain rounded-t-2xl border border-white/15 bg-black/95 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-white shadow-2xl backdrop-blur-xl md:bottom-2 md:left-2 md:right-auto md:w-[min(420px,calc(100%-1rem))] md:max-h-[42dvh] md:rounded-2xl md:pb-3"
+      style={{ touchAction: 'pan-y' }}
+      aria-label="Professional crop controls"
+    >
       <div className="flex items-center justify-between gap-2">
         <div>
           <p className="text-sm font-bold">Crop & Frame</p>
@@ -4546,11 +4550,11 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
       </div>
       <div className="mt-3">
         <div className="mb-1.5 flex items-center justify-between"><p className="text-[10px] font-bold uppercase tracking-wide text-white/45">Straighten</p><span className="text-[10px] tabular-nums text-white/55">{rotation}°</span></div>
-        <input type="range" min="-45" max="45" step="0.1" value={rotation} onChange={(e) => setRot(Number(e.target.value))} className="w-full" />
+        <input type="range" min="-180" max="180" step="0.1" value={rotation} onChange={(e) => setRot(Number(e.target.value))} className="w-full" aria-label="Crop rotation" />
         <div className="mt-1 flex gap-1.5">
-          <button onClick={() => setRot(rotation - 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">↶ 90°</button>
-          <button onClick={() => setRot(rotation + 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">90° ↷</button>
-          <button onClick={() => setRot(0)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold">0°</button>
+          <button onClick={() => setRot(rotation - 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold active:bg-white/20">↶ 90°</button>
+          <button onClick={() => setRot(rotation + 90)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold active:bg-white/20">90° ↷</button>
+          <button onClick={() => setRot(0)} className="flex-1 rounded-lg bg-white/10 py-2 text-[10px] font-semibold active:bg-white/20">0°</button>
         </div>
       </div>
       <div className="mt-3 flex gap-1.5">
@@ -4633,8 +4637,13 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
     window.addEventListener('pointercancel', onUp);
   };
 
-  const handleCls = 'absolute h-6 w-6 touch-none rounded-sm border-2 border-white bg-[#E5798F]/90 shadow';
-  const edgeCls = 'absolute touch-none bg-white/70';
+  /*
+   * Keep the visual crop handles compact, but give each one a 44px minimum
+   * touch target. This is important on phones where a fingertip should not
+   * have to land exactly on a 12–20px visual control.
+   */
+  const handleCls = 'absolute z-20 flex h-11 w-11 touch-none items-center justify-center rounded-md';
+  const edgeCls = 'absolute z-20 touch-none';
 
   return (
     <div
@@ -4659,16 +4668,32 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
           <div className="absolute inset-x-0 top-1/3 h-px bg-white/30" />
           <div className="absolute inset-x-0 top-2/3 h-px bg-white/30" />
         </div>
-        {/* corner handles */}
-        <span onPointerDown={(e) => beginDrag(e, 'nw')} className={`${handleCls} -left-2 -top-2 cursor-nwse-resize`} aria-label="Resize crop top-left" role="slider" />
-        <span onPointerDown={(e) => beginDrag(e, 'ne')} className={`${handleCls} -right-2 -top-2 cursor-nesw-resize`} aria-label="Resize crop top-right" role="slider" />
-        <span onPointerDown={(e) => beginDrag(e, 'sw')} className={`${handleCls} -bottom-2 -left-2 cursor-nesw-resize`} aria-label="Resize crop bottom-left" role="slider" />
-        <span onPointerDown={(e) => beginDrag(e, 'se')} className={`${handleCls} -bottom-2 -right-2 cursor-nwse-resize`} aria-label="Resize crop bottom-right" role="slider" />
-        {/* edge handles */}
-        <span onPointerDown={(e) => beginDrag(e, 'n')} className={`${edgeCls} -top-1.5 inset-x-3 h-3 cursor-ns-resize`} aria-label="Resize crop top" role="slider" />
-        <span onPointerDown={(e) => beginDrag(e, 's')} className={`${edgeCls} -bottom-1.5 inset-x-3 h-3 cursor-ns-resize`} aria-label="Resize crop bottom" role="slider" />
-        <span onPointerDown={(e) => beginDrag(e, 'w')} className={`${edgeCls} -left-1.5 inset-y-3 w-3 cursor-ew-resize`} aria-label="Resize crop left" role="slider" />
-        <span onPointerDown={(e) => beginDrag(e, 'e')} className={`${edgeCls} -right-1.5 inset-y-3 w-3 cursor-ew-resize`} aria-label="Resize crop right" role="slider" />
+        {/* Corner handles: 44px touch targets with compact visual grips. */}
+        <span onPointerDown={(e) => beginDrag(e, 'nw')} className={`${handleCls} -left-5 -top-5 cursor-nwse-resize`} aria-label="Resize crop top-left" role="slider">
+          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
+        </span>
+        <span onPointerDown={(e) => beginDrag(e, 'ne')} className={`${handleCls} -right-5 -top-5 cursor-nesw-resize`} aria-label="Resize crop top-right" role="slider">
+          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
+        </span>
+        <span onPointerDown={(e) => beginDrag(e, 'sw')} className={`${handleCls} -left-5 -bottom-5 cursor-nesw-resize`} aria-label="Resize crop bottom-left" role="slider">
+          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
+        </span>
+        <span onPointerDown={(e) => beginDrag(e, 'se')} className={`${handleCls} -right-5 -bottom-5 cursor-nwse-resize`} aria-label="Resize crop bottom-right" role="slider">
+          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
+        </span>
+        {/* Edge handles: wide/tall invisible targets, small visible grips. */}
+        <span onPointerDown={(e) => beginDrag(e, 'n')} className={`${edgeCls} -top-5 inset-x-5 h-10 cursor-ns-resize`} aria-label="Resize crop top" role="slider">
+          <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
+        </span>
+        <span onPointerDown={(e) => beginDrag(e, 's')} className={`${edgeCls} -bottom-5 inset-x-5 h-10 cursor-ns-resize`} aria-label="Resize crop bottom" role="slider">
+          <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
+        </span>
+        <span onPointerDown={(e) => beginDrag(e, 'w')} className={`${edgeCls} -left-5 inset-y-5 w-10 cursor-ew-resize`} aria-label="Resize crop left" role="slider">
+          <span className="absolute left-1/2 top-1/2 h-10 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
+        </span>
+        <span onPointerDown={(e) => beginDrag(e, 'e')} className={`${edgeCls} -right-5 inset-y-5 w-10 cursor-ew-resize`} aria-label="Resize crop right" role="slider">
+          <span className="absolute left-1/2 top-1/2 h-10 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
+        </span>
       </div>
 
       {/* apply / cancel / reset */}
