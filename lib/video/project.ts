@@ -276,7 +276,7 @@ export interface TimelineElement {
   background?: string | null;
   stroke_color?: string | null;
   shadow?: boolean;
-  animation?: 'none' | 'fade' | 'pop' | 'slide-up';
+  animation?: 'none' | 'fade' | 'pop' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'bounce' | 'typewriter' | 'shake' | 'blur-in' | 'rotate-in';
   // Optional video-overlay fields kept for backward-compatible project JSON.
   media_type?: string;
   source_duration?: number;
