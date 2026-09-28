@@ -4211,14 +4211,8 @@ function VideoEditor() {
                       onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, tint: v } }, 'Tint', `ti-${selectedClip.id}`)} />
                     <Slider label="Hue" min={-180} max={180} value={selectedClip.adjustments.hue}
                       onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, hue: v } }, 'Hue', `hu-${selectedClip.id}`)} />
-                    <Slider label="Highlights" min={50} max={150} value={100} onChange={() => {}} />
-                    <Slider label="Shadows" min={50} max={150} value={100} onChange={() => {}} />
                     <Slider label="Sharpen" min={0} max={100} value={selectedClip.adjustments.sharpen}
                       onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, sharpen: v } }, 'Sharpen', `sh-${selectedClip.id}`)} />
-                    <Slider label="Grain" min={0} max={100} value={selectedClip.adjustments.grain}
-                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, grain: v } }, 'Grain', `gr-${selectedClip.id}`)} />
-                    <Slider label="Vignette" min={0} max={100} value={selectedClip.adjustments.vignette}
-                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, vignette: v } }, 'Vignette', `vg-${selectedClip.id}`)} />
                     <Slider label="Blur" min={0} max={10} value={selectedClip.adjustments.blur}
                       onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, blur: v } }, 'Blur', `bl-${selectedClip.id}`)} />
                     <Slider label="Scale" min={50} max={200} value={selectedClip.transform.scale * 100}
