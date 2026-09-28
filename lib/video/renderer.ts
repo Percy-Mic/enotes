@@ -612,7 +612,7 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   // entry animation
   let progress = 1;
   if (el.animation && el.animation !== 'none') {
-    const ANIM = 0.4; // seconds
+    const ANIM = 0.55; // seconds
     progress = Math.min(1, timeIn / ANIM);
     if (el.animation === 'fade') ctx.globalAlpha = v.opacity * progress;
     if (el.animation === 'pop') ctx.scale(0.8 + 0.2 * easeOut(progress), 0.8 + 0.2 * easeOut(progress));
