@@ -179,6 +179,8 @@ function VideoEditor() {
   const [rippleEnabled, setRippleEnabled] = useState(false);
   const [tool, setTool] = useState<Tool>('media');
   const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
+  const [clipSoundMenuOpen, setClipSoundMenuOpen] = useState(false);
+  const [clipSpeedMenuOpen, setClipSpeedMenuOpen] = useState(false);
   const openTool = useCallback((next: Tool) => {
     setTool(next);
     setToolDrawerOpen(true);
@@ -1539,6 +1541,39 @@ function VideoEditor() {
   };
 
   /* ---------- element ops ---------- */
+  const addCaptionElement = () => {
+    const start = playheadRef.current;
+    const el: TimelineElement = {
+      id: makeVideoId('caption'),
+      kind: 'text',
+      content: 'Caption',
+      src: null,
+      track_id: project.tracks[0]?.id,
+      start,
+      end: Math.min(duration, start + 3),
+      x: project.canvas.width * 0.08,
+      y: project.canvas.height * 0.76,
+      width: project.canvas.width * 0.84,
+      height: 92,
+      rotation: 0,
+      opacity: 1,
+      z: Math.max(...project.elements.map((item) => item.z), 0) + 1,
+      font_size: Math.max(32, Math.round(project.canvas.width * 0.045)),
+      font_family: 'Poppins, sans-serif',
+      font_weight: 800,
+      color: '#FFFFFF',
+      align: 'center',
+      background: '#000000',
+      stroke_color: '#000000',
+      shadow: true,
+      animation: 'pop',
+    };
+    updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add caption');
+    setSelectedClipId(null);
+    setSelectedElementId(el.id);
+    openTool('text');
+  };
+
   const addTextElement = () => {
     const hasContent = project.clips.length + project.elements.length + project.audio.length > 0;
     const el: TimelineElement = {
@@ -3115,7 +3150,9 @@ function VideoEditor() {
                     aria-label="Rotate overlay"
                     role="button"
                   />
-                  {([          { cls: 'right-0 top-0' },
+                  {([
+                    { cls: 'left-0 top-0' },
+                    { cls: 'right-0 top-0' },
                     { cls: 'left-0 bottom-0' },
                     { cls: 'right-0 bottom-0' },
                   ]).map((c, i) => (
@@ -3548,11 +3585,11 @@ function VideoEditor() {
                   <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
                     {[
                       { label: 'Edit', icon: <Scissors className="h-4 w-4" />, action: () => openTool('motion') },
-                      { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => openTool('audio') },
+                      { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => { setClipSoundMenuOpen((v) => !v); setClipSpeedMenuOpen(false); } },
                       { label: 'Text', icon: <Type className="h-4 w-4" />, action: () => { addTextElement(); } },
                       { label: 'Effects', icon: <Sparkles className="h-4 w-4" />, action: () => openTool('look') },
                       { label: 'Magic', icon: <Sparkles className="h-4 w-4" />, action: () => { openTool('motion'); notify('Magic tools are ready in Motion — keyframes, speed and transform stay on-canvas.'); } },
-                      { label: 'Captions', icon: <Type className="h-4 w-4" />, action: () => { openTool('text'); notify('Add editable captions directly on the video. Automatic speech-to-text can be connected later without changing the project format.'); } },
+                      { label: 'Captions', icon: <Type className="h-4 w-4" />, action: () => { addCaptionElement(); } },
                     ].map((item) => (
                       <button
                         key={item.label}
@@ -3565,11 +3602,32 @@ function VideoEditor() {
                       </button>
                     ))}
                   </div>
+                  {clipSoundMenuOpen && (
+                    <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 py-1">
+                      <button onClick={() => openTool('media')} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Replace</button>
+                      <button onClick={() => openTool('audio')} className={`${EDITOR_ACTION_PILL}`}><Sparkles className="h-4 w-4" />Sound effect</button>
+                      <button onClick={() => { void startVoiceover(); setClipSoundMenuOpen(false); }} className={`${EDITOR_ACTION_PILL}`}><Mic className="h-4 w-4" />Voiceover</button>
+                    </div>
+                  )}
+
                   <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 pt-1">
                     <button onClick={splitAtPlayhead} className={`${EDITOR_ACTION_PILL}`}><Scissors className="h-4 w-4" />Split</button>
                     <button onClick={() => openTool('media')} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Replace</button>
                     <button onClick={() => deleteClip(selectedClip.id)} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Delete</button>
-                    <button onClick={() => updateClip(selectedClip.id, { speed: selectedClip.speed >= 2 ? 1 : selectedClip.speed * 2 }, 'Change speed')} className={`${EDITOR_ACTION_PILL}`}><SkipForward className="h-4 w-4" />Speed {selectedClip.speed}×</button>
+                    <button onClick={() => { setClipSpeedMenuOpen((v) => !v); setClipSoundMenuOpen(false); }} className={`${EDITOR_ACTION_PILL}`}><SkipForward className="h-4 w-4" />Speed {selectedClip.speed}×</button>
+                    {clipSpeedMenuOpen && (
+                      <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-[#181818] p-1">
+                        {SPEED_OPTIONS.map((speed) => (
+                          <button
+                            key={speed}
+                            onClick={() => { updateClip(selectedClip.id, { speed }, 'Change speed', `speed-${selectedClip.id}`); setClipSpeedMenuOpen(false); }}
+                            className={`rounded-lg px-2.5 py-2 text-[10px] font-bold ${selectedClip.speed === speed ? 'bg-[#E5798F] text-white' : 'text-white/60 hover:bg-white/10'}`}
+                          >
+                            {speed}×
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <button onClick={startClipCrop} className={`${EDITOR_ACTION_PILL}`}><Crop className="h-4 w-4" />Crop</button>
                     <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={`${EDITOR_ACTION_PILL}`}>{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Mute'}</button>
                     <button onClick={() => duplicateClip(selectedClip)} className={`${EDITOR_ACTION_PILL}`}><Copy className="h-4 w-4" />Duplicate</button>
@@ -4061,9 +4119,8 @@ function VideoEditor() {
                     <div className="grid grid-cols-2 gap-2">
                       <label className="space-y-1">
                         <span className="text-white/60">Volume</span>
-                        <input type="range" min={0} max={1} step={0.05} value={a.volume}
-                          onChange={(e) => updateAudio(a.id, { volume: Number(e.target.value) }, 'Audio volume', `vol-${a.id}`)}
-                          className="w-full" />
+                        <Slider label="Volume" min={0} max={1} step={0.05} value={a.volume}
+                          onChange={(v) => updateAudio(a.id, { volume: v }, 'Audio volume', `vol-${a.id}`)} />
                       </label>
                       <label className="space-y-1">
                         <span className="text-white/60">Start (s)</span>
@@ -4073,27 +4130,23 @@ function VideoEditor() {
                       </label>
                       <label className="space-y-1">
                         <span className="text-white/60">Fade in (s)</span>
-                        <input type="range" min={0} max={5} step={0.5} value={a.fadeIn}
-                          onChange={(e) => updateAudio(a.id, { fadeIn: Number(e.target.value) }, 'Fade in', `fi-${a.id}`)}
-                          className="w-full" />
+                        <Slider label="Fade in (s)" min={0} max={5} step={0.5} value={a.fadeIn}
+                          onChange={(v) => updateAudio(a.id, { fadeIn: v }, 'Fade in', `fi-${a.id}`)} />
                       </label>
                       <label className="space-y-1">
                         <span className="text-white/60">Fade out (s)</span>
-                        <input type="range" min={0} max={5} step={0.5} value={a.fadeOut}
-                          onChange={(e) => updateAudio(a.id, { fadeOut: Number(e.target.value) }, 'Fade out', `fo-${a.id}`)}
-                          className="w-full" />
+                        <Slider label="Fade out (s)" min={0} max={5} step={0.5} value={a.fadeOut}
+                          onChange={(v) => updateAudio(a.id, { fadeOut: v }, 'Fade out', `fo-${a.id}`)} />
                       </label>
                       <label className="space-y-1">
                         <span className="text-white/60">Trim start (s)</span>
-                        <input type="range" min={0} max={Math.max(0.2, a.trimEnd - 0.2)} step={0.1} value={a.trimStart}
-                          onChange={(e) => updateAudio(a.id, { trimStart: Number(e.target.value) }, 'Trim audio start', `ats-${a.id}`)}
-                          className="w-full" />
+                        <Slider label="Trim start (s)" min={0} max={Math.max(0.2, a.trimEnd - 0.2)} step={0.1} value={a.trimStart}
+                          onChange={(v) => updateAudio(a.id, { trimStart: v }, 'Trim audio start', `ats-${a.id}`)} />
                       </label>
                       <label className="space-y-1">
                         <span className="text-white/60">Trim end (s)</span>
-                        <input type="range" min={a.trimStart + 0.2} max={Math.max(a.trimStart + 0.4, a.trimEnd)} step={0.1} value={a.trimEnd}
-                          onChange={(e) => updateAudio(a.id, { trimEnd: Number(e.target.value) }, 'Trim audio end', `ate-${a.id}`)}
-                          className="w-full" />
+                        <Slider label="Trim end (s)" min={a.trimStart + 0.2} max={Math.max(a.trimStart + 0.4, a.trimEnd)} step={0.1} value={a.trimEnd}
+                          onChange={(v) => updateAudio(a.id, { trimEnd: v }, 'Trim audio end', `ate-${a.id}`)} />
                       </label>
                     </div>
                   </div>
