@@ -32,6 +32,7 @@ export interface AIResult {
 
 const GEMINI_KEY = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
 const ASSEMBLY_KEY = () => process.env.ASSEMBLYAI_API_KEY;
+const GROQ_KEY = () => process.env.GROQ_API_KEY;
 
 async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite') {
   const key = GEMINI_KEY();
@@ -50,6 +51,34 @@ async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'g
   const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || '';
   if (!text) throw new Error('Gemini returned an empty response.');
   return text;
+}
+
+async function groqTranscript(mediaUrl: string, language?: string | null) {
+  const key = GROQ_KEY();
+  if (!key) throw new Error('No speech-to-text provider is configured. Add ASSEMBLYAI_API_KEY or GROQ_API_KEY to Vercel.');
+
+  const form = new FormData();
+  form.append('url', mediaUrl);
+  form.append('model', process.env.GROQ_WHISPER_MODEL || 'whisper-large-v3-turbo');
+  form.append('response_format', 'verbose_json');
+  form.append('timestamp_granularities[]', 'word');
+  if (language) form.append('language', language);
+
+  const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}` },
+    body: form,
+    cache: 'no-store',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error?.message || `Groq transcription failed (${response.status}).`);
+
+  return {
+    transcriptId: null,
+    text: data?.text || '',
+    words: Array.isArray(data?.words) ? data.words : [],
+    utterances: [],
+  };
 }
 
 async function assemblyTranscript(mediaUrl: string, language?: string | null) {
@@ -111,7 +140,7 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
 
   if (operation === 'transcribe' || operation === 'generate-captions') {
     if (!input.mediaUrl) throw new Error('A media URL is required for transcription.');
-    const transcript = await assemblyTranscript(input.mediaUrl, input.language);
+    const transcript = ASSEMBLY_KEY() ? await assemblyTranscript(input.mediaUrl, input.language) : await groqTranscript(input.mediaUrl, input.language);
     if (operation === 'transcribe') return { operation, provider: 'assemblyai', output: transcript };
 
     const captions = transcript.words.length
@@ -134,7 +163,6 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
     return { operation, provider: 'gemini', output: operation === 'analyze' ? parseJson(result) : { text: result } };
   }
 
-  const provider = process.env.AI_DEFAULT_PROVIDER || 'huggingface';
   throw new Error(
     `${operation} is ready in the AI provider layer, but no execution adapter is configured yet. Set AI_DEFAULT_PROVIDER and the matching provider key to enable it.`,
   );
