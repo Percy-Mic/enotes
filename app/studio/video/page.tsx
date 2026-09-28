@@ -312,7 +312,6 @@ function VideoEditor() {
           audio = new Audio(clip.src);
           audio.preload = 'auto';
           audio.crossOrigin = 'anonymous';
-          audio.playsInline = true;
           previewAudioRef.current.set(clipId, audio);
         }
 
@@ -357,7 +356,6 @@ function VideoEditor() {
         audio = new Audio(track.src);
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
-        audio.playsInline = true;
         previewAudioRef.current.set(key, audio);
       }
 
