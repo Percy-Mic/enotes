@@ -1704,7 +1704,7 @@ function VideoEditor() {
   const handleTolerance = () => {
     const canvas = canvasRef.current;
     if (!canvas || previewScale <= 0) return HANDLE_PX;
-    return Math.max(HANDLE_PX, 22 / previewScale);
+    return Math.max(HANDLE_PX, 34 / previewScale);
   };
 
   /* Active touch pointers on the preview. A second finger switches the
@@ -1999,11 +1999,36 @@ function VideoEditor() {
      The gesture helper only listens to touch/stylus pointers, so desktop
      mouse interaction remains unchanged. */
   useMobileGestures(canvasRef, {
-    onPinch: (scale) => {
+    onPinch: (scale, center) => {
       if (cropMode) return;
-      const element = docRef.current.project.elements.find((el) => el.id === selectedElementId);
-      if (element) {
-        const factor = clampNum(scale, 0.85, 1.15);
+
+      /* If the user starts a two-finger gesture before a selection exists,
+         resolve the object directly under the pinch center. This makes
+         two-finger resize work without requiring a separate tap first. */
+      let activeElement = docRef.current.project.elements.find((el) => el.id === selectedElementId) ?? null;
+      let activeClip = docRef.current.project.clips.find((item) => item.id === selectedClipId) ?? null;
+
+      if (!activeElement && !activeClip) {
+        const p = canvasPoint({ clientX: center.x, clientY: center.y });
+        if (p) {
+          activeElement = elementAt(p.x, p.y);
+          if (activeElement) {
+            setSelectedElementId(activeElement.id);
+            setSelectedClipId(null);
+          } else {
+            activeClip = clipAt(p.x, p.y);
+            if (activeClip) {
+              setSelectedClipId(activeClip.id);
+              setSelectedElementId(null);
+            }
+          }
+        }
+      }
+
+      const factor = clampNum(scale, 0.70, 1.30);
+
+      if (activeElement) {
+        const element = activeElement;
         const centerX = element.x + element.width / 2;
         const centerY = element.y + element.height / 2;
         const width = clampNum(element.width * factor, 24, 1400);
@@ -2022,9 +2047,8 @@ function VideoEditor() {
         return;
       }
 
-      const clip = docRef.current.project.clips.find((item) => item.id === selectedClipId);
+      const clip = activeClip;
       if (clip) {
-        const factor = clampNum(scale, 0.85, 1.15);
         updateClip(
           clip.id,
           { transform: { ...clip.transform, scale: clampNum(clip.transform.scale * factor, 0.1, 4) } },
