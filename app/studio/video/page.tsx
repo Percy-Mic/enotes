@@ -19,7 +19,7 @@ import SharePostPicker from '@/components/community/SharePostPicker';
 import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
-  placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveElementValues, resolveTime, sanitizeCrop, upsertKeyframe,
+  placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
   type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type VideoClip, type VideoProject,
 } from '@/lib/video/project';
 import {
@@ -988,6 +988,41 @@ function VideoEditor() {
       return { ...p, clips };
     }, 'Reorder main-track clips', `reorder-${id}`);
   };
+
+  const selectedClipTimeIn = useMemo(() => {
+    if (!selectedClipId) return 0;
+    let start = 0;
+    for (const clip of project.clips) {
+      if (clip.id === selectedClipId) {
+        return Math.max(0, Math.min(clipDuration(clip), playhead - start));
+      }
+      start += clipDuration(clip);
+    }
+    return 0;
+  }, [project.clips, selectedClipId, playhead]);
+
+  const addMainClipKeyframe = useCallback((prop: KeyframeProperty) => {
+    const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
+    if (!clip) return;
+    const values = resolveClipValues(clip, selectedClipTimeIn);
+    const value =
+      prop === 'pos_x_kf' ? values.offset_x :
+      prop === 'pos_y_kf' ? values.offset_y :
+      prop === 'scale_kf' ? values.scale :
+      prop === 'rotation_kf' ? values.rotation :
+      prop === 'opacity_kf' ? values.opacity :
+      values.volume;
+    updateClip(clip.id, { keyframes: upsertClipKeyframe(clip, prop, selectedClipTimeIn, value) }, 'Add clip keyframe', `clip-kf-${clip.id}-${prop}`);
+  }, [selectedClipId, selectedClipTimeIn, updateClip]);
+
+  const removeMainClipKeyframe = useCallback((prop: KeyframeProperty) => {
+    const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
+    if (!clip) return;
+    const list = clip.keyframes?.[prop] || [];
+    const hit = list.find((k) => Math.abs(k.t - selectedClipTimeIn) < 0.05);
+    if (!hit) return;
+    updateClip(clip.id, { keyframes: removeKeyframe({ id: clip.id, kind: 'video', content: '', src: clip.src, start: 0, end: clipDuration(clip), x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1, z: 1, keyframes: clip.keyframes }, prop, hit.id) }, 'Remove clip keyframe', `clip-kf-${clip.id}-${prop}`);
+  }, [selectedClipId, selectedClipTimeIn, updateClip]);
 
   const toggleSelectedId = (id: string, additive = true) => {
     setSelectedIds((prev) => additive ? (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]) : [id]);
@@ -4111,8 +4146,37 @@ function VideoEditor() {
                   <Slider label="Rotation" min={-180} max={180} value={selectedClip.transform.rotation}
                     onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: v } }, 'Rotate clip', `mr-${selectedClip.id}`)} />
                 </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold">Keyframes</p>
+                      <p className="text-[10px] text-white/40">At {fmt(selectedClipTimeIn)} inside this clip</p>
+                    </div>
+                    <span className="text-[10px] text-[#FFB6C1]">◇ motion</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {KEYFRAMABLE_PROPERTIES.map((p) => {
+                      const list = selectedClip.keyframes?.[p.id] || [];
+                      const atPlayhead = list.some((k) => Math.abs(k.t - selectedClipTimeIn) < 0.05);
+                      if (p.id === 'volume_kf') return null;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2">
+                          <span className="w-24 shrink-0 text-[10px] text-white/60">{p.label}</span>
+                          <span className="flex-1 text-[10px] text-white/35">{list.length ? `${list.length} points` : 'No keyframes'}</span>
+                          <button
+                            type="button"
+                            onClick={() => atPlayhead ? removeMainClipKeyframe(p.id) : addMainClipKeyframe(p.id)}
+                            className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold ${atPlayhead ? 'bg-[#E5798F] text-white' : 'bg-white/10 text-white/75'}`}
+                          >
+                            {atPlayhead ? 'Remove' : 'Add ◇'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
                 <p className="text-[10px] text-white/40">
-                  Overlay layers support captured keyframes. Main clips use the same timeline and transform values for deterministic preview/export.
+                  Drag the playhead, change the clip, then add a keyframe. Preview and export interpolate the motion.
                 </p>
               </div>
             ) : (
