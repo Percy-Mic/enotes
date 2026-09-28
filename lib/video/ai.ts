@@ -68,6 +68,45 @@ async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'g
   return text;
 }
 
+async function removeImageBackground(mediaUrl: string) {
+  const key = process.env.REMOVEBG_API_KEY;
+  if (!key) throw new Error('Background removal is not configured. Add REMOVEBG_API_KEY to Vercel.');
+
+  const response = await fetch('https://api.remove.bg/v1.0/removebg', {
+    method: 'POST',
+    headers: {
+      'X-Api-Key': key,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      image_url: mediaUrl,
+      size: 'preview',
+      type: 'auto',
+    }),
+    cache: 'no-store',
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => '');
+    throw new Error(message || `Background removal failed (${response.status}).`);
+  }
+
+  const output = await response.arrayBuffer();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('You must be signed in.');
+
+  const path = `${auth.user.id}/ai-bg-${crypto.randomUUID()}.png`;
+  const { error } = await supabase.storage.from('studio-media').upload(path, output, {
+    contentType: 'image/png',
+    upsert: false,
+  });
+  if (error) throw new Error(error.message);
+
+  const { data } = supabase.storage.from('studio-media').getPublicUrl(path);
+  return { url: data.publicUrl, path, contentType: 'image/png' };
+}
+
 async function groqTranscript(mediaUrl: string, language?: string | null) {
   const key = GROQ_KEY();
   if (!key) throw new Error('No speech-to-text provider is configured. Add ASSEMBLYAI_API_KEY or GROQ_API_KEY to Vercel.');
@@ -167,6 +206,14 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
         }))
       : [{ id: 'caption-0', text: transcript.text, start: 0, end: 4 }];
     return { operation, provider: 'assemblyai', output: { ...transcript, captions } };
+  }
+
+  if (operation === 'remove-background') {
+    if (!input.mediaUrl || !/^https?:\\/\\//i.test(input.mediaUrl)) {
+      throw new Error('Select an imported image first. Background removal works on image media.');
+    }
+    const output = await removeImageBackground(input.mediaUrl);
+    return { operation, provider: 'remove.bg', output };
   }
 
   if (operation === 'assistant' || operation === 'analyze') {
