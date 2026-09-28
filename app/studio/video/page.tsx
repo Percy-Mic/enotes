@@ -1852,6 +1852,8 @@ function VideoEditor() {
     const startAngle = Math.atan2(startY - box.cy, startX - box.cx);
 
     const onMove = (ev: PointerEvent) => {
+      /* A second touch hands the interaction to useMobileGestures. */
+      if (ev.pointerType !== 'mouse' && canvasTouchPointersRef.current.size > 1) return;
       const p = canvasPoint(ev);
       if (!p) return;
       const dx = p.x - startX;
