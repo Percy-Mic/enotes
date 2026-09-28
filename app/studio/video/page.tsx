@@ -1707,6 +1707,12 @@ function VideoEditor() {
     return Math.max(HANDLE_PX, 22 / previewScale);
   };
 
+  /* Active touch pointers on the preview. A second finger switches the
+     canvas into multi-touch mode and must suspend the one-finger transform
+     listener; otherwise the first finger keeps moving/resizing underneath
+     pinch/rotate. */
+  const canvasTouchPointersRef = useRef<Set<number>>(new Set());
+
   /* ---------- overlay gestures on the canvas ---------- */
   const beginElementGesture = (el: TimelineElement, gesture: Gesture, e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -1731,6 +1737,9 @@ function VideoEditor() {
     const minSize = 24;
 
     const onMove = (ev: PointerEvent) => {
+      /* Once a second touch arrives, the mobile gesture recognizer owns the
+         interaction. Do not let the original one-finger transform compete. */
+      if (ev.pointerType !== 'mouse' && canvasTouchPointersRef.current.size > 1) return;
       const p = canvasPoint(ev);
       if (!p) return;
       const dx = p.x - startX;
@@ -1921,6 +1930,14 @@ function VideoEditor() {
   const canvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    if (e.pointerType !== 'mouse') {
+      canvasTouchPointersRef.current.add(e.pointerId);
+      /* The first touch may use the normal transform path. The second and
+         later touches belong exclusively to useMobileGestures. */
+      if (canvasTouchPointersRef.current.size > 1) return;
+    }
+
     if (cropMode) return; // the crop overlay owns every gesture
     const p = canvasPoint(e);
     if (!p) return;
@@ -1970,6 +1987,9 @@ function VideoEditor() {
     setSelectedClipId(null);
   };
 
+  const canvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType !== 'mouse') canvasTouchPointersRef.current.delete(e.pointerId);
+  };
 
   /* Mobile direct-manipulation gestures.
      One finger stays on the existing move/resize/rotate path.
@@ -2919,6 +2939,8 @@ function VideoEditor() {
               <canvas
                 ref={canvasRef}
                 onPointerDown={canvasPointerDown}
+                onPointerUp={canvasPointerUp}
+                onPointerCancel={canvasPointerUp}
                 className="block select-none bg-black"
                 style={{
                   aspectRatio: `${project.canvas.width} / ${project.canvas.height}`,
