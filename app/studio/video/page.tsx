@@ -272,6 +272,78 @@ function VideoEditor() {
      Latest-wins: if a draw is in flight and the playhead/project changes
      again, we queue the newest request instead of dropping it — every edit
      ends with a frame that reflects the FINAL state. */
+  /* ---------- timeline audio preview ----------
+     The canvas renderer intentionally draws video into a canvas, so project
+     audio tracks cannot be heard from the canvas itself. Keep a small set of
+     real HTMLAudioElements synchronized with the project clock for editing
+     playback. This is preview-only; export mixing remains in renderer.ts. */
+  const previewAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const previewAudioUnlockedRef = useRef(false);
+
+  const syncPreviewAudio = useCallback(async (time: number, shouldPlay: boolean) => {
+    const p = docRef.current.project;
+    const lanes = p.tracks.filter((t) => t.kind === 'audio');
+    const soloActive = lanes.some((t) => t.solo);
+    const activeIds = new Set<string>();
+
+    for (const track of p.audio) {
+      const lane = lanes.find((t) => t.id === track.track_id) || lanes[0];
+      if (lane?.muted || (soloActive && !lane?.solo) || track.volume <= 0 || !track.src) continue;
+      activeIds.add(track.id);
+
+      let audio = previewAudioRef.current.get(track.id);
+      if (!audio || audio.src !== track.src) {
+        audio?.pause();
+        audio = new Audio(track.src);
+        audio.preload = 'auto';
+        audio.crossOrigin = 'anonymous';
+        previewAudioRef.current.set(track.id, audio);
+      }
+
+      const local = time - track.start;
+      const duration = Math.max(0.05, track.trimEnd - track.trimStart);
+      const inRange = local >= 0 && local < duration;
+      const target = Math.max(0, Math.min(track.trimEnd - 0.01, track.trimStart + Math.max(0, local)));
+      const fadeIn = track.fadeIn > 0 ? Math.min(1, local / track.fadeIn) : 1;
+      const fadeOut = track.fadeOut > 0 ? Math.min(1, (duration - local) / track.fadeOut) : 1;
+      const volume = Math.max(0, Math.min(1, track.volume * Math.min(fadeIn, fadeOut)));
+      audio.volume = volume;
+
+      if (!inRange || !shouldPlay) {
+        audio.pause();
+        if (!inRange) {
+          try { audio.currentTime = target; } catch { /* media may not be ready */ }
+        }
+        continue;
+      }
+
+      /* Correct drift without seeking on every animation frame. */
+      if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
+        try { audio.currentTime = target; } catch { /* wait for metadata */ }
+      }
+      if (audio.paused) {
+        try {
+          await audio.play();
+          previewAudioUnlockedRef.current = true;
+        } catch {
+          /* Browser autoplay policy: the next user play click retries. */
+        }
+      }
+    }
+
+    previewAudioRef.current.forEach((audio, id) => {
+      if (!activeIds.has(id)) audio.pause();
+    });
+  }, []);
+
+  useEffect(() => () => {
+    previewAudioRef.current.forEach((audio) => {
+      audio.pause();
+      audio.src = '';
+    });
+    previewAudioRef.current.clear();
+  }, []);
+
   const drawOnce = useCallback(async (t: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -282,6 +354,7 @@ function VideoEditor() {
     drawingRef.current = true;
     try {
       await rendererRef.current.drawFrame(canvas, docRef.current.project, t, { previewing: true, playing });
+      await syncPreviewAudio(t, playing);
       /* surface undecodable/unreachable sources as a toast instead of a
          silently black canvas (fires at most once per source change) */
       const err = rendererRef.current.lastSourceError;
@@ -299,10 +372,13 @@ function VideoEditor() {
       pendingRef.current = null;
       void drawOnce(next);
     }
-  }, [playing, notify]);
+  }, [playing, notify, syncPreviewAudio]);
 
   useEffect(() => {
-    if (!playing) void drawOnce(playhead);
+    if (!playing) {
+      void drawOnce(playhead);
+      void syncPreviewAudio(playhead, false);
+    }
   }, [project, playhead, playing, drawOnce]);
 
   /* Play/pause with the universal fix: pressing play at the END of the
@@ -340,6 +416,7 @@ function VideoEditor() {
       playheadRef.current = next;
       setPlayhead(next);
       await drawOnce(next);
+      await syncPreviewAudio(next, true);
       schedule();
     };
     /* rAF is vsync-perfect but Chrome ZERO-throttles it in occluded
@@ -356,7 +433,7 @@ function VideoEditor() {
       cancelAnimationFrame(raf);
       clearTimeout(timer);
     };
-  }, [playing, drawOnce]);
+  }, [playing, drawOnce, syncPreviewAudio]);
 
   /* ---------- load template / existing project ---------- */
   const [loadError, setLoadError] = useState<string | null>(null);
