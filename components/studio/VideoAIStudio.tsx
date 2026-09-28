@@ -8,6 +8,7 @@ type Props = {
   project: unknown;
   selectedMediaUrl?: string | null;
   onAddCaptions?: (captions: { id: string; text: string; start: number; end: number }[]) => void;
+  onAddMedia?: (media: { url: string; name: string }) => void;
 };
 
 const ACTIONS = [
@@ -18,7 +19,7 @@ const ACTIONS = [
   { id: 'remove-background', label: 'Remove background', hint: 'Provider-ready AI image/video operation', icon: ImagePlus },
 ] as const;
 
-export default function VideoAIStudio({ projectId, project, selectedMediaUrl, onAddCaptions }: Props) {
+export default function VideoAIStudio({ projectId, project, selectedMediaUrl, onAddCaptions, onAddMedia }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +40,9 @@ export default function VideoAIStudio({ projectId, project, selectedMediaUrl, on
       setResult(data.output);
       if (operation === 'generate-captions' && onAddCaptions && Array.isArray(data.output?.captions)) {
         onAddCaptions(data.output.captions);
+      }
+      if (operation === 'remove-background' && onAddMedia && data.output?.url) {
+        onAddMedia({ url: data.output.url, name: 'AI background removed.png' });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'AI request failed.');
@@ -63,6 +67,8 @@ export default function VideoAIStudio({ projectId, project, selectedMediaUrl, on
         placeholder="Tell the editor what you want… e.g. “Make this feel cinematic and faster.”"
         className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs text-white outline-none focus:border-[#E5798F]/70"
       />
+
+      {!selectedMediaUrl && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-[11px] text-amber-100">Select an imported clip or image on the canvas/timeline first. AI media tools need the saved Studio media URL.</div>}
 
       <div className="grid grid-cols-1 gap-2">
         {ACTIONS.map(({ id, label, hint, icon: Icon }) => (
