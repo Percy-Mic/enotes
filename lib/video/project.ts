@@ -258,6 +258,8 @@ export interface AudioTrack {
   creator?: string;
   /** seconds into the project where playback begins */
   start: number;
+  /** original source duration in seconds, when known */
+  sourceDuration?: number;
   /** trim window inside the source audio */
   trimStart: number;
   trimEnd: number;
