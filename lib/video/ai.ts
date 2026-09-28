@@ -45,7 +45,7 @@ async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'g
       'x-goog-api-key': key,
     },
     body: JSON.stringify({
-      model: model.replace(/^models\\//, ''),
+      model: model.replace(/^models\//, ''),
       input: prompt,
       store: false,
     }),
