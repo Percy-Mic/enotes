@@ -34,21 +34,36 @@ const GEMINI_KEY = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI
 const ASSEMBLY_KEY = () => process.env.ASSEMBLYAI_API_KEY;
 const GROQ_KEY = () => process.env.GROQ_API_KEY;
 
-async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite') {
+async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite') {
   const key = GEMINI_KEY();
   if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-      cache: 'no-store',
+
+  const response = await fetch('https://generativelanguage.googleapis.com/v1/interactions', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-goog-api-key': key,
     },
-  );
+    body: JSON.stringify({
+      model: model.replace(/^models\\//, ''),
+      input: prompt,
+      store: false,
+    }),
+    cache: 'no-store',
+  });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data?.error?.message || `Gemini request failed (${response.status}).`);
-  const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text || '').join('') || '';
+
+  const text =
+    data?.output_text ||
+    data?.output?.map?.((item: { content?: Array<{ text?: string }> }) =>
+      item.content?.map((part) => part.text || '').join('') || ''
+    ).join('') ||
+    data?.steps?.map?.((step: { content?: Array<{ text?: string }> }) =>
+      step.content?.map((part) => part.text || '').join('') || ''
+    ).join('') ||
+    '';
+
   if (!text) throw new Error('Gemini returned an empty response.');
   return text;
 }
@@ -139,9 +154,9 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
   const operation = input.operation;
 
   if (operation === 'transcribe' || operation === 'generate-captions') {
-    if (!input.mediaUrl) throw new Error('A media URL is required for transcription.');
+    if (!input.mediaUrl || !/^https?:\\/\\//i.test(input.mediaUrl)) throw new Error('Select an imported video/audio clip first. AI transcription needs a saved studio-media URL.');
     const transcript = ASSEMBLY_KEY() ? await assemblyTranscript(input.mediaUrl, input.language) : await groqTranscript(input.mediaUrl, input.language);
-    if (operation === 'transcribe') return { operation, provider: 'assemblyai', output: transcript };
+    if (operation === 'transcribe') return { operation, provider: ASSEMBLY_KEY() ? 'assemblyai' : 'groq', output: transcript };
 
     const captions = transcript.words.length
       ? transcript.words.map((w: { text: string; start: number; end: number }, i: number) => ({
