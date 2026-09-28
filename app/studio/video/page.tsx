@@ -2072,7 +2072,7 @@ function VideoEditor() {
     },
     onLongPress: (point) => {
       if (cropMode) return;
-      const p = canvasPoint(point);
+      const p = canvasPoint({ clientX: point.x, clientY: point.y });
       if (!p) return;
       const hit = elementAt(p.x, p.y);
       if (hit) {
