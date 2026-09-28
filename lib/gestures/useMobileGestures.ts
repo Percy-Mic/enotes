@@ -19,6 +19,8 @@ export interface MobileGestureHandlers {
   onPinch?: (scale: number, center: GesturePoint) => void;
   onRotate?: (degrees: number, center: GesturePoint) => void;
   onTwoFingerPan?: (delta: GesturePoint, center: GesturePoint) => void;
+  onMultiTouchStart?: (point: GesturePoint, count: number) => void;
+  onMultiTouchEnd?: () => void;
 }
 
 interface PointerState extends GesturePoint {
@@ -119,6 +121,7 @@ export function useMobileGestures<T extends HTMLElement>(
       currentCenter = gestureStartCenter;
       lastDistance = gestureStartDistance;
       lastAngle = gestureStartAngle;
+      handlersRef.current.onMultiTouchStart?.(gestureStartCenter, pointers.size);
     };
 
     const handlePointerDown = (event: PointerEvent) => {
@@ -240,6 +243,7 @@ export function useMobileGestures<T extends HTMLElement>(
           }
         }
 
+        handlersRef.current.onMultiTouchEnd?.();
         gestureStartCount = 0;
         gestureStartCenter = null;
         gestureStartDistance = 0;
