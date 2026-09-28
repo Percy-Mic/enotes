@@ -2095,6 +2095,7 @@ function VideoEditor() {
     } else {
       /* Too tall: remove height symmetrically until target is reached. */
       const visibleW = 1 - existing.left - existing.right;
+      const visibleH = 1 - existing.top - existing.bottom;
       const wantedH = (visibleW * cropSourceAspect) / targetAspect;
       const remove = Math.max(0, visibleH - wantedH);
       next.top = existing.top + remove / 2;
