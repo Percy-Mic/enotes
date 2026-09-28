@@ -523,6 +523,31 @@ function effectFilterCss(clip: VideoClip, timeIn: number): string {
   }
 }
 
+function drawEffectOverlay(ctx: CanvasRenderingContext2D, effect: VideoClip['effect'], timeIn: number, W: number, H: number) {
+  if (effect === 'flash') {
+    const alpha = Math.max(0, Math.sin(timeIn * Math.PI * 5)) * 0.18;
+    if (alpha > 0.01) {
+      ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
+  } else if (effect === 'glitch') {
+    ctx.save();
+    ctx.globalAlpha = 0.14;
+    const y = (Math.sin(timeIn * 31) * 0.5 + 0.5) * H;
+    ctx.fillStyle = '#ff3355';
+    ctx.fillRect(0, y, W, Math.max(2, H * 0.012));
+    ctx.fillStyle = '#33ccff';
+    ctx.fillRect(0, Math.min(H - 2, y + H * 0.018), W, Math.max(2, H * 0.008));
+    ctx.restore();
+  } else if (effect === 'vhs') {
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#fff';
+    for (let y = 0; y < H; y += Math.max(8, H / 90)) ctx.fillRect(0, y, W, 1);
+    ctx.restore();
+  }
+}
+
 /* ---------- source/destination rect ---------- 
  for one clip ----------
    The cropped region of the source is cover-fit into the canvas,
@@ -1010,6 +1035,8 @@ export class VideoRenderer {
             ctx.filter = 'none';
             ctx.restore();
           }
+
+          drawEffectOverlay(ctx, clip.effect, timeIn, W, H);
 
           // transition INTO this clip
           applyTransition(ctx, clip.transitionIn.type, clip.transitionIn.duration, timeIn, W, H);
