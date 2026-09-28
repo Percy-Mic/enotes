@@ -1711,7 +1711,7 @@ function VideoEditor() {
      canvas into multi-touch mode and must suspend the one-finger transform
      listener; otherwise the first finger keeps moving/resizing underneath
      pinch/rotate. */
-  const canvasTouchPointersRef = useRef<Set<number>>(new Set());
+  const canvasMultiTouchRef = useRef(false);
 
   /* ---------- overlay gestures on the canvas ---------- */
   const beginElementGesture = (el: TimelineElement, gesture: Gesture, e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -1739,7 +1739,7 @@ function VideoEditor() {
     const onMove = (ev: PointerEvent) => {
       /* Once a second touch arrives, the mobile gesture recognizer owns the
          interaction. Do not let the original one-finger transform compete. */
-      if (ev.pointerType !== 'mouse' && canvasTouchPointersRef.current.size > 1) return;
+      if (ev.pointerType !== 'mouse' && canvasMultiTouchRef.current) return;
       const p = canvasPoint(ev);
       if (!p) return;
       const dx = p.x - startX;
@@ -1853,7 +1853,7 @@ function VideoEditor() {
 
     const onMove = (ev: PointerEvent) => {
       /* A second touch hands the interaction to useMobileGestures. */
-      if (ev.pointerType !== 'mouse' && canvasTouchPointersRef.current.size > 1) return;
+      if (ev.pointerType !== 'mouse' && canvasMultiTouchRef.current) return;
       const p = canvasPoint(ev);
       if (!p) return;
       const dx = p.x - startX;
@@ -1937,7 +1937,7 @@ function VideoEditor() {
       canvasTouchPointersRef.current.add(e.pointerId);
       /* The first touch may use the normal transform path. The second and
          later touches belong exclusively to useMobileGestures. */
-      if (canvasTouchPointersRef.current.size > 1) return;
+      if (canvasMultiTouchRef.current) return;
     }
 
     if (cropMode) return; // the crop overlay owns every gesture
@@ -1989,9 +1989,7 @@ function VideoEditor() {
     setSelectedClipId(null);
   };
 
-  const canvasPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'mouse') canvasTouchPointersRef.current.delete(e.pointerId);
-  };
+  const canvasPointerUp = (_e: React.PointerEvent<HTMLCanvasElement>) => {};
 
   /* Mobile direct-manipulation gestures.
      One finger stays on the existing move/resize/rotate path.
@@ -1999,6 +1997,8 @@ function VideoEditor() {
      The gesture helper only listens to touch/stylus pointers, so desktop
      mouse interaction remains unchanged. */
   useMobileGestures(canvasRef, {
+    onMultiTouchStart: () => { canvasMultiTouchRef.current = true; },
+    onMultiTouchEnd: () => { canvasMultiTouchRef.current = false; },
     onPinch: (scale, center) => {
       if (cropMode) return;
 
