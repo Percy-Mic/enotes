@@ -88,6 +88,8 @@ export interface VideoClip {
   effect: EffectType;
   /** transition INTO this clip (plays over the previous clip's tail) */
   transitionIn: { type: TransitionType; duration: number };
+  /** Optional transform/audio keyframes for professional motion control. */
+  keyframes?: ElementKeyframeMap;
 }
 
 /** Extensible effect ids — new effects append here; renderer switches on id. */
@@ -209,6 +211,39 @@ export function resolveElementValues(
     opacity: Math.max(0, Math.min(1, sampleKeyframes(kf?.opacity_kf, timeIn, el.opacity))),
     volume: Math.max(0, Math.min(1, sampleKeyframes(kf?.volume_kf, timeIn, el.volume ?? 1))),
   };
+}
+
+/** Animated transform/audio values for a main video clip. */
+export function resolveClipValues(
+  clip: VideoClip,
+  timeIn: number
+): { offset_x: number; offset_y: number; scale: number; rotation: number; opacity: number; volume: number } {
+  const kf = clip.keyframes;
+  return {
+    offset_x: sampleKeyframes(kf?.pos_x_kf, timeIn, clip.transform.offset_x),
+    offset_y: sampleKeyframes(kf?.pos_y_kf, timeIn, clip.transform.offset_y),
+    scale: sampleKeyframes(kf?.scale_kf, timeIn, clip.transform.scale),
+    rotation: sampleKeyframes(kf?.rotation_kf, timeIn, clip.transform.rotation),
+    opacity: Math.max(0, Math.min(1, sampleKeyframes(kf?.opacity_kf, timeIn, 1))),
+    volume: Math.max(0, Math.min(1, sampleKeyframes(kf?.volume_kf, timeIn, clip.volume))),
+  };
+}
+
+/** Insert or replace a main-clip keyframe at the requested timeline-local time. */
+export function upsertClipKeyframe(
+  clip: VideoClip,
+  prop: KeyframeProperty,
+  t: number,
+  value: number
+): ElementKeyframeMap {
+  const map: ElementKeyframeMap = { ...(clip.keyframes || {}) };
+  const list = [...(map[prop] || [])];
+  const existing = list.findIndex((k) => Math.abs(k.t - t) < 0.05);
+  if (existing >= 0) list[existing] = { ...list[existing], value };
+  else list.push({ id: makeVideoId('ckf'), t, value });
+  list.sort((a, b) => a.t - b.t);
+  map[prop] = list;
+  return map;
 }
 
 export interface TimelineElement {
@@ -408,6 +443,7 @@ export function normalizeProject(input: unknown): VideoProject {
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
       effect: (clip.effect || 'none') as EffectType,
       transitionIn: { ...DEFAULT_TRANSITION, ...(clip.transitionIn && typeof clip.transitionIn === 'object' ? clip.transitionIn : {}) } as VideoClip['transitionIn'],
+      ...(sanitizeKeyframes(clip.keyframes) ? { keyframes: sanitizeKeyframes(clip.keyframes) } : {}),
       ...(Number(clip.source_width) > 0 ? { source_width: Number(clip.source_width) } : {}),
       ...(Number(clip.source_height) > 0 ? { source_height: Number(clip.source_height) } : {}),
     };
