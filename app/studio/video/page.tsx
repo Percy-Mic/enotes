@@ -158,6 +158,7 @@ function VideoEditor() {
 
   /* ---------- refs & playback ---------- */
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const replaceInputRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<VideoRenderer>(new VideoRenderer());
   const docRef = useRef(doc);
@@ -727,7 +728,7 @@ function VideoEditor() {
   const [fileDragActive, setFileDragActive] = useState(false);
 
   const importFiles = useCallback(
-    async (files: FileList | File[]) => {
+    async (files: FileList | File[], replaceClipId?: string) => {
       if (!meId) return;
       for (const file of Array.from(files)) {
         if (!file.type.startsWith('video/') && !file.type.startsWith('image/')) {
@@ -810,16 +811,40 @@ function VideoEditor() {
             };
             updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add image');
           } else {
-            const clip: VideoClip = {
-              id: makeVideoId('clip'), src: up.url, name: file.name,
-              sourceDuration: meta.duration, trimStart: 0,
-              trimEnd: Math.min(meta.duration, 30), speed: 1, volume: 1, muted: false,
-              source_width: meta.w || undefined, source_height: meta.h || undefined,
-              transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
-              filter: 'none', effect: 'none', reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
-            };
-            updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add clip');
-            setSelectedClipId(clip.id);
+            const replacement = replaceClipId
+              ? docRef.current.project.clips.find((c) => c.id === replaceClipId)
+              : null;
+
+            if (replacement) {
+              updateProject((p) => ({
+                ...p,
+                clips: p.clips.map((c) => c.id === replacement.id
+                  ? {
+                      ...c,
+                      src: up.url,
+                      name: file.name,
+                      sourceDuration: meta.duration,
+                      trimStart: 0,
+                      trimEnd: Math.min(meta.duration, 30),
+                      source_width: meta.w || undefined,
+                      source_height: meta.h || undefined,
+                    }
+                  : c),
+              }), 'Replace clip');
+              setSelectedClipId(replacement.id);
+              notify('Clip replaced — your edit position and timeline slot were preserved.');
+            } else {
+              const clip: VideoClip = {
+                id: makeVideoId('clip'), src: up.url, name: file.name,
+                sourceDuration: meta.duration, trimStart: 0,
+                trimEnd: Math.min(meta.duration, 30), speed: 1, volume: 1, muted: false,
+                source_width: meta.w || undefined, source_height: meta.h || undefined,
+                transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
+                filter: 'none', effect: 'none', reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
+              };
+              updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add clip');
+              setSelectedClipId(clip.id);
+            }
           }
         } catch (e) {
           setImporting(null);
@@ -3581,6 +3606,18 @@ function VideoEditor() {
             </div>
           </div>
 
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.currentTarget.value = '';
+              if (file && selectedClip) void importFiles([file], selectedClip.id);
+            }}
+          />
+
           {/* contextual editor actions — direct, thumb-friendly, and selection-aware */}
           {(selectedClip || selectedElement || selectedAudio) ? (
             <div className="mt-1.5 -mx-1 border-t border-white/10 bg-[#101010]/96 px-1.5 pt-1.5 backdrop-blur-xl" aria-label="Contextual editor actions">
@@ -3608,7 +3645,7 @@ function VideoEditor() {
                   </div>
                   {clipSoundMenuOpen && (
                     <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 py-1">
-                      <button onClick={() => openTool('media')} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Replace</button>
+                      <button onClick={() => replaceInputRef.current?.click()} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Replace</button>
                       <button onClick={() => openTool('audio')} className={`${EDITOR_ACTION_PILL}`}><Sparkles className="h-4 w-4" />Sound effect</button>
                       <button onClick={() => { void startVoiceover(); setClipSoundMenuOpen(false); }} className={`${EDITOR_ACTION_PILL}`}><Mic className="h-4 w-4" />Voiceover</button>
                     </div>
