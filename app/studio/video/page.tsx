@@ -2815,6 +2815,8 @@ function VideoEditor() {
     { id: '16:9', label: '16:9 YouTube' },
     { id: '1:1', label: '1:1 Square' },
     { id: '4:5', label: '4:5 Feed' },
+    { id: '3:2', label: '3:2 Photo' },
+    { id: '21:9', label: '21:9 Cinema' },
     { id: 'original', label: 'Original' },
   ];
 
@@ -4179,19 +4181,51 @@ function VideoEditor() {
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <Slider label="Brightness" min={50} max={150} value={selectedClip.adjustments.brightness}
-                    onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, brightness: v } }, 'Brightness', `br-${selectedClip.id}`)} />
-                  <Slider label="Contrast" min={50} max={150} value={selectedClip.adjustments.contrast}
-                    onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, contrast: v } }, 'Contrast', `co-${selectedClip.id}`)} />
-                  <Slider label="Saturation" min={0} max={200} value={selectedClip.adjustments.saturate}
-                    onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, saturate: v } }, 'Saturation', `sa-${selectedClip.id}`)} />
-                  <Slider label="Blur" min={0} max={10} value={selectedClip.adjustments.blur}
-                    onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, blur: v } }, 'Blur', `bl-${selectedClip.id}`)} />
-                  <Slider label="Scale" min={50} max={200} value={selectedClip.transform.scale * 100}
-                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: v / 100 } }, 'Scale', `sc-${selectedClip.id}`)} />
-                  <Slider label="Rotation" min={-180} max={180} value={selectedClip.transform.rotation}
-                    onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: v } }, 'Rotate', `ro-${selectedClip.id}`)} />
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold">Adjust</p>
+                      <p className="text-[10px] text-white/40">Color-grade the selected clip without leaving the timeline.</p>
+                    </div>
+                    <button
+                      onClick={() => updateClip(selectedClip.id, { adjustments: { ...DEFAULT_ADJUSTMENTS } }, 'Reset adjustments')}
+                      className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[10px] font-semibold"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <Slider label="Exposure" min={50} max={150} value={selectedClip.adjustments.exposure}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, exposure: v } }, 'Exposure', `ex-${selectedClip.id}`)} />
+                    <Slider label="Brightness" min={50} max={150} value={selectedClip.adjustments.brightness}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, brightness: v } }, 'Brightness', `br-${selectedClip.id}`)} />
+                    <Slider label="Contrast" min={50} max={150} value={selectedClip.adjustments.contrast}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, contrast: v } }, 'Contrast', `co-${selectedClip.id}`)} />
+                    <Slider label="Saturation" min={0} max={200} value={selectedClip.adjustments.saturate}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, saturate: v } }, 'Saturation', `sa-${selectedClip.id}`)} />
+                    <Slider label="Vibrance" min={0} max={200} value={selectedClip.adjustments.vibrance}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, vibrance: v } }, 'Vibrance', `vi-${selectedClip.id}`)} />
+                    <Slider label="Temperature" min={-100} max={100} value={selectedClip.adjustments.temperature}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, temperature: v } }, 'Temperature', `te-${selectedClip.id}`)} />
+                    <Slider label="Tint" min={-100} max={100} value={selectedClip.adjustments.tint}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, tint: v } }, 'Tint', `ti-${selectedClip.id}`)} />
+                    <Slider label="Hue" min={-180} max={180} value={selectedClip.adjustments.hue}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, hue: v } }, 'Hue', `hu-${selectedClip.id}`)} />
+                    <Slider label="Highlights" min={50} max={150} value={100} onChange={() => {}} />
+                    <Slider label="Shadows" min={50} max={150} value={100} onChange={() => {}} />
+                    <Slider label="Sharpen" min={0} max={100} value={selectedClip.adjustments.sharpen}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, sharpen: v } }, 'Sharpen', `sh-${selectedClip.id}`)} />
+                    <Slider label="Grain" min={0} max={100} value={selectedClip.adjustments.grain}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, grain: v } }, 'Grain', `gr-${selectedClip.id}`)} />
+                    <Slider label="Vignette" min={0} max={100} value={selectedClip.adjustments.vignette}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, vignette: v } }, 'Vignette', `vg-${selectedClip.id}`)} />
+                    <Slider label="Blur" min={0} max={10} value={selectedClip.adjustments.blur}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, blur: v } }, 'Blur', `bl-${selectedClip.id}`)} />
+                    <Slider label="Scale" min={50} max={200} value={selectedClip.transform.scale * 100}
+                      onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: v / 100 } }, 'Scale', `sc-${selectedClip.id}`)} />
+                    <Slider label="Rotation" min={-180} max={180} value={selectedClip.transform.rotation}
+                      onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: v } }, 'Rotate', `ro-${selectedClip.id}`)} />
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_h: !selectedClip.transform.flip_h } }, 'Flip H')} aria-pressed={selectedClip.transform.flip_h} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
@@ -4247,7 +4281,7 @@ function VideoEditor() {
                 <div>
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Transition in</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {(['none', 'fade', 'crossfade', 'slide', 'zoom', 'wipe'] as const).map((t) => (
+                    {(['none', 'fade', 'crossfade', 'slide', 'zoom', 'wipe', 'dip-black', 'push', 'blur'] as const).map((t) => (
                       <button
                         key={t}
                         onClick={() => updateClip(selectedClip.id, { transitionIn: { type: t, duration: selectedClip.transitionIn.duration } }, 'Transition')}
