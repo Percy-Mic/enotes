@@ -24,7 +24,7 @@
    ============================================================ */
 
 import {
-  clipDuration, FILTER_PRESETS, resolveTime, projectDuration, normalizeProject, isPlaceholder,
+  clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, projectDuration, normalizeProject, isPlaceholder,
   coverFit, croppedAspect, resolveElementValues,
   type VideoProject, type TimelineElement, type VideoClip, type CropRect,
 } from '@/lib/video/project';
@@ -943,7 +943,11 @@ export class VideoRenderer {
           : Math.min(sourceTime, Math.max(0, (clip.sourceDuration || 0) - 0.05));
         if (video.readyState >= 2) {
           this.lastSourceError = null;
-          const t = clipDrawRect(clip, W, H, video.videoWidth, video.videoHeight, eff);
+          const animated = resolveClipValues(clip, timeIn);
+          const animatedClip = animated.scale === clip.transform.scale && animated.rotation === clip.transform.rotation && animated.offset_x === clip.transform.offset_x && animated.offset_y === clip.transform.offset_y
+            ? clip
+            : { ...clip, volume: animated.volume, transform: { ...clip.transform, scale: animated.scale, offset_x: animated.offset_x, offset_y: animated.offset_y, rotation: animated.rotation } };
+          const t = clipDrawRect(animatedClip, W, H, video.videoWidth, video.videoHeight, eff);
 
           /* REVERSE, fast path: paint from the pre-built frame cache instead
              of seek-per-frame (~2.5 fps measured → unusable). Cache is built
@@ -977,9 +981,9 @@ export class VideoRenderer {
             const frame = entry ? nearestReverseFrame(entry, sourceTime) : null;
             if (frame) {
               ctx.save();
-              ctx.translate(W / 2 + clip.transform.offset_x + eff.dx, H / 2 + clip.transform.offset_y + eff.dy);
-              ctx.rotate((clip.transform.rotation * Math.PI) / 180);
-              ctx.scale(clip.transform.flip_h ? -1 : 1, clip.transform.flip_v ? -1 : 1);
+              ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
+              ctx.rotate((animated.rotation * Math.PI) / 180);
+              ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
               ctx.filter = [filterCssFor(clip), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
               // cache frames keep the source's aspect — dest rect already matches
               ctx.drawImage(frame.bmp as CanvasImageSource, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
