@@ -3184,6 +3184,9 @@ function VideoEditor() {
                       ? project.clips.find((c) => c.id === cropMode.id)?.transform.crop ?? null
                       : project.elements.find((el) => el.id === cropMode.id)?.crop ?? null
                   }
+                  rotation={cropMode.type === 'clip'
+                    ? (project.clips.find((c) => c.id === cropMode.id)?.transform.rotation ?? 0)
+                    : (project.elements.find((el) => el.id === cropMode.id)?.rotation ?? 0)}
                   onChange={applyCropChange}
                   onRotate={(degrees) => setCropRotation(degrees)}
                   onApply={() => { setCropMode(null); notify('Crop applied — it renders in the export too.'); }}
@@ -4844,9 +4847,10 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
     </aside>
   );
 }
-function CropOverlay({ base, crop, onChange, onRotate, onApply, onCancel, onReset }: {
+function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, onCancel, onReset }: {
   base: { left: number; top: number; width: number; height: number };
   crop: CropRect | null;
+  rotation?: number;
   onChange: (next: CropRect | null) => void;
   onRotate?: (degrees: number) => void;
   onApply: () => void;
@@ -4867,7 +4871,7 @@ function CropOverlay({ base, crop, onChange, onRotate, onApply, onCancel, onRese
   const rotationGestureRef = useRef(0);
 
   useMobileGestures(ref, {
-    onMultiTouchStart: () => { multiTouchRef.current = true; rotationGestureRef.current = current ? 0 : 0; },
+    onMultiTouchStart: () => { multiTouchRef.current = true; rotationGestureRef.current = rotation; },
     onMultiTouchEnd: () => { multiTouchRef.current = false; },
     onPinch: (scale, center) => {
       const factor = clampNum(scale, 0.82, 1.22);
