@@ -2370,11 +2370,6 @@ function VideoEditor() {
     applyCropChange(sanitizeCrop(next));
   };
 
-  const updateCropEdge = (edge: keyof CropRect, value: number) => {
-    const base = currentCrop ?? { top: 0, right: 0, bottom: 0, left: 0 };
-    applyCropChange(sanitizeCrop({ ...base, [edge]: clampNum(value, 0, 0.45) }));
-  };
-
   /* close crop mode if its target disappeared (deleted / moved tracks) */
   useEffect(() => {
     if (!cropMode) return;
