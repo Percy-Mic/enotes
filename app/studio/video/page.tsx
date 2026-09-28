@@ -4747,7 +4747,7 @@ function ClipThumb({ clip }: { clip: VideoClip }) {
    will export. Nothing here is CSS pretending: drawFrame() crops
    the source itself via drawImage source-rect math.
    ============================================================ */
-function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange, onEdgeChange, onAspect, onRotate, onFlip, onReset, onCancel, onApply }: {
+function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange, onAspect, onRotate, onFlip, onReset, onCancel, onApply }: {
   crop: CropRect | null;
   sourceAspect: number;
   rotation: number;
