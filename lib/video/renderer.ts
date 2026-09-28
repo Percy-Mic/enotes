@@ -500,25 +500,31 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export interface EffectOffset { scaleMul: number; dx: number; dy: number }
 
 function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOffset {
+  const p = Math.min(1, Math.max(0, timeIn / Math.max(dur, 0.1)));
   switch (clip.effect) {
-    case 'zoom': {
-      const p = Math.min(1, Math.max(0, timeIn / Math.max(dur, 0.1)));
-      return { scaleMul: 1 + 0.12 * p, dx: 0, dy: 0 };
-    }
-    case 'shake': {
-      const t = timeIn * 18;
-      return { scaleMul: 1.04, dx: Math.sin(t) * 6, dy: Math.cos(t * 1.7) * 6 };
-    }
-    case 'pulse': {
-      const s = 1 + 0.04 * Math.sin((timeIn * Math.PI * 2) / 0.8);
-      return { scaleMul: s, dx: 0, dy: 0 };
-    }
-    default:
-      return { scaleMul: 1, dx: 0, dy: 0 };
+    case 'zoom': return { scaleMul: 1 + 0.12 * p, dx: 0, dy: 0 };
+    case 'shake': { const t = timeIn * 18; return { scaleMul: 1.04, dx: Math.sin(t) * 6, dy: Math.cos(t * 1.7) * 6 }; }
+    case 'pulse': return { scaleMul: 1 + 0.04 * Math.sin((timeIn * Math.PI * 2) / 0.8), dx: 0, dy: 0 };
+    case 'glitch': { const t = timeIn * 42; return { scaleMul: 1.01, dx: Math.sin(t) * 3, dy: Math.cos(t * 1.37) * 2 }; }
+    case 'dream': return { scaleMul: 1 + 0.018 * Math.sin(timeIn * 3), dx: 0, dy: 0 };
+    case 'film': return { scaleMul: 1 + 0.008 * Math.sin(timeIn * 1.7), dx: 0, dy: 0 };
+    case 'chromatic': return { scaleMul: 1.015, dx: Math.sin(timeIn * 9) * 2, dy: Math.cos(timeIn * 7) * 1.5 };
+    default: return { scaleMul: 1, dx: 0, dy: 0 };
   }
 }
 
-/* ---------- source/destination rect for one clip ----------
+function effectFilterCss(clip: VideoClip, timeIn: number): string {
+  switch (clip.effect) {
+    case 'vhs': return 'contrast(1.08) saturate(0.9) sepia(0.12)';
+    case 'dream': return 'brightness(1.08) saturate(1.08) blur(0.7px)';
+    case 'film': return 'contrast(1.06) saturate(0.92) sepia(0.05)';
+    case 'chromatic': return 'saturate(1.18) hue-rotate(' + (Math.sin(timeIn * 8) * 3) + 'deg)';
+    default: return '';
+  }
+}
+
+/* ---------- source/destination rect ---------- 
+ for one clip ----------
    The cropped region of the source is cover-fit into the canvas,
    then multiplied by the user's scale / per-axis scale. This keeps
    crop aspect-correct (no stretching) and identical in preview,
@@ -996,9 +1002,9 @@ export class VideoRenderer {
           if (!paintedFromCache) {
             await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
             ctx.save();
-            ctx.translate(W / 2 + clip.transform.offset_x + eff.dx, H / 2 + clip.transform.offset_y + eff.dy);
-            ctx.rotate((clip.transform.rotation * Math.PI) / 180);
-            ctx.scale(clip.transform.flip_h ? -1 : 1, clip.transform.flip_v ? -1 : 1);
+            ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
+            ctx.rotate((animated.rotation * Math.PI) / 180);
+            ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
             ctx.filter = [filterCssFor(clip), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
             ctx.drawImage(video, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
             ctx.filter = 'none';
