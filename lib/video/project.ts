@@ -306,6 +306,13 @@ export const FILTER_PRESETS: { id: string; name: string; css: string }[] = [
   { id: 'faded', name: 'Faded', css: 'contrast(0.85) brightness(1.1) saturate(0.8)' },
   { id: 'dramatic', name: 'Dramatic', css: 'contrast(1.4) brightness(0.92) saturate(1.2)' },
   { id: 'dream', name: 'Dream', css: 'blur(1px) brightness(1.08) saturate(1.15)' },
+  { id: 'cinematic', name: 'Cinematic', css: 'contrast(1.12) saturate(0.92) brightness(0.98) sepia(0.08)' },
+  { id: 'vintage', name: 'Vintage', css: 'sepia(0.38) contrast(0.96) saturate(0.82)' },
+  { id: 'film', name: 'Film', css: 'contrast(1.08) saturate(0.9) brightness(0.99)' },
+  { id: 'night', name: 'Night', css: 'brightness(0.78) contrast(1.18) saturate(0.85) hue-rotate(12deg)' },
+  { id: 'golden', name: 'Golden', css: 'sepia(0.2) saturate(1.45) brightness(1.06)' },
+  { id: 'noir', name: 'Noir', css: 'grayscale(0.92) contrast(1.35) brightness(0.9)' },
+  { id: 'retro', name: 'Retro', css: 'sepia(0.3) saturate(1.18) contrast(0.94)' },
 ];
 
 export const CANVAS_SIZES: Record<Exclude<AspectRatio, 'original'>, { width: number; height: number }> = {
