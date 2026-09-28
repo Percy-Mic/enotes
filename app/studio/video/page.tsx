@@ -3268,14 +3268,7 @@ function VideoEditor() {
                   >
                     <Film className="h-4 w-4" />
                   </button>
-                  <button
-                    onClick={() => deleteElement(selectedElement.id)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-red-300 hover:bg-red-500/20 focus-visible:ring-2 focus-visible:ring-white"
-                    aria-label="Delete overlay"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+
                 </div>
               )}
             </div>
@@ -3689,7 +3682,7 @@ function VideoEditor() {
                 <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
                   <button onClick={() => openTool('audio')} className={`${EDITOR_ACTION_PILL}`}><Music className="h-4 w-4" />Edit</button>
                   <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className={`${EDITOR_ACTION_PILL}`}><Play className="h-4 w-4" />Start here</button>
-                  <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Delete</button>
+                  <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Remove</button>
                 </div>
               )}
             </div>
