@@ -286,18 +286,78 @@ function VideoEditor() {
     const soloActive = lanes.some((t) => t.solo);
     const activeIds = new Set<string>();
 
+    /* Main-track videos also carry their original audio. The canvas renderer
+       intentionally mutes its <video> elements because they are painted into
+       a canvas, so the editor needs real audio elements for the source sound.
+       Main clips are sequential, therefore their project start is accumulated
+       from clipDuration(). */
+    let clipStart = 0;
+    for (const clip of p.clips) {
+      const clipId = `clip-audio:${clip.id}`;
+      const clipProjectDuration = Math.max(0.05, clipDuration(clip));
+      const inRange = !p.masterMuted &&
+        !clip.muted &&
+        clip.volume > 0 &&
+        !!clip.src &&
+        !isPlaceholder(clip.src) &&
+        time >= clipStart &&
+        time < clipStart + clipProjectDuration;
+
+      if (inRange) {
+        activeIds.add(clipId);
+        let audio = previewAudioRef.current.get(clipId);
+        if (!audio || audio.src !== clip.src) {
+          audio?.pause();
+          audio = new Audio(clip.src);
+          audio.preload = 'auto';
+          audio.crossOrigin = 'anonymous';
+          audio.playsInline = true;
+          previewAudioRef.current.set(clipId, audio);
+        }
+
+        const local = Math.max(0, time - clipStart);
+        const target = Math.max(
+          0,
+          Math.min(
+            Math.max(0, clip.trimEnd - 0.01),
+            clip.trimStart + local * Math.max(0.0625, clip.speed || 1)
+          )
+        );
+        audio.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
+        audio.volume = Math.max(0, Math.min(1, clip.volume));
+        if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
+          try { audio.currentTime = target; } catch { /* wait for metadata */ }
+        }
+        if (shouldPlay && audio.paused) {
+          try {
+            await audio.play();
+            previewAudioUnlockedRef.current = true;
+          } catch {
+            /* The Play button retries on the next synchronization pass. */
+          }
+        } else if (!shouldPlay) {
+          audio.pause();
+        }
+      }
+
+      clipStart += clipProjectDuration;
+    }
+
+    /* Separate music/voiceover lanes continue to play simultaneously. */
     for (const track of p.audio) {
       const lane = lanes.find((t) => t.id === track.track_id) || lanes[0];
       if (lane?.muted || (soloActive && !lane?.solo) || track.volume <= 0 || !track.src) continue;
-      activeIds.add(track.id);
+      const key = `audio:${track.id}`;
+      activeIds.add(key);
 
-      let audio = previewAudioRef.current.get(track.id);
+      let audio = previewAudioRef.current.get(key);
       if (!audio || audio.src !== track.src) {
         audio?.pause();
         audio = new Audio(track.src);
         audio.preload = 'auto';
         audio.crossOrigin = 'anonymous';
-        previewAudioRef.current.set(track.id, audio);
+        audio.playsInline = true;
+        previewAudioRef.current.set(key, audio);
       }
 
       const local = time - track.start;
@@ -317,7 +377,6 @@ function VideoEditor() {
         continue;
       }
 
-      /* Correct drift without seeking on every animation frame. */
       if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
         try { audio.currentTime = target; } catch { /* wait for metadata */ }
       }
