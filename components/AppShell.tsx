@@ -30,7 +30,10 @@ const IMMERSIVE_ROUTES = [
   /^\/$/,
   /^\/auth(\/|$)/,
   /^\/notes\/[^/]+$/,
-  /^\/journals(\/|$)/,
+  /* Keep the journal dashboard on the normal app navigation. Individual
+     journal viewers/editors/settings remain immersive and keep their own
+     focused controls. */
+  /^\/journals\/[^/]+(\/|$)/,
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
