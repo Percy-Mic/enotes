@@ -3873,6 +3873,42 @@ function VideoEditor() {
             projectId={projectId}
             project={project}
             selectedMediaUrl={selectedClip?.src || selectedElement?.src || null}
+            onAddMedia={({ url, name }) => {
+              const maxW = project.canvas.width * 0.78;
+              const maxH = project.canvas.height * 0.52;
+              const w = Math.round(maxW);
+              const h = Math.round(maxH);
+              const element: TimelineElement = {
+                id: makeVideoId('ai-media'),
+                kind: 'image',
+                content: name,
+                src: url,
+                track_id: project.tracks[0]?.id,
+                start: playheadRef.current,
+                end: Math.min(duration, playheadRef.current + 4),
+                x: Math.round((project.canvas.width - w) / 2),
+                y: Math.round((project.canvas.height - h) / 2),
+                width: w,
+                height: h,
+                rotation: 0,
+                opacity: 1,
+                z: Math.max(...project.elements.map((item) => item.z), 0) + 1,
+                font_size: 48,
+                font_family: 'Poppins, sans-serif',
+                font_weight: 700,
+                color: '#FFFFFF',
+                align: 'center',
+                background: 'transparent',
+                stroke_color: '#000000',
+                shadow: false,
+                animation: 'pop',
+              };
+              updateProject((p) => ({ ...p, elements: [...p.elements, element] }), 'Add AI background removal');
+              setSelectedClipId(null);
+              setSelectedElementId(element.id);
+              openTool('overlays');
+              notify('AI background removal added as a new transparent layer.');
+            }}
             onAddCaptions={(captions) => {
               const baseZ = Math.max(...project.elements.map((item) => item.z), 0);
               const created = captions.map((caption, index): TimelineElement => ({
