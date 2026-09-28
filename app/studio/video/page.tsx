@@ -2887,6 +2887,7 @@ function VideoEditor() {
                 <CropWorkspace
                   crop={currentCrop}
                   sourceAspect={cropSourceAspect}
+                  rotation={cropMode.type === 'clip' ? (project.clips.find((c) => c.id === cropMode.id)?.transform.rotation ?? 0) : (project.elements.find((el) => el.id === cropMode.id)?.rotation ?? 0)}
                   onChange={applyCropChange}
                   onEdgeChange={updateCropEdge}
                   onAspect={cropToAspect}
@@ -4324,9 +4325,10 @@ function ClipThumb({ clip }: { clip: VideoClip }) {
    will export. Nothing here is CSS pretending: drawFrame() crops
    the source itself via drawImage source-rect math.
    ============================================================ */
-function CropWorkspace({ crop, sourceAspect, onChange, onEdgeChange, onAspect, onRotate, onFlip, onReset, onCancel, onApply }: {
+function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange, onEdgeChange, onAspect, onRotate, onFlip, onReset, onCancel, onApply }: {
   crop: CropRect | null;
   sourceAspect: number;
+  rotation: number;
   onChange: (next: CropRect | null) => void;
   onEdgeChange: (edge: keyof CropRect, value: number) => void;
   onAspect: (aspect: number | null) => void;
@@ -4337,13 +4339,14 @@ function CropWorkspace({ crop, sourceAspect, onChange, onEdgeChange, onAspect, o
   onApply: () => void;
 }) {
   const c = crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
-  const [rotation, setRotation] = useState(0);
+  const [rotation, setRotation] = useState(initialRotation);
+  useEffect(() => setRotation(initialRotation), [initialRotation]);
   const visibleW = 1 - c.left - c.right;
   const visibleH = 1 - c.top - c.bottom;
   const cropAspect = croppedAspect(sourceAspect, c);
   const setRot = (v: number) => { setRotation(v); onRotate(v); };
   const aspectPresets = [
-    { label: 'Free', value: null }, { label: 'Original', value: sourceAspect },
+    { label: 'Free', value: Number.NaN }, { label: 'Original', value: null },
     { label: '16:9', value: 16 / 9 }, { label: '9:16', value: 9 / 16 },
     { label: '1:1', value: 1 }, { label: '4:5', value: 4 / 5 },
     { label: '4:3', value: 4 / 3 }, { label: '21:9', value: 21 / 9 },
@@ -4361,7 +4364,7 @@ function CropWorkspace({ crop, sourceAspect, onChange, onEdgeChange, onAspect, o
         <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-white/45">Aspect ratio</p>
         <div className="grid grid-cols-4 gap-1.5">
           {aspectPresets.map((p) => (
-            <button key={p.label} onClick={() => onAspect(p.value)} className="rounded-lg bg-white/10 px-2 py-2 text-[10px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">{p.label}</button>
+            <button key={p.label} onClick={() => { if (Number.isNaN(p.value as number)) return; onAspect(p.value); }} className="rounded-lg bg-white/10 px-2 py-2 text-[10px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">{p.label}</button>
           ))}
         </div>
       </div>
