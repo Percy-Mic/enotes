@@ -16,6 +16,7 @@ import { useEntitlements } from '@/lib/entitlements';
 import { uploadFile } from '@/lib/storage/upload';
 import { normalizeVideoDuration, ExportCancelledError } from '@/lib/video/renderer';
 import SharePostPicker from '@/components/community/SharePostPicker';
+import VideoAIStudio from '@/components/studio/VideoAIStudio';
 import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
@@ -63,7 +64,7 @@ interface EditorDoc {
   project: VideoProject;
 }
 
-const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'crop', 'export'] as const;
+const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'ai', 'crop', 'export'] as const;
 type Tool = (typeof TOOLS)[number];
 
 const TOOL_LABELS: Record<Tool, string> = {
@@ -73,6 +74,7 @@ const TOOL_LABELS: Record<Tool, string> = {
   audio: 'Audio',
   motion: 'Motion',
   look: 'Effects',
+  ai: 'AI Studio',
   crop: 'Crop',
   export: 'Export',
 };
@@ -3866,6 +3868,48 @@ function VideoEditor() {
           </div>
         )}
 
+        {tool === 'ai' && (
+          <VideoAIStudio
+            projectId={projectId}
+            project={project}
+            selectedMediaUrl={selectedClip?.src || selectedElement?.src || null}
+            onAddCaptions={(captions) => {
+              const baseZ = Math.max(...project.elements.map((item) => item.z), 0);
+              const created = captions.map((caption, index): TimelineElement => ({
+                id: makeVideoId('caption'),
+                kind: 'text',
+                content: caption.text,
+                src: null,
+                track_id: project.tracks[0]?.id,
+                start: caption.start,
+                end: Math.max(caption.start + 0.25, caption.end),
+                x: project.canvas.width * 0.08,
+                y: project.canvas.height * 0.76,
+                width: project.canvas.width * 0.84,
+                height: 92,
+                rotation: 0,
+                opacity: 1,
+                z: baseZ + index + 1,
+                font_size: Math.max(30, Math.round(project.canvas.width * 0.043)),
+                font_family: 'Poppins, sans-serif',
+                font_weight: 800,
+                color: '#FFFFFF',
+                align: 'center',
+                background: '#000000',
+                stroke_color: '#000000',
+                shadow: true,
+                animation: 'pop',
+              }));
+              if (!created.length) return;
+              updateProject((p) => ({ ...p, elements: [...p.elements, ...created] }), 'Add AI captions');
+              setSelectedClipId(null);
+              setSelectedElementId(created[0].id);
+              openTool('text');
+              notify(`Added ${created.length} AI captions to the timeline.`);
+            }}
+          />
+        )}
+
         {tool === 'overlays' && (
           <div className="space-y-3">
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
@@ -5256,7 +5300,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
             <label className="space-y-1">
               <span className="text-white/60">Animation</span>
               <select value={el.animation || 'none'} onChange={(e) => onChange({ animation: e.target.value as TimelineElement['animation'] }, 'Text animation')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Text animation">
-                {['none', 'fade', 'pop', 'slide-up'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
+                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'rotate-in'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
               </select>
             </label>
           </div>
