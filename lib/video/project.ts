@@ -426,6 +426,20 @@ export function normalizeProject(input: unknown): VideoProject {
             ? track.provider
             : undefined;
 
+        const rawTrimEnd = Math.max(0.1, Number(track.trimEnd) || 0.1);
+        const sourceDuration = Math.max(
+          rawTrimEnd,
+          Number(track.sourceDuration) || rawTrimEnd
+        );
+        const trimStart = Math.max(
+          0,
+          Math.min(sourceDuration - 0.1, Number(track.trimStart) || 0)
+        );
+        const trimEnd = Math.max(
+          trimStart + 0.1,
+          Math.min(sourceDuration, rawTrimEnd)
+        );
+
         return {
           id: String(track.id || makeVideoId('aud')),
           name: String(track.name || 'Audio'),
@@ -436,8 +450,9 @@ export function normalizeProject(input: unknown): VideoProject {
           license: track.license ? String(track.license) : undefined,
           creator: track.creator ? String(track.creator) : undefined,
           start: Math.max(0, Number(track.start) || 0),
-          trimStart: Math.max(0, Number(track.trimStart) || 0),
-          trimEnd: Math.max(0.1, Number(track.trimEnd) || 0.1),
+          sourceDuration,
+          trimStart,
+          trimEnd,
           volume: Math.max(0, Math.min(1, Number(track.volume) || 0)),
           fadeIn: Math.max(0, Number(track.fadeIn) || 0),
           fadeOut: Math.max(0, Number(track.fadeOut) || 0),
