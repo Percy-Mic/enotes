@@ -552,12 +552,18 @@ function filterCssFor(clip: VideoClip): string {
   if (preset && preset.css) parts.push(preset.css);
   const a = clip.adjustments;
   if (a.brightness !== 100) parts.push(`brightness(${a.brightness}%)`);
+  if (a.exposure !== 100) parts.push(`brightness(${a.exposure}%)`);
   if (a.contrast !== 100) parts.push(`contrast(${a.contrast}%)`);
   if (a.saturate !== 100) parts.push(`saturate(${a.saturate}%)`);
+  if (a.vibrance !== 100) parts.push(`saturate(${a.vibrance}%)`);
   if (a.hue !== 0) parts.push(`hue-rotate(${a.hue}deg)`);
+  if (a.temperature !== 0) parts.push(`sepia(${Math.min(100, Math.abs(a.temperature) * 0.22)}%)`);
+  if (a.tint !== 0) parts.push(`hue-rotate(${a.tint * 0.18}deg)`);
   if (a.blur > 0) parts.push(`blur(${a.blur}px)`);
   if (a.sepia > 0) parts.push(`sepia(${a.sepia}%)`);
   if (a.grayscale > 0) parts.push(`grayscale(${a.grayscale}%)`);
+  if (a.sharpen > 0) parts.push(`contrast(${100 + a.sharpen * 0.12}%)`);
+  if (a.grain > 0) parts.push(`contrast(${100 + a.grain * 0.08}%)`);
   return parts.join(' ');
 }
 
@@ -748,12 +754,20 @@ function applyTransition(
     ctx.translate(-canvasW / 2, -canvasH / 2);
     ctx.drawImage(ctx.canvas, 0, 0);
     ctx.restore();
-  } else if (type === 'wipe') {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, canvasW * easeOut(progress), canvasH);
-    ctx.clip();
-    ctx.restore();
+    } else if (type === 'wipe') {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(canvasW * easeOut(progress), 0, canvasW * (1 - easeOut(progress)), canvasH);
+  } else if (type === 'dip-black') {
+    const alpha = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+    ctx.fillStyle = `rgba(0,0,0,${Math.max(0, Math.min(1, alpha))})`;
+    ctx.fillRect(0, 0, canvasW, canvasH);
+  } else if (type === 'push') {
+    const shift = (1 - easeOut(progress)) * canvasW;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(shift, 0, canvasW - shift, canvasH);
+  } else if (type === 'blur') {
+    ctx.fillStyle = `rgba(0,0,0,${(1 - easeOut(progress)) * 0.22})`;
+    ctx.fillRect(0, 0, canvasW, canvasH);
   }
   return { overlayAlpha: 0 };
 }
@@ -966,7 +980,7 @@ export class VideoRenderer {
               ctx.translate(W / 2 + clip.transform.offset_x + eff.dx, H / 2 + clip.transform.offset_y + eff.dy);
               ctx.rotate((clip.transform.rotation * Math.PI) / 180);
               ctx.scale(clip.transform.flip_h ? -1 : 1, clip.transform.flip_v ? -1 : 1);
-              ctx.filter = filterCssFor(clip) || 'none';
+              ctx.filter = [filterCssFor(clip), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
               // cache frames keep the source's aspect — dest rect already matches
               ctx.drawImage(frame.bmp as CanvasImageSource, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
               ctx.filter = 'none';
@@ -981,7 +995,7 @@ export class VideoRenderer {
             ctx.translate(W / 2 + clip.transform.offset_x + eff.dx, H / 2 + clip.transform.offset_y + eff.dy);
             ctx.rotate((clip.transform.rotation * Math.PI) / 180);
             ctx.scale(clip.transform.flip_h ? -1 : 1, clip.transform.flip_v ? -1 : 1);
-            ctx.filter = filterCssFor(clip) || 'none';
+            ctx.filter = [filterCssFor(clip), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
             ctx.drawImage(video, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
             ctx.filter = 'none';
             ctx.restore();
