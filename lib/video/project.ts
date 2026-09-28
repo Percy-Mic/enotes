@@ -318,7 +318,7 @@ export interface AudioTrack {
 }
 
 export interface VideoProject {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   aspect: AspectRatio;
   canvas: { width: number; height: number };
   clips: VideoClip[];
@@ -554,7 +554,7 @@ export function normalizeProject(input: unknown): VideoProject {
       ? a.track_id
       : firstAudioId,
   }));
-  return { version: 2, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted) };
+  return { version: 3, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted) };
 }
 
 export function addTimelineTrack<T extends VideoClip | AudioTrack | TimelineElement>(
@@ -641,7 +641,7 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
   const canvas =
     aspect === 'original' ? { width: 1080, height: 1350 } : { ...CANVAS_SIZES[aspect] };
   return {
-    version: 1,
+    version: 3,
     aspect,
     canvas,
     clips: [],
