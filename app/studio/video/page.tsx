@@ -1699,12 +1699,12 @@ function VideoEditor() {
     };
   };
 
-  /** Screen-aware hit tolerance: never smaller than the drawn handle,
-      grows so touch targets stay ≥ ~22px on small previews. */
+  /** Screen-aware hit tolerance. The visible dot stays compact, but the
+      invisible touch target is intentionally large enough for a fingertip. */
   const handleTolerance = () => {
     const canvas = canvasRef.current;
-    if (!canvas || previewScale <= 0) return HANDLE_PX;
-    return Math.max(HANDLE_PX, 34 / previewScale);
+    if (!canvas || previewScale <= 0) return 56;
+    return Math.max(HANDLE_PX, 56 / previewScale);
   };
 
   /* Active touch pointers on the preview. A second finger switches the
