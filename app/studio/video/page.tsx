@@ -1933,11 +1933,9 @@ function VideoEditor() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    if (e.pointerType !== 'mouse') {
-      canvasTouchPointersRef.current.add(e.pointerId);
-      /* The first touch may use the normal transform path. The second and
-         later touches belong exclusively to useMobileGestures. */
-      if (canvasMultiTouchRef.current) return;
+    if (e.pointerType !== 'mouse' && canvasMultiTouchRef.current) {
+      /* Multi-touch is owned exclusively by useMobileGestures. */
+      return;
     }
 
     if (cropMode) return; // the crop overlay owns every gesture
