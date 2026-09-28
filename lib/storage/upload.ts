@@ -16,7 +16,7 @@ const ALLOWED: Record<UploadContext, string[]> = {
   'studio-media': [
     'video/mp4', 'video/webm', 'video/quicktime',
     'image/jpeg', 'image/png', 'image/webp', 'image/gif',
-    'audio/mpeg', 'audio/mp4', 'audio/webm', 'audio/wav',
+    'audio/mpeg', 'audio/mp4', 'audio/webm', 'audio/wav', 'audio/aac', 'audio/ogg', 'audio/flac', 'audio/x-m4a', 'audio/x-wav',
   ],
 };
 
@@ -36,6 +36,11 @@ export interface UploadResult {
 function typeAllowed(fileType: string, allowed: string[]): boolean {
   const bare = fileType.split(';')[0].trim().toLowerCase();
   if (allowed.includes(bare)) return true;
+  /* The video editor accepts browser/phone audio formats beyond the small
+     canonical list (for example audio/aac, audio/ogg and audio/x-m4a).
+     Keep the broader audio acceptance scoped to studio-media so the editor
+     can import real-world audio files without weakening other upload flows. */
+  if (allowed.some((type) => type.startsWith('audio/')) && bare.startsWith('audio/')) return true;
   /* images sometimes arrive as image/jpg instead of image/jpeg */
   if (bare === 'image/jpg' && allowed.includes('image/jpeg')) return true;
   return false;
