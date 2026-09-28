@@ -76,13 +76,13 @@ async function removeImageBackground(mediaUrl: string) {
     method: 'POST',
     headers: {
       'X-Api-Key': key,
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: JSON.stringify({
+    body: new URLSearchParams({
       image_url: mediaUrl,
       size: 'preview',
       type: 'auto',
-    }),
+    }).toString(),
     cache: 'no-store',
   });
 
