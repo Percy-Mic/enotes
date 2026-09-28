@@ -3291,7 +3291,6 @@ function VideoEditor() {
               sourceAspect={cropSourceAspect}
               rotation={cropMode.type === 'clip' ? (project.clips.find((c) => c.id === cropMode.id)?.transform.rotation ?? 0) : (project.elements.find((el) => el.id === cropMode.id)?.rotation ?? 0)}
               onChange={applyCropChange}
-              onEdgeChange={updateCropEdge}
               onAspect={cropToAspect}
               onRotate={setCropRotation}
               onFlip={setCropFlip}
@@ -4758,7 +4757,6 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
   sourceAspect: number;
   rotation: number;
   onChange: (next: CropRect | null) => void;
-  onEdgeChange: (edge: keyof CropRect, value: number) => void;
   onAspect: (aspect: number | null) => void;
   onRotate: (rotation: number) => void;
   onFlip: (axis: 'horizontal' | 'vertical') => void;
@@ -4768,10 +4766,8 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
 }) {
   const c = crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
   const [rotation, setRotation] = useState(initialRotation);
-  const rotationRef = useRef(initialRotation);
   useEffect(() => {
     setRotation(initialRotation);
-    rotationRef.current = initialRotation;
   }, [initialRotation]);
 
   const aspectPresets = [
@@ -4788,7 +4784,6 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
   const setRot = (v: number) => {
     const next = ((v + 180) % 360 + 360) % 360 - 180;
     setRotation(next);
-    rotationRef.current = next;
     onRotate(next);
   };
 
