@@ -11,11 +11,11 @@
    schema break: everything lives in nested, versioned JSON.
    ============================================================ */
 
-export type AspectRatio = 'original' | '16:9' | '9:16' | '1:1' | '4:5';
+export type AspectRatio = 'original' | '16:9' | '9:16' | '1:1' | '4:5' | '3:2' | '21:9';
 
 export type ElementKind = 'text' | 'sticker' | 'image' | 'video' | 'gif' | 'shape';
 
-export type TransitionType = 'none' | 'fade' | 'crossfade' | 'slide' | 'zoom' | 'wipe';
+export type TransitionType = 'none' | 'fade' | 'crossfade' | 'slide' | 'zoom' | 'wipe' | 'dip-black' | 'push' | 'blur';
 
 /** Crop window as fractions (0-1) of the SOURCE frame, kept per side. */
 export interface CropRect {
@@ -45,6 +45,13 @@ export interface ClipAdjustments {
   blur: number;        // px
   sepia: number;       // 0-100
   grayscale: number;   // 0-100
+  exposure: number;    // 100 = normal
+  temperature: number; // 0 = neutral, -100 cool, +100 warm
+  tint: number;        // 0 = neutral, -100 green, +100 magenta
+  vibrance: number;    // 100 = normal
+  vignette: number;    // 0-100
+  grain: number;       // 0-100
+  sharpen: number;     // 0-100 (preview/export approximation)
 }
 
 export interface AudioProcessing {
@@ -84,7 +91,7 @@ export interface VideoClip {
 }
 
 /** Extensible effect ids — new effects append here; renderer switches on id. */
-export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette';
+export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic';
 
 export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string }[] = [
   { id: 'none', name: 'None', hint: 'No motion effect' },
@@ -92,6 +99,12 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string }[] = 
   { id: 'shake', name: 'Shake', hint: 'Handheld camera shake' },
   { id: 'pulse', name: 'Pulse', hint: 'Rhythmic scale pulse' },
   { id: 'vignette', name: 'Vignette', hint: 'Darkened corners' },
+  { id: 'flash', name: 'Flash', hint: 'Rhythmic white flash' },
+  { id: 'glitch', name: 'Glitch', hint: 'Digital jitter and color separation' },
+  { id: 'vhs', name: 'VHS', hint: 'Retro tape distortion' },
+  { id: 'dream', name: 'Dream', hint: 'Soft luminous motion' },
+  { id: 'film', name: 'Film', hint: 'Subtle cinematic movement' },
+  { id: 'chromatic', name: 'Chromatic', hint: 'Color-fringe motion' },
 ];
 
 export interface TimelineTrack {
@@ -300,6 +313,8 @@ export const CANVAS_SIZES: Record<Exclude<AspectRatio, 'original'>, { width: num
   '9:16': { width: 720, height: 1280 },
   '1:1': { width: 1080, height: 1080 },
   '4:5': { width: 1080, height: 1350 },
+  '3:2': { width: 1440, height: 960 },
+  '21:9': { width: 1680, height: 720 },
 };
 
 export const DEFAULT_AUDIO_PROCESSING: AudioProcessing = {
@@ -348,7 +363,7 @@ export function coverFit(boxW: number, boxH: number, aspect: number): { w: numbe
 
 export function normalizeProject(input: unknown): VideoProject {
   const raw = (input && typeof input === 'object' ? input : {}) as Partial<VideoProject> & Record<string, unknown>;
-  const aspect = (['original', '16:9', '9:16', '1:1', '4:5'] as AspectRatio[]).includes(raw.aspect as AspectRatio)
+  const aspect = (['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'] as AspectRatio[]).includes(raw.aspect as AspectRatio)
     ? raw.aspect as AspectRatio
     : 'original';
   const fallbackCanvas = aspect === 'original' ? { width: 1080, height: 1350 } : { ...CANVAS_SIZES[aspect] };
@@ -564,6 +579,13 @@ export const DEFAULT_ADJUSTMENTS: ClipAdjustments = {
   blur: 0,
   sepia: 0,
   grayscale: 0,
+  exposure: 100,
+  temperature: 0,
+  tint: 0,
+  vibrance: 100,
+  vignette: 0,
+  grain: 0,
+  sharpen: 0,
 };
 
 export const DEFAULT_TRANSITION = { type: 'none' as TransitionType, duration: 0.5 };
