@@ -2136,10 +2136,16 @@ function VideoEditor() {
 
   /* live canvas scale for screen-space selection handles */
   const [previewScale, setPreviewScale] = useState(0);
+  const [previewSize, setPreviewSize] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const update = () => {
+      const stage = stageRef.current;
+      const maxW = Math.max(240, Math.min((stage?.clientWidth ?? window.innerWidth) - 24, window.innerWidth * 0.94));
+      const maxH = Math.max(180, Math.min(window.innerHeight * 0.52, 620));
+      const scale = Math.min(maxW / project.canvas.width, maxH / project.canvas.height);
+      setPreviewSize({ width: Math.max(1, Math.round(project.canvas.width * scale)), height: Math.max(1, Math.round(project.canvas.height * scale)) });
       const rect = canvas.getBoundingClientRect();
       if (rect.width > 0) setPreviewScale(rect.width / project.canvas.width);
     };
@@ -2966,12 +2972,7 @@ function VideoEditor() {
                 onPointerUp={canvasPointerUp}
                 onPointerCancel={canvasPointerUp}
                 className="block select-none bg-black"
-                style={{
-                  aspectRatio: `${project.canvas.width} / ${project.canvas.height}`,
-                  maxHeight: 'min(52dvh, 620px)',
-                  maxWidth: 'min(100%, 94vw)',
-                  touchAction: 'none',
-                }}
+                style={{ width: previewSize?.width, height: previewSize?.height, maxWidth: '100%', maxHeight: '100%', touchAction: 'none' }}
                 aria-label="Video preview — tap the video or an overlay to select, drag to move, corner to resize, edge to stretch, top handle to rotate"
               />
               {/* selection frame for the MAIN clip — same box the export uses */}
@@ -4589,9 +4590,31 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
     height: (1 - current.top - current.bottom) * base.height,
   };
 
+  const multiTouchRef = useRef(false);
+
+  useMobileGestures(ref, {
+    onMultiTouchStart: () => { multiTouchRef.current = true; },
+    onMultiTouchEnd: () => { multiTouchRef.current = false; },
+    onPinch: (scale, center) => {
+      const factor = clampNum(scale, 0.82, 1.22);
+      const visibleWidth = 1 - current.left - current.right;
+      const visibleHeight = 1 - current.top - current.bottom;
+      const rect = ref.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+      const cx = clampNum((center.x - rect.left) / rect.width, 0, 1);
+      const cy = clampNum((center.y - rect.top) / rect.height, 0, 1);
+      const nextWidth = clampNum(visibleWidth * factor, 0.06, 1);
+      const nextHeight = clampNum(visibleHeight * factor, 0.06, 1);
+      const left = clampNum(cx - (cx - current.left) * (nextWidth / Math.max(0.001, visibleWidth)), 0, 1 - nextWidth);
+      const top = clampNum(cy - (cy - current.top) * (nextHeight / Math.max(0.001, visibleHeight)), 0, 1 - nextHeight);
+      onChange({ left, right: 1 - left - nextWidth, top, bottom: 1 - top - nextHeight });
+    },
+  });
+
   const beginDrag = (e: React.PointerEvent, mode: 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw') => {
     e.preventDefault();
     e.stopPropagation();
+    if (e.pointerType !== 'mouse' && multiTouchRef.current) return;
     const overlay = ref.current;
     if (!overlay) return;
     const rect = overlay.getBoundingClientRect();
@@ -4654,10 +4677,10 @@ function CropOverlay({ base, crop, onChange, onApply, onCancel, onReset }: {
       aria-label="Crop editor — drag the window or handles, then apply"
     >
       {/* dim the area that will be cut */}
-      <div className="pointer-events-none absolute inset-0 bg-black/55" />
+      <div className="pointer-events-none absolute inset-0 bg-black/15" />
       {/* surviving window */}
       <div
-        className="absolute touch-none border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+        className="absolute touch-none border-2 border-white bg-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.18)]"
         style={{ left: inner.left, top: inner.top, width: inner.width, height: inner.height, cursor: 'move' }}
         onPointerDown={(e) => beginDrag(e, 'move')}
       >
