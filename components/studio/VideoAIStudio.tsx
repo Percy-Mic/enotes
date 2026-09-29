@@ -7,6 +7,7 @@ type Props = {
   projectId?: string | null;
   project: unknown;
   selectedMediaUrl?: string | null;
+  selectedMediaType?: 'image' | 'video' | 'audio' | null;
   onAddCaptions?: (captions: { id: string; text: string; start: number; end: number }[]) => void;
   onAddMedia?: (media: { url: string; name: string }) => void;
 };
@@ -16,16 +17,20 @@ const ACTIONS = [
   { id: 'assistant', label: 'Editing assistant', hint: 'Ask AI how to improve the current edit', icon: Bot },
   { id: 'generate-captions', label: 'Auto captions', hint: 'Timestamped captions from your selected media', icon: Captions },
   { id: 'transcribe', label: 'Transcribe', hint: 'Get a timestamped transcript', icon: FileAudio },
-  { id: 'remove-background', label: 'Remove background', hint: 'Provider-ready AI image/video operation', icon: ImagePlus },
+  { id: 'remove-background', label: 'Remove image background', hint: 'Remove the background from a JPG, PNG, or WebP image', icon: ImagePlus },
 ] as const;
 
-export default function VideoAIStudio({ projectId, project, selectedMediaUrl, onAddCaptions, onAddMedia }: Props) {
+export default function VideoAIStudio({ projectId, project, selectedMediaUrl, selectedMediaType, onAddCaptions, onAddMedia }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
 
   async function run(operation: string) {
+    if (operation === 'remove-background' && selectedMediaType !== 'image') {
+      setError('Remove image background only works with JPG, PNG, or WebP images. Select an image layer first.');
+      return;
+    }
     setBusy(operation);
     setError(null);
     setResult(null);
@@ -33,7 +38,7 @@ export default function VideoAIStudio({ projectId, project, selectedMediaUrl, on
       const response = await fetch('/api/video/ai', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ operation, projectId, project, mediaUrl: selectedMediaUrl, prompt }),
+        body: JSON.stringify({ operation, projectId, project, mediaUrl: selectedMediaUrl, mediaType: selectedMediaType, prompt }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'AI request failed.');
@@ -71,13 +76,20 @@ export default function VideoAIStudio({ projectId, project, selectedMediaUrl, on
       {!selectedMediaUrl && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-[11px] text-amber-100">Select an imported clip or image on the canvas/timeline first. AI media tools need the saved Studio media URL.</div>}
 
       <div className="grid grid-cols-1 gap-2">
-        {ACTIONS.map(({ id, label, hint, icon: Icon }) => (
-          <button key={id} type="button" onClick={() => void run(id)} disabled={!!busy} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:bg-white/[0.08] disabled:opacity-50">
+        {ACTIONS.map(({ id, label, hint, icon: Icon }) => {
+          const imageOnly = id === 'remove-background';
+          const disabled = !!busy || (imageOnly && selectedMediaType !== 'image');
+          const actionHint = imageOnly && selectedMediaType !== 'image'
+            ? 'Select an image layer (JPG, PNG, or WebP) to use this tool'
+            : hint;
+          return (
+          <button key={id} type="button" onClick={() => void run(id)} disabled={disabled} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:bg-white/[0.08] disabled:opacity-50">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.07]"><Icon className="h-4 w-4" /></span>
-            <span className="min-w-0 flex-1"><span className="block text-xs font-bold">{label}</span><span className="mt-0.5 block text-[10px] text-white/40">{hint}</span></span>
+            <span className="min-w-0 flex-1"><span className="block text-xs font-bold">{label}</span><span className="mt-0.5 block text-[10px] text-white/40">{actionHint}</span></span>
             {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 text-white/20" />}
           </button>
-        ))}
+          );
+        })}
       </div>
 
       {error && <div className="rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-[11px] text-red-200">{error}</div>}
