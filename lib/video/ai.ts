@@ -296,12 +296,12 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
       properties: {
         message: { type: 'string' }, summary: { type: 'string' },
         actions: { type: 'array', items: { type: 'object', properties: {
-          type: { type: 'string', enum: ['set_clip_speed','set_clip_volume','set_clip_mute','set_clip_filter','set_clip_effect','set_clip_transition','trim_clip','transform_clip','set_clip_adjustments','set_aspect','delete_clip','duplicate_clip','generate_captions'] },
+          type: { type: 'string', enum: ['set_clip_speed','set_clip_volume','set_clip_mute','set_clip_filter','set_clip_effect','set_clip_transition','trim_clip','transform_clip','set_clip_adjustments','set_aspect','delete_clip','duplicate_clip','generate_captions','transcribe'] },
           clipId: { type: ['string','null'] }, value: { type: ['number','string','boolean','null'] }, value2: { type: ['number','string','boolean','null'] }, object: { type: ['object','null'] },
         }, required: ['type'] } },
       }, required: ['message','summary','actions'],
     };
-    const prompt = 'You are the editing comrade inside enotes Studio. Return only safe, reversible project-edit actions from the allowed action types. Never invent ids. If the user says this/it/the clip, use the selected clip. If the user asks for captions/subtitles/CC, return generate_captions. If unsupported, explain it and return no action. Keep actions minimal. Allowed semantics: set_clip_speed value 0.25..4; set_clip_volume value 0..1; set_clip_mute boolean; set_clip_filter known ids; set_clip_effect known ids; set_clip_transition value type and value2 duration; trim_clip value start and value2 end; transform_clip object offset_x,offset_y,scale,scale_x,scale_y,rotation; set_clip_adjustments object with brightness,contrast,saturate,hue,blur,sepia,grayscale,exposure,temperature,tint,vibrance,vignette,grain,sharpen; set_aspect value original/16:9/9:16/1:1/4:5/3:2/21:9; delete_clip/duplicate_clip clipId; generate_captions needs no value. User request: ' + (input.prompt || 'Suggest a useful improvement') + '. Selection: ' + JSON.stringify(input.selection || {}) + '. Project: ' + JSON.stringify(compactProject);
+    const prompt = 'You are the editing comrade inside enotes Studio. Return only safe, reversible project-edit actions from the allowed action types. Never invent ids. If the user says this/it/the clip, use the selected clip. If the user asks for captions/subtitles/CC, return generate_captions. If the user asks for a transcript/transcribe, return transcribe. If unsupported, explain it and return no action. Keep actions minimal. Allowed semantics: set_clip_speed value 0.25..4; set_clip_volume value 0..1; set_clip_mute boolean; set_clip_filter known ids; set_clip_effect known ids; set_clip_transition value type and value2 duration; trim_clip value start and value2 end; transform_clip object offset_x,offset_y,scale,scale_x,scale_y,rotation; set_clip_adjustments object with brightness,contrast,saturate,hue,blur,sepia,grayscale,exposure,temperature,tint,vibrance,vignette,grain,sharpen; set_aspect value original/16:9/9:16/1:1/4:5/3:2/21:9; delete_clip/duplicate_clip clipId; generate_captions needs no value. User request: ' + (input.prompt || 'Suggest a useful improvement') + '. Selection: ' + JSON.stringify(input.selection || {}) + '. Project: ' + JSON.stringify(compactProject);
     let plan = await geminiStructured(prompt, schema);
     if (!plan || typeof plan !== 'object') plan = { message: 'I could not create a safe edit plan.', summary: '', actions: [] };
     const actions = Array.isArray((plan as any).actions) ? (plan as any).actions.slice(0, 8) : [];
@@ -309,11 +309,11 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
     const selectedClipId = input.selection?.clipId || null;
     const sanitizedActions = actions.map((action: any) => ({ ...action, clipId: action.clipId || selectedClipId || null })).filter((action: any) => action.type === 'set_aspect' || action.type === 'generate_captions' || validClipIds.has(action.clipId));
     let captions: unknown[] = []; let transcript: unknown = null;
-    if (sanitizedActions.some((action: any) => action.type === 'generate_captions')) {
+    if (sanitizedActions.some((action: any) => action.type === 'generate_captions' || action.type === 'transcribe')) {
       if (!input.mediaUrl || !/^https?:\/\//i.test(input.mediaUrl)) throw new Error('Select an imported video or audio clip first so I can generate accurate captions.');
       const transcriptResult = ASSEMBLY_KEY() ? await assemblyTranscript(input.mediaUrl, input.language) : await groqTranscript(input.mediaUrl, input.language);
       transcript = transcriptResult;
-      captions = transcriptResult.words.length ? buildCaptions(transcriptResult.words as TranscriptWord[]) : [{ id: 'caption-0', text: transcriptResult.text, start: 0, end: 4, confidence: null, needsReview: true, speaker: null }];
+      if (sanitizedActions.some((action: any) => action.type === 'generate_captions')) captions = transcriptResult.words.length ? buildCaptions(transcriptResult.words as TranscriptWord[]) : [{ id: 'caption-0', text: transcriptResult.text, start: 0, end: 4, confidence: null, needsReview: true, speaker: null }];
     }
     return { operation, provider: 'gemini' + (captions.length ? ' + ' + (ASSEMBLY_KEY() ? 'assemblyai' : 'groq') : ''), output: { message: String((plan as any).message || 'I prepared an edit plan.'), summary: String((plan as any).summary || ''), actions: sanitizedActions, captions, transcript, captionCount: captions.length, reviewCount: captions.filter((caption: any) => caption?.needsReview).length } };
   }
