@@ -152,7 +152,7 @@ async function geminiStructured(
       'x-goog-api-key': key,
     },
     body: JSON.stringify({
-      model: model.replace(/^models\\//, ''),
+      model: model.replace(/^models\//, ''),
       input: mediaParts.length
         ? [{ type: 'text', text: prompt }, ...mediaParts]
         : prompt,
