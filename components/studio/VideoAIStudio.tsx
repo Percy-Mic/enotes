@@ -320,6 +320,15 @@ export default function VideoAIStudio({
       const actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
       const captions: VideoAICaption[] = Array.isArray(output.captions) ? output.captions : [];
 
+      /* Last-line guard: the server repairs blank/placeholder text cues, but
+         any plan that slips past it must not render the editor's fallback. */
+      for (const action of actions) {
+        if (action.type !== 'add_text_element') continue;
+        const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
+        const text = typeof obj.text === 'string' ? obj.text.trim() : '';
+        if (!text || /^your message$/i.test(text)) obj.text = 'YOUR STORY';
+      }
+
       const libraryAudioActions = actions.filter((action) => action.type === 'add_library_audio');
       for (const action of libraryAudioActions) {
         const soundId = typeof action.object?.soundId === 'string' ? action.object.soundId : '';

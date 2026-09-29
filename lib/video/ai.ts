@@ -2510,6 +2510,49 @@ TIMELINE RULES:
       });
     }
 
+    /*
+     * Completeness guards — deterministic floor under the planner + critic.
+     * The production run exposed two repairable defects: a structurally
+     * complete plan that never touches the look, and text cues emitted
+     * without copy (the executor would render its "Your message" fallback).
+     * Both are cheap to detect and fix here, before sanitization.
+     */
+
+    /* 1) Text-copy guard: never ship a placeholder cue. Repair blank or
+     *    fallback text with role-appropriate neutral copy — an opener for
+     *    cues in the first part of the timeline, a closing CTA near the end
+     *    — so the design slot survives with intentional-looking text. */
+    const placeholderText = /^your message$/i;
+    const timelineEnd = (() => {
+      const manifest = compactProject.timeline as Array<Record<string, unknown>>;
+      const last = manifest.length ? manifest[manifest.length - 1] : null;
+      return Number(last?.timelineEnd) || 0;
+    })();
+    for (const action of plannedActions) {
+      if (action.type !== 'add_text_element') continue;
+      const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
+      const text = typeof obj.text === 'string' ? obj.text.trim() : '';
+      if (text && !placeholderText.test(text)) continue;
+      const start = Number(obj.start) || 0;
+      obj.text = timelineEnd > 0 && start >= timelineEnd * 0.6 ? 'WATCH MORE' : 'YOUR STORY';
+    }
+
+    /* 2) Grade guard: a plan that trims, reorders, or transitions but never
+     *    grades the look ships half-finished. When the plan already shows
+     *    holistic intent (2+ structural signals) and no filter/adjustment
+     *    exists anywhere, append ONE unified grade — clipId "all" fans out
+     *    to every clip client-side without spending the action budget. */
+    const hasGradeAction = plannedActions.some((action: any) =>
+      action.type === 'set_clip_filter' ||
+      (action.type === 'set_clip_adjustments' && action.object && Object.keys(action.object).length > 0)
+    );
+    const structuralSignals = plannedActions.filter((action: any) =>
+      ['trim_clip', 'set_clip_transition', 'add_text_element', 'reorder_clip', 'split_clip', 'set_clip_speed'].includes(action.type)
+    ).length;
+    if (compactProject.clips.length > 0 && !hasGradeAction && structuralSignals >= 2) {
+      plannedActions.push({ type: 'set_clip_filter', clipId: 'all', value: 'cinematic' });
+    }
+
     const adTextCount = plannedActions.filter((action: any) =>
       action.type === 'add_text_element' &&
       typeof action.object?.text === 'string' &&
