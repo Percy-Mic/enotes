@@ -2638,6 +2638,13 @@ TIMELINE RULES:
           ) return true;
           if (action.clipId === 'all') return true;
           if (clipActionTypes.has(action.type)) {
+            /* A look action aimed at a hallucinated clip is still a look
+               decision — keep it as a project-wide grade instead of dropping
+               the intent (production shipped an ungraded ad this way). */
+            if (action.type === 'set_clip_filter' || action.type === 'set_clip_adjustments') {
+              if (!validClipIds.has(action.clipId)) action.clipId = 'all';
+              return true;
+            }
             return (
               action.type === 'add_text_element' ||
               action.type === 'split_clip' ||
@@ -2665,6 +2672,24 @@ TIMELINE RULES:
               },
         )
         .slice(0, 24);
+
+    /*
+     * Grade guard, round two — post-sanitization.
+     * The pre-sanitization guard cannot see actions the sanitizer removes:
+     * a grade aimed at a hallucinated clipId used to vanish between the two
+     * passes while the plan's message still claimed a color grade. Re-check
+     * the SURVIVING actions and append one unified grade if the look is gone.
+     */
+    const survivedGrade = sanitizedActions.some((action: any) =>
+      action.type === 'set_clip_filter' ||
+      (action.type === 'set_clip_adjustments' && action.object && Object.keys(action.object).length > 0)
+    );
+    const survivedStructural = sanitizedActions.filter((action: any) =>
+      ['trim_clip', 'set_clip_transition', 'add_text_element', 'reorder_clip', 'split_clip', 'set_clip_speed', 'set_aspect'].includes(action.type)
+    ).length;
+    if (compactProject.clips.length > 0 && !survivedGrade && survivedStructural >= 2) {
+      sanitizedActions.push({ type: 'set_clip_filter', clipId: 'all', value: 'cinematic' });
+    }
 
     let captions: unknown[] =
       [];
