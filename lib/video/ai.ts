@@ -1412,6 +1412,112 @@ async function rememberUserInstruction(
     });
 }
 
+type VideoAIClipVisionIndex = {
+  clipId: string;
+  fingerprint: string;
+  sourceUrl: string;
+  sourceDuration: number;
+  trimStart: number;
+  trimEnd: number;
+  description: string;
+  shotType: string;
+  subjects: string[];
+  visualTags: string[];
+  textVisible: string[];
+  composition: string;
+  qualityNotes: string[];
+  suggestedUse: string;
+  frameTimes: number[];
+  analyzedAt: string;
+};
+
+async function sha256Text(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function loadProjectVisionIndex(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, projectId?: string | null) {
+  if (!projectId) return [] as VideoAIClipVisionIndex[];
+  const { data } = await supabase.from('video_ai_clip_vision_index')
+    .select('clip_id,fingerprint,source_url,source_duration,trim_start,trim_end,description,shot_type,subjects,visual_tags,text_visible,composition,quality_notes,suggested_use,frame_times,analyzed_at')
+    .eq('user_id', userId).eq('project_id', projectId);
+  return Array.isArray(data) ? data.map((row: any) => ({
+    clipId: String(row.clip_id), fingerprint: String(row.fingerprint || ''), sourceUrl: String(row.source_url || ''),
+    sourceDuration: Number(row.source_duration || 0), trimStart: Number(row.trim_start || 0), trimEnd: Number(row.trim_end || 0),
+    description: String(row.description || ''), shotType: String(row.shot_type || ''),
+    subjects: Array.isArray(row.subjects) ? row.subjects.map(String) : [],
+    visualTags: Array.isArray(row.visual_tags) ? row.visual_tags.map(String) : [],
+    textVisible: Array.isArray(row.text_visible) ? row.text_visible.map(String) : [],
+    composition: String(row.composition || ''), qualityNotes: Array.isArray(row.quality_notes) ? row.quality_notes.map(String) : [],
+    suggestedUse: String(row.suggested_use || ''), frameTimes: Array.isArray(row.frame_times) ? row.frame_times.map(Number).filter(Number.isFinite) : [],
+    analyzedAt: String(row.analyzed_at || ''),
+  })) : [];
+}
+
+async function updateProjectVisionIndex(supabase: Awaited<ReturnType<typeof createClient>>, userId: string, projectId: string | null | undefined, project: Record<string, unknown>, visionFrames: NonNullable<AIJobInput['visionFrames']>) {
+  if (!projectId || !visionFrames.length) return [] as VideoAIClipVisionIndex[];
+  const clips = Array.isArray(project.clips) ? project.clips as Array<Record<string, unknown>> : [];
+  const existing = await loadProjectVisionIndex(supabase, userId, projectId);
+  const existingByClip = new Map(existing.map((item) => [item.clipId, item]));
+  const framesByClip = new Map<string, typeof visionFrames>();
+  for (const frame of visionFrames) {
+    const list = framesByClip.get(frame.clipId) || [];
+    list.push(frame);
+    framesByClip.set(frame.clipId, list);
+  }
+  const candidates = clips.map((clip) => {
+    const clipId = typeof clip.id === 'string' ? clip.id : '';
+    const sourceUrl = typeof clip.src === 'string' ? clip.src : '';
+    if (!clipId || !sourceUrl) return null;
+    const sourceDuration = Math.max(0.1, Number(clip.sourceDuration) || 0.1);
+    const trimStart = Math.max(0, Number(clip.trimStart) || 0);
+    const trimEnd = Math.max(trimStart + 0.05, Number(clip.trimEnd) || sourceDuration);
+    return { clipId, sourceUrl, sourceDuration, trimStart, trimEnd };
+  }).filter(Boolean) as Array<{clipId:string;sourceUrl:string;sourceDuration:number;trimStart:number;trimEnd:number}>;
+  const stale: typeof candidates = [];
+  for (const item of candidates) {
+    const fingerprint = await sha256Text(JSON.stringify([item.sourceUrl,item.sourceDuration,item.trimStart,item.trimEnd]));
+    if (!existingByClip.has(item.clipId) || existingByClip.get(item.clipId)?.fingerprint !== fingerprint) stale.push(item);
+  }
+  if (!stale.length) return existing;
+  const analysisFrames = stale.flatMap((item) => (framesByClip.get(item.clipId) || []).map((frame) => ({...frame, sourceUrl:item.sourceUrl}))).slice(0, 18);
+  if (!analysisFrames.length) return existing;
+  const schema = { type:'object', properties:{ clips:{ type:'array', items:{ type:'object', properties:{
+    clipId:{type:'string'}, description:{type:'string'}, shotType:{type:'string'},
+    subjects:{type:'array',items:{type:'string'}}, visualTags:{type:'array',items:{type:'string'}}, textVisible:{type:'array',items:{type:'string'}},
+    composition:{type:'string'}, qualityNotes:{type:'array',items:{type:'string'}}, suggestedUse:{type:'string'},
+  }, required:['clipId','description','shotType','subjects','visualTags','textVisible','composition','qualityNotes','suggestedUse']}}}, required:['clips']};
+  const prompt = 'Analyze the attached representative video frames as a persistent visual index for a professional video editor.\n' +
+    'Each frame is labeled with clipId and source time. Return ONE entry per represented clipId.\n' +
+    'Describe only what is actually visible. Do not infer identity, location, brand, or intent without visual evidence.\n' +
+    'Classify shotType with editing terminology. subjects must be concrete visible subjects. visualTags must be concise searchable concepts. textVisible must contain readable on-screen text or be empty.\n' +
+    'composition describes framing/layout. qualityNotes mention visible blur, shake, exposure, focus, lighting, obstruction, etc. suggestedUse describes a possible editing role based only on visible content.\n\n' +
+    'Frame manifest:\n' + JSON.stringify(analysisFrames.map((frame) => ({clipId:frame.clipId,time:frame.time,label:frame.label || ''})));
+  const result = await geminiStructured(prompt, schema, process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', analysisFrames.map((frame) => ({url:frame.dataUrl,type:'image' as const}))) as any;
+  const analyzed = Array.isArray(result?.clips) ? result.clips : [];
+  const now = new Date().toISOString();
+  for (const item of stale) {
+    const visual = analyzed.find((entry:any) => String(entry?.clipId) === item.clipId);
+    if (!visual) continue;
+    const fingerprint = await sha256Text(JSON.stringify([item.sourceUrl,item.sourceDuration,item.trimStart,item.trimEnd]));
+    const frameTimes = (framesByClip.get(item.clipId) || []).map((frame) => Number(frame.time)).filter(Number.isFinite);
+    await supabase.from('video_ai_clip_vision_index').upsert({
+      user_id:userId, project_id:projectId, clip_id:item.clipId, fingerprint, source_url:item.sourceUrl,
+      source_duration:item.sourceDuration, trim_start:item.trimStart, trim_end:item.trimEnd,
+      description:String(visual.description || '').slice(0,2000), shot_type:String(visual.shotType || '').slice(0,200),
+      subjects:Array.isArray(visual.subjects)?visual.subjects.map(String).slice(0,20):[],
+      visual_tags:Array.isArray(visual.visualTags)?visual.visualTags.map(String).slice(0,30):[],
+      text_visible:Array.isArray(visual.textVisible)?visual.textVisible.map(String).slice(0,20):[],
+      composition:String(visual.composition || '').slice(0,1000),
+      quality_notes:Array.isArray(visual.qualityNotes)?visual.qualityNotes.map(String).slice(0,20):[],
+      suggested_use:String(visual.suggestedUse || '').slice(0,500), frame_times:frameTimes, analyzed_at:now,
+      model:process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', updated_at:now
+    }, {onConflict:'project_id,clip_id'});
+  }
+  return loadProjectVisionIndex(supabase,userId,projectId);
+}
+
 export async function runVideoAI(
   input: AIJobInput,
 ): Promise<AIResult> {
@@ -1560,6 +1666,10 @@ export async function runVideoAI(
             unknown
           >)
         : {};
+
+    const persistedVisionIndex = input.operation === 'assistant' && input.projectId && Array.isArray(input.visionFrames)
+      ? await updateProjectVisionIndex(supabase, auth.user.id, input.projectId, rawProject, input.visionFrames)
+      : await loadProjectVisionIndex(supabase, auth.user.id, input.projectId);
 
     const compactProject = {
       aspect:
