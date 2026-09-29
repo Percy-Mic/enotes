@@ -37,6 +37,15 @@ export interface AIJobInput {
     actions?: unknown[];
   }> | null;
   conversationId?: string | null;
+  audioLibrary?: Array<{
+    id: string;
+    title: string;
+    artist?: string | null;
+    category?: string | null;
+    duration_seconds?: number | null;
+    commercial_use?: boolean;
+    premium?: boolean;
+  }> | null;
 }
 
 export interface AIResult {
@@ -1697,6 +1706,7 @@ export async function runVideoAI(
                   'split_clip',
                   'reorder_clip',
                   'add_stock_video',
+                  'add_library_audio',
                 ],
               },
 
@@ -2006,6 +2016,39 @@ object = {
   orientation
 }
 
+add_library_audio
+object = {
+  soundId,
+  reason
+}
+
+AUDIO LIBRARY RULES:
+
+- The supplied audio library is the ONLY library you may use.
+- Never invent a sound ID.
+- Do not add music, SFX, or audio merely because a project is an advertisement.
+- Add library audio ONLY when the user explicitly asks for music, soundtrack, background music, SFX, sound effects, audio, or asks you to choose suitable music.
+- When audio is explicitly requested, choose a library item whose title/category matches the request and whose commercial_use is true when the project is promotional/commercial.
+- If no suitable library item exists, do not invent one and do not silently add unrelated audio.
+
+CAPTIONS RULES:
+
+- Do NOT generate captions for an advertisement unless the user explicitly asks for captions/subtitles/auto-captions.
+- "Advertisement", "commercial", and "promotional" alone do NOT authorize captions.
+- When captions are explicitly requested, emit generate_captions AND the application will turn the returned timed captions into real text overlays.
+
+ADVERTISEMENT EXECUTION RULES:
+
+- An advertisement request MUST produce actual visual hierarchy, not only color/effect changes.
+- Unless the user explicitly says otherwise, include at least one strong headline text overlay and one CTA text overlay.
+- Use the actual supplied footage first.
+- If there are fewer than 2 usable clips, emit add_stock_video for one relevant B-roll shot. If there is only one very short clip, you may emit a second relevant B-roll shot.
+- Do not add stock footage when the user explicitly says to use only their footage.
+- Do not add library audio unless the audio rule above is satisfied.
+
+Available audio library:
+${JSON.stringify((input.audioLibrary || []).slice(0, 80))}
+
 Saved AI memory:
 
 ${memoryText}
@@ -2153,6 +2196,7 @@ ${JSON.stringify(
         'add_text_element',
         'split_clip',
         'reorder_clip',
+        'add_library_audio',
       ]);
 
     const elementActionTypes =
@@ -2206,8 +2250,75 @@ ${JSON.stringify(
       return normalized;
     };
 
+    const requestText = String(input.prompt || '').toLowerCase();
+    const isAdvertisementRequest = /\b(advertisement|advertising|commercial|promotional video|promo video|promo)\b/i.test(requestText);
+    const captionsExplicitlyRequested = /\b(captions?|subtitles?|subtitle|auto[- ]?captions?|closed captions?)\b/i.test(requestText);
+    const audioExplicitlyRequested = /\b(music|soundtrack|background music|sfx|sound effects?|audio|song)\b/i.test(requestText);
+    const useOnlyUserMedia = /\b(only|just)\b.{0,20}\b(my|our|the)\b.{0,20}\b(footage|clips?|media|videos?)\b/i.test(requestText);
+
+    let plannedActions = actions.filter((action: any) => {
+      if (!captionsExplicitlyRequested && (action.type === 'generate_captions' || action.type === 'transcribe')) return false;
+      if (action.type === 'add_library_audio' && !audioExplicitlyRequested) return false;
+      if (action.type === 'add_stock_video' && useOnlyUserMedia) return false;
+      return true;
+    });
+
+    if (isAdvertisementRequest && !useOnlyUserMedia && compactProject.clips.length < 2) {
+      plannedActions.push({
+        type: 'add_stock_video',
+        object: {
+          query: 'professional product lifestyle b-roll',
+          orientation: compactProject.aspect === '9:16' || compactProject.aspect === '4:5' ? 'portrait' : 'landscape',
+        },
+      });
+    }
+
+    const hasAdText = plannedActions.some((action: any) =>
+      action.type === 'add_text_element' &&
+      typeof action.object?.text === 'string' &&
+      String(action.object.text).trim()
+    );
+
+    if (isAdvertisementRequest && !hasAdText) {
+      const duration = Math.max(3, Number(compactProject.clips.reduce((sum: number, clip: any) => sum + Math.max(0.1, (Number(clip.trimEnd) || 1) - (Number(clip.trimStart) || 0)) / Math.max(0.05, Number(clip.speed) || 1), 0)) || 6);
+      plannedActions.push(
+        {
+          type: 'add_text_element',
+          object: {
+            text: 'YOUR BRAND',
+            start: 0,
+            end: Math.min(duration, 3),
+            x: Number(compactProject.canvas?.width || 1080) * 0.08,
+            y: Number(compactProject.canvas?.height || 1350) * 0.12,
+            width: Number(compactProject.canvas?.width || 1080) * 0.84,
+            height: 120,
+            font_size: 64,
+            color: '#FFFFFF',
+            background: '#000000',
+            animation: 'pop',
+          },
+        },
+        {
+          type: 'add_text_element',
+          object: {
+            text: 'LEARN MORE',
+            start: Math.max(0, duration - 3),
+            end: duration,
+            x: Number(compactProject.canvas?.width || 1080) * 0.12,
+            y: Number(compactProject.canvas?.height || 1350) * 0.78,
+            width: Number(compactProject.canvas?.width || 1080) * 0.76,
+            height: 100,
+            font_size: 52,
+            color: '#FFFFFF',
+            background: '#E5798F',
+            animation: 'slide-up',
+          },
+        },
+      );
+    }
+
     const sanitizedActions =
-      actions
+      plannedActions
         .map(normalizeAction)
         .map((action: any) => ({
           ...action,
