@@ -193,7 +193,7 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
   const operation = input.operation;
 
   if (operation === 'transcribe' || operation === 'generate-captions') {
-    if (!input.mediaUrl || !/^https?:\\/\\//i.test(input.mediaUrl)) throw new Error('Select an imported video/audio clip first. AI transcription needs a saved studio-media URL.');
+    if (!input.mediaUrl || !/^https?:\/\//i.test(input.mediaUrl)) throw new Error('Select an imported video/audio clip first. AI transcription needs a saved studio-media URL.');
     const transcript = ASSEMBLY_KEY() ? await assemblyTranscript(input.mediaUrl, input.language) : await groqTranscript(input.mediaUrl, input.language);
     if (operation === 'transcribe') return { operation, provider: ASSEMBLY_KEY() ? 'assemblyai' : 'groq', output: transcript };
 
@@ -205,11 +205,11 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
           end: w.end / 1000,
         }))
       : [{ id: 'caption-0', text: transcript.text, start: 0, end: 4 }];
-    return { operation, provider: 'assemblyai', output: { ...transcript, captions } };
+    return { operation, provider: ASSEMBLY_KEY() ? 'assemblyai' : 'groq', output: { ...transcript, captions } };
   }
 
   if (operation === 'remove-background') {
-    if (!input.mediaUrl || !/^https?:\\/\\//i.test(input.mediaUrl)) {
+    if (!input.mediaUrl || !/^https?:\/\//i.test(input.mediaUrl)) {
       throw new Error('Select an imported image first. Background removal works on image media.');
     }
     const output = await removeImageBackground(input.mediaUrl);
