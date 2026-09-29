@@ -71,9 +71,9 @@ async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'g
 
 function inferMediaType(mediaUrl: string): 'image' | 'video' | 'audio' | 'unknown' {
   const pathname = mediaUrl.split('?')[0].split('#')[0].toLowerCase();
-  if /\.(?:jpe?g|png|webp)$/i.test(pathname) return 'image';
-  if /\.(?:mp4|webm|mov|m4v|avi|mkv)$/i.test(pathname) return 'video';
-  if /\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(pathname) return 'audio';
+  if (/\.(?:jpe?g|png|webp)$/i.test(pathname)) return 'image';
+  if (/\.(?:mp4|webm|mov|m4v|avi|mkv)$/i.test(pathname)) return 'video';
+  if (/\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(pathname)) return 'audio';
   return 'unknown';
 }
 
