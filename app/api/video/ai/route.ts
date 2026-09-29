@@ -14,6 +14,39 @@ export async function POST(request: Request) {
     jobId = job.id;
 
     const result = await runVideoAI(body);
+
+    /* Persist executable AI actions as an audit/undo companion. The editor's
+       local history remains the source of truth for immediate undo, while
+       this record lets the project remember what the AI actually requested. */
+    if (body.operation === 'assistant' && body.projectId) {
+      const actions = Array.isArray((result.output as { actions?: unknown[] } | null)?.actions)
+        ? (result.output as { actions: unknown[] }).actions
+        : [];
+      if (actions.length) {
+        const { createClient } = await import('@/lib/supabase/server');
+        const db = await createClient();
+        const { data: auth } = await db.auth.getUser();
+        if (auth.user) {
+          await db.from('video_ai_actions').insert(
+            actions.slice(0, 16).map((action: any) => ({
+              user_id: auth.user.id,
+              project_id: body.projectId,
+              conversation_id: null,
+              message_id: null,
+              action_type: String(action?.type || 'unknown'),
+              target_type: action?.clipId ? 'clip' : action?.elementId ? 'element' : 'project',
+              target_id: action?.clipId || action?.elementId || null,
+              action,
+              before_state: null,
+              after_state: null,
+              status: 'executed',
+              feedback: null,
+            }))
+          );
+        }
+      }
+    }
+
     await finishAIJob(jobId, { status: 'completed', output: result.output });
     return NextResponse.json({ ...result, jobId });
   } catch (error) {
