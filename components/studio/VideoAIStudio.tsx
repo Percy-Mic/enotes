@@ -29,7 +29,12 @@ export type VideoAIEditAction = {
     | 'generate_captions'
     | 'transcribe'
     | 'transform_element'
-    | 'set_element_opacity';
+    | 'set_element_opacity'
+    | 'set_keyframe'
+    | 'add_text_element'
+    | 'split_clip'
+    | 'reorder_clip'
+    | 'add_stock_video';
   clipId?: string | null;
   elementId?: string | null;
   value?: number | string | boolean | null;
@@ -56,14 +61,17 @@ type Props = {
   selectedElementId?: string | null;
   onAddCaptions?: (captions: VideoAICaption[]) => void;
   onAddMedia?: (media: { url: string; name: string }) => void;
+  onAddStockVideo?: (media: { url: string; name: string; width: number; height: number; duration: number; photographer: string; provider: 'pexels' | 'pixabay' }) => void;
   onApplyActions?: (actions: VideoAIEditAction[]) => void;
 };
 
 const SUGGESTIONS = [
-  { label: 'Make this cinematic', prompt: 'Make the selected clip feel more cinematic without overdoing it.' },
-  { label: 'Add accurate captions', prompt: 'Generate accurate captions for this video and add them to the timeline.' },
-  { label: 'Improve the pacing', prompt: 'Improve the pacing of the selected clip using safe speed or timing changes.' },
-  { label: 'Make it social-ready', prompt: 'Prepare the selected video for social media with a suitable aspect ratio and clean presentation.' },
+  { label: 'Make it an advertisement', prompt: 'Turn this project into a polished short advertisement. You may reuse, trim, reorder, duplicate, and style the existing footage. If extra B-roll would materially improve it, request suitable free stock footage.' },
+  { label: 'Make this cinematic', prompt: 'Make the selected clip feel cinematic using real editor effects, color adjustments, motion, and tasteful keyframes.' },
+  { label: 'Improve the pacing', prompt: 'Improve the pacing of this project. Use cuts, trims, speed changes, beat-friendly timing, and clip ordering where appropriate.' },
+  { label: 'Make it social-ready', prompt: 'Prepare this project for social media. Choose a suitable aspect ratio, improve framing, captions, text hierarchy, and pacing.' },
+  { label: 'Make the suggestions', prompt: 'Apply the suggestions from your previous response to the current project. Do not ask me to restate them.' },
+  { label: 'Add captions', prompt: 'Generate accurate timed captions and add them to the timeline with readable animated styling.' },
 ];
 
 function actionLabel(action: VideoAIEditAction) {
@@ -85,6 +93,11 @@ function actionLabel(action: VideoAIEditAction) {
     case 'transcribe': return 'Transcript generated';
     case 'transform_element': return 'Overlay transform adjusted';
     case 'set_element_opacity': return 'Overlay opacity adjusted';
+    case 'set_keyframe': return 'Motion keyframe added';
+    case 'add_text_element': return 'Text added';
+    case 'split_clip': return 'Clip split';
+    case 'reorder_clip': return 'Clip reordered';
+    case 'add_stock_video': return `Stock footage → ${String(action.object?.query || 'selected topic')}`;
     default: return 'Edit applied';
   }
 }
@@ -98,6 +111,7 @@ export default function VideoAIStudio({
   selectedElementId,
   onAddCaptions,
   onAddMedia,
+  onAddStockVideo,
   onApplyActions,
 }: Props) {
   const [prompt, setPrompt] = useState('');
@@ -141,6 +155,11 @@ export default function VideoAIStudio({
             clipId: selectedClipId,
             elementId: selectedElementId,
           },
+          conversation: conversation.slice(-10).map((message) => ({
+            role: message.role,
+            text: message.text,
+            actions: message.actions || [],
+          })),
           prompt: text,
         }),
       });
@@ -152,8 +171,41 @@ export default function VideoAIStudio({
       const actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
       const captions: VideoAICaption[] = Array.isArray(output.captions) ? output.captions : [];
 
+      const stockActions = actions.filter((action) => action.type === 'add_stock_video');
+      for (const action of stockActions) {
+        const query = typeof action.object?.query === 'string' ? action.object.query.trim() : '';
+        if (!query || !onAddStockVideo) continue;
+        try {
+          const params = new URLSearchParams({
+            query,
+            page: '1',
+            provider: 'all',
+          });
+          const response = await fetch('/api/studio/stock-videos?' + params.toString());
+          const stock = await response.json().catch(() => ({}));
+          if (response.ok && Array.isArray(stock.videos) && stock.videos[0]) {
+            const item = stock.videos[0];
+            onAddStockVideo({
+              url: item.url,
+              name: item.provider === 'pixabay' ? `Pixabay · ${item.photographer || 'Stock footage'}` : `Pexels · ${item.photographer || 'Stock footage'}`,
+              width: Number(item.width) || 1920,
+              height: Number(item.height) || 1080,
+              duration: Number(item.duration) || 5,
+              photographer: String(item.photographer || 'Stock footage'),
+              provider: item.provider === 'pixabay' ? 'pixabay' : 'pexels',
+            });
+          }
+        } catch {
+          /* Stock is optional; the editor still applies the rest of the plan. */
+        }
+      }
+
       if (actions.length && onApplyActions) {
-        onApplyActions(actions.filter((action) => action.type !== 'generate_captions'));
+        onApplyActions(actions.filter((action) =>
+          action.type !== 'generate_captions' &&
+          action.type !== 'transcribe' &&
+          action.type !== 'add_stock_video'
+        ));
       }
 
       if (typeof output?.transcript?.text === 'string') setLastTranscript(output.transcript.text);
