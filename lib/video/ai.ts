@@ -349,6 +349,8 @@ export async function createAIJob(input: AIJobInput) {
         mediaUrl: input.mediaUrl || null,
         prompt: input.prompt || null,
         language: input.language || null,
+        mediaType: input.mediaType || null,
+        selection: input.selection || null,
       },
     })
     .select('id')
