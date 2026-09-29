@@ -22,6 +22,7 @@ export type VideoAIEditAction = {
     | 'trim_clip'
     | 'transform_clip'
     | 'set_clip_adjustments'
+    | 'fit_clip'
     | 'set_aspect'
     | 'delete_clip'
     | 'duplicate_clip'
@@ -76,6 +77,7 @@ function actionLabel(action: VideoAIEditAction) {
     case 'trim_clip': return 'Trim adjusted';
     case 'transform_clip': return 'Transform adjusted';
     case 'set_clip_adjustments': return 'Color adjustments';
+    case 'fit_clip': return `Fit → ${String(action.value || 'contain')}`;
     case 'set_aspect': return `Canvas → ${String(action.value)}`;
     case 'delete_clip': return 'Clip removed';
     case 'duplicate_clip': return 'Clip duplicated';
@@ -178,7 +180,7 @@ export default function VideoAIStudio({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 space-y-3 overflow-x-hidden">
       <div className="overflow-hidden rounded-2xl border border-[#E5798F]/30 bg-gradient-to-br from-[#E5798F]/15 via-white/[0.03] to-black/20">
         <div className="flex items-center gap-3 p-4">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#E5798F]/20">
@@ -204,7 +206,7 @@ export default function VideoAIStudio({
       </div>
 
       {conversation.length > 0 && (
-        <div className="max-h-[34dvh] space-y-2 overflow-y-auto pr-1">
+        <div className="max-h-[28dvh] min-w-0 space-y-2 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
           {conversation.map((message, index) => (
             <div key={index} className={message.role === 'user' ? 'ml-8' : 'mr-4'}>
               <div className={message.role === 'user'
