@@ -25,7 +25,8 @@ export type VideoAIEditAction = {
     | 'set_aspect'
     | 'delete_clip'
     | 'duplicate_clip'
-    | 'generate_captions';
+    | 'generate_captions'
+    | 'transcribe';
   clipId?: string | null;
   value?: number | string | boolean | null;
   value2?: number | string | boolean | null;
@@ -76,6 +77,7 @@ function actionLabel(action: VideoAIEditAction) {
     case 'delete_clip': return 'Clip removed';
     case 'duplicate_clip': return 'Clip duplicated';
     case 'generate_captions': return 'Captions generated';
+    case 'transcribe': return 'Transcript generated';
     default: return 'Edit applied';
   }
 }
@@ -101,6 +103,7 @@ export default function VideoAIStudio({
     reviewCount?: number;
   }>>([]);
   const [lastCaptions, setLastCaptions] = useState<VideoAICaption[]>([]);
+  const [lastTranscript, setLastTranscript] = useState<string>('');
 
   const selectedLabel = useMemo(() => {
     if (selectedClipId) return 'Selected video clip';
@@ -145,6 +148,8 @@ export default function VideoAIStudio({
       if (actions.length && onApplyActions) {
         onApplyActions(actions.filter((action) => action.type !== 'generate_captions'));
       }
+
+      if (typeof output?.transcript?.text === 'string') setLastTranscript(output.transcript.text);
 
       if (captions.length && onAddCaptions) {
         onAddCaptions(captions);
@@ -273,6 +278,18 @@ export default function VideoAIStudio({
             ))}
           </div>
         </div>
+      )}
+
+      {lastTranscript && (
+        <details className="rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+          <summary className="cursor-pointer list-none text-xs font-bold text-white/80">
+            Transcript
+            <span className="ml-2 text-[9px] font-normal text-white/35">timestamped source text</span>
+          </summary>
+          <div className="mt-2 max-h-44 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/20 p-2.5 text-[10px] leading-4 text-white/65">
+            {lastTranscript}
+          </div>
+        </details>
       )}
 
       {lastCaptions.length > 0 && (
