@@ -4349,6 +4349,47 @@ function VideoEditor() {
                 provider: media.provider,
               });
             }}
+            onAddLibraryAudio={async (soundId) => {
+              const { data, error } = await supabase
+                .from('sounds')
+                .select('id,title,artist,category,url,duration_seconds,license_type,rights_holder,commercial_use,attribution_required,restrictions,premium')
+                .eq('id', soundId)
+                .maybeSingle();
+
+              if (error || !data) throw new Error('That library sound is unavailable.');
+              if (data.premium && !has('sounds.premium')) throw new Error('That library sound requires the appropriate entitlement.');
+              if (data.commercial_use === false) throw new Error('That sound is not licensed for commercial use.');
+
+              const alreadyAdded = docRef.current.project.audio.some((track) => track.src === data.url);
+              if (alreadyAdded) {
+                notify('“' + data.title + '” is already on the timeline.');
+                return;
+              }
+
+              const sourceDuration = Math.max(0.1, Number(data.duration_seconds) || 15);
+              const track: AudioTrack = {
+                id: makeVideoId('ai-aud'),
+                name: data.title,
+                src: data.url,
+                provider: 'library',
+                track_id: docRef.current.project.tracks.find((track) => track.kind === 'audio')?.id,
+                license: data.license_type || undefined,
+                creator: data.artist || data.rights_holder || undefined,
+                start: 0,
+                sourceDuration,
+                trimStart: 0,
+                trimEnd: Math.min(sourceDuration, Math.max(8, Math.min(30, sourceDuration))),
+                volume: 0.72,
+                fadeIn: 0.6,
+                fadeOut: 1,
+                kind: 'music',
+              };
+
+              updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'AI add library audio');
+              setSelectedAudioId(track.id);
+              openTool('audio');
+              notify('“' + data.title + '” added from the sound library.');
+            }}
             onAddMedia={({ url, name }) => {
               const maxW = project.canvas.width * 0.78;
               const maxH = project.canvas.height * 0.52;
