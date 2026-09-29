@@ -1079,7 +1079,9 @@ function VideoEditor() {
 
     for (const action of actions) {
       if (action.type === 'set_aspect' && typeof action.value === 'string' && ['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'].includes(action.value)) {
-        setAspect(action.value as AspectRatio);
+        const aspect = action.value as AspectRatio;
+        const canvas = aspect === 'original' ? project.canvas : { ...CANVAS_SIZES[aspect] };
+        updateProject((p) => ({ ...p, aspect, canvas }), 'AI change canvas');
       } else if (action.type === 'delete_clip' && action.clipId) {
         deleteClip(action.clipId);
       } else if (action.type === 'duplicate_clip' && action.clipId) {
@@ -1089,7 +1091,7 @@ function VideoEditor() {
     }
 
     notify(`Applied ${actions.length} AI edit ${actions.length === 1 ? 'change' : 'changes'}.`);
-  }, [deleteClip, duplicateClip, notify, setAspect, updateProject]);
+  }, [deleteClip, duplicateClip, notify, project.canvas, updateProject]);
 
   const moveClip = (id: string, dir: -1 | 1) => {
     updateProject((p) => {
