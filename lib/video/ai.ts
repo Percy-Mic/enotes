@@ -396,7 +396,7 @@ async function loadAIMemoryContext(
 
   let query = supabase
     .from('video_ai_memories')
-    .select('id,memory_type,content,confidence,importance,use_count,last_used_at,project_id')
+    .select('id,memory_type,content,confidence,importance,use_count,last_used_at,project_id,expires_at')
     .eq('user_id', userId)
     .eq('is_active', true)
     .order('importance', { ascending: false })
