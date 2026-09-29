@@ -101,6 +101,63 @@ function fmt(t: number): string {
 
 const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+async function detectBeatMarkers(audio: AudioTrack): Promise<number[]> {
+  if (!audio.src) return [];
+  const response = await fetch(audio.src, { mode: 'cors' });
+  if (!response.ok) throw new Error('The audio file could not be read for beat detection.');
+  const buffer = await response.arrayBuffer();
+  const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextCtor) throw new Error('Beat detection is not supported in this browser.');
+  const ctx = new AudioContextCtor();
+  try {
+    const decoded = await ctx.decodeAudioData(buffer.slice(0));
+    const channels = decoded.numberOfChannels;
+    const sampleRate = decoded.sampleRate;
+    const start = Math.max(0, audio.trimStart || 0);
+    const end = Math.min(decoded.duration, audio.trimEnd || decoded.duration);
+    const from = Math.floor(start * sampleRate);
+    const to = Math.max(from + 1, Math.floor(end * sampleRate));
+    const step = 1024;
+    const hop = 512;
+    const energy: { t: number; v: number }[] = [];
+    for (let i = from; i < to; i += hop) {
+      let sum = 0;
+      let count = 0;
+      for (let j = 0; j < step && i + j < to; j += 4) {
+        let sample = 0;
+        for (let c = 0; c < channels; c++) sample += decoded.getChannelData(c)[i + j] || 0;
+        sample /= channels;
+        sum += sample * sample;
+        count++;
+      }
+      energy.push({ t: i / sampleRate, v: Math.sqrt(sum / Math.max(1, count)) });
+    }
+    const values = energy.map((x) => x.v);
+    const sorted = [...values].sort((a, b) => a - b);
+    const floor = sorted[Math.floor(sorted.length * 0.45)] || 0;
+    const ceiling = sorted[Math.floor(sorted.length * 0.9)] || floor;
+    const threshold = Math.max(floor * 1.35, ceiling * 0.52, 0.015);
+    const markers: number[] = [];
+    let last = -Infinity;
+    for (let i = 2; i < energy.length - 2; i++) {
+      const current = energy[i];
+      if (current.v < threshold) continue;
+      if (current.v < energy[i - 1].v || current.v < energy[i + 1].v) continue;
+      if (current.v < energy[i - 2].v || current.v < energy[i + 2].v) continue;
+      const projectTime = audio.start + (current.t - start);
+      if (projectTime - last >= 0.22) {
+        markers.push(Number(projectTime.toFixed(3)));
+        last = projectTime;
+      }
+      if (markers.length >= 500) break;
+    }
+    return markers;
+  } finally {
+    void ctx.close();
+  }
+}
+
+
 /* ------------------------------------------------------------------ */
 /* Geometry (shared with the renderer's clipDrawRect math)             */
 
@@ -184,6 +241,8 @@ function VideoEditor() {
   const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
   const [clipSoundMenuOpen, setClipSoundMenuOpen] = useState(false);
   const [clipSpeedMenuOpen, setClipSpeedMenuOpen] = useState(false);
+  const [frameMode, setFrameMode] = useState<'motion' | 'layer' | 'ai-drawing' | 'ai-portrait'>('motion');
+  const [beatBusy, setBeatBusy] = useState(false);
   const openTool = useCallback((next: Tool) => {
     setTool(next);
     setToolDrawerOpen(true);
@@ -3792,9 +3851,28 @@ function VideoEditor() {
                 )}
                 {selectedAudio && (
                   <>
-                    <button onClick={() => openTool('audio')} className={EDITOR_ACTION_PILL} aria-label="Edit audio"><Music className="h-4 w-4" />Edit</button>
-                    <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className={EDITOR_ACTION_PILL} aria-label="Start audio at playhead"><Play className="h-4 w-4" />Start here</button>
-                    <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Remove audio"><Trash2 className="h-4 w-4" />Remove</button>
+                    <button onClick={() => openTool('audio')} className={EDITOR_ACTION_PILL} aria-label="Adjust audio"><SlidersHorizontal className="h-4 w-4" />Adjust</button>
+                    <button onClick={() => replaceInputRef.current?.click()} className={EDITOR_ACTION_PILL} aria-label="Replace audio"><Film className="h-4 w-4" />Replace</button>
+                    <button
+                      onClick={async () => {
+                        if (beatBusy) return;
+                        setBeatBusy(true);
+                        try {
+                          const markers = await detectBeatMarkers(selectedAudio);
+                          updateProject((p) => ({ ...p, beatMarkers: markers }), 'Detect audio beats');
+                          notify(markers.length ? 'Detected ' + markers.length + ' beat markers.' : 'No strong beats were detected.');
+                        } catch (error) {
+                          notify(error instanceof Error ? error.message : 'Beat detection failed.');
+                        } finally {
+                          setBeatBusy(false);
+                        }
+                      }}
+                      className={EDITOR_ACTION_PILL}
+                      aria-label="Detect beats"
+                      disabled={beatBusy}
+                    >{beatBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{beatBusy ? 'Beats…' : 'Beats'}</button>
+                    <button onClick={() => openTool('audio')} className={EDITOR_ACTION_PILL} aria-label="Adjust volume"><Volume2 className="h-4 w-4" />Volume</button>
+                    <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id), beatMarkers: (p.beatMarkers || []).filter((t) => t < selectedAudio.start || t > selectedAudio.start + Math.max(0, selectedAudio.trimEnd - selectedAudio.trimStart)) }), 'Remove audio')} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Remove audio"><Trash2 className="h-4 w-4" />Delete</button>
                   </>
                 )}
               </div>
