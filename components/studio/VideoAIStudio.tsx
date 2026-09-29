@@ -117,7 +117,7 @@ async function extractProjectVisionFrames(project: unknown, selectedClipId?: str
   for (const clip of orderedClips.slice(0, 8)) {
     const clipId = typeof clip.id === 'string' ? clip.id : '';
     const src = typeof clip.src === 'string' ? clip.src : '';
-    if (!clipId || !/^https?:\\/\\//i.test(src)) continue;
+    if (!clipId || !/^https?:\/\//i.test(src)) continue;
 
     const sourceDuration = Math.max(0.1, Number(clip.sourceDuration) || 0.1);
     const trimStart = Math.max(0, Math.min(sourceDuration - 0.05, Number(clip.trimStart) || 0));
