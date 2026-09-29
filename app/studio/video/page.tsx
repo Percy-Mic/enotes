@@ -1059,115 +1059,237 @@ function VideoEditor() {
   const applyAIActions = useCallback((actions: VideoAIEditAction[]) => {
     if (!actions.length) return;
 
-    const clipActions = actions.filter((action) => action.type !== 'set_aspect' && action.type !== 'delete_clip' && action.type !== 'duplicate_clip' && action.type !== 'generate_captions' && action.type !== 'transcribe' && action.type !== 'transform_element' && action.type !== 'set_element_opacity');
-    if (clipActions.length) {
-      updateProject((p) => ({
-        ...p,
-        clips: p.clips.map((clip) => {
-          const relevant = clipActions.filter((action) => action.clipId === clip.id);
-          if (!relevant.length) return clip;
-          let next = { ...clip };
-          for (const action of relevant) {
-            const numberValue = Number(action.value);
-            if (action.type === 'set_clip_speed' && Number.isFinite(numberValue)) next.speed = Math.max(0.25, Math.min(4, numberValue));
-            if (action.type === 'set_clip_volume' && Number.isFinite(numberValue)) next.volume = Math.max(0, Math.min(1, numberValue));
-            if (action.type === 'set_clip_mute') next.muted = Boolean(action.value);
-            if (action.type === 'set_clip_filter') next.filter = String(action.value || 'none');
-            if (action.type === 'set_clip_effect') next.effect = String(action.value || 'none') as VideoClip['effect'];
-            if (action.type === 'set_clip_transition') {
-              next.transitionIn = {
-                type: String(action.value || 'none') as VideoClip['transitionIn']['type'],
-                duration: Math.max(0.2, Math.min(2, Number(action.value2) || 0.5)),
-              };
+    const safeActions = actions.slice(0, 16);
+
+    updateProject((p) => {
+      let nextProject = { ...p };
+
+      for (const action of safeActions) {
+        if (action.type === 'set_aspect' && typeof action.value === 'string' &&
+            ['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'].includes(action.value)) {
+          const aspect = action.value as AspectRatio;
+          nextProject = {
+            ...nextProject,
+            aspect,
+            canvas: aspect === 'original' ? nextProject.canvas : { ...CANVAS_SIZES[aspect] },
+          };
+          continue;
+        }
+
+        if (action.type === 'add_text_element' && action.object) {
+          const obj = action.object;
+          const start = Number(obj.start);
+          const end = Number(obj.end);
+          const safeStart = Number.isFinite(start) ? Math.max(0, start) : playheadRef.current;
+          const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(projectDuration(nextProject), end)) : Math.min(projectDuration(nextProject), safeStart + 3);
+          const element: TimelineElement = {
+            id: makeVideoId('ai-text'),
+            kind: 'text',
+            content: String(obj.text || 'Your message'),
+            src: null,
+            track_id: nextProject.tracks.find((track) => track.kind === 'overlay')?.id || nextProject.tracks[0]?.id,
+            start: safeStart,
+            end: Math.max(safeStart + 0.25, safeEnd),
+            x: Number.isFinite(Number(obj.x)) ? Number(obj.x) : nextProject.canvas.width * 0.08,
+            y: Number.isFinite(Number(obj.y)) ? Number(obj.y) : nextProject.canvas.height * 0.72,
+            width: Number.isFinite(Number(obj.width)) ? Math.max(40, Number(obj.width)) : nextProject.canvas.width * 0.84,
+            height: Number.isFinite(Number(obj.height)) ? Math.max(30, Number(obj.height)) : 100,
+            rotation: 0,
+            opacity: 1,
+            z: Math.max(...nextProject.elements.map((item) => item.z), 0) + 1,
+            font_size: Number.isFinite(Number(obj.font_size)) ? Math.max(18, Number(obj.font_size)) : Math.max(30, Math.round(nextProject.canvas.width * 0.055)),
+            font_family: String(obj.font_family || 'Poppins, sans-serif'),
+            font_weight: Number.isFinite(Number(obj.font_weight)) ? Number(obj.font_weight) : 800,
+            color: String(obj.color || '#FFFFFF'),
+            align: 'center',
+            background: obj.background == null ? 'transparent' : String(obj.background),
+            stroke_color: String(obj.stroke_color || '#000000'),
+            shadow: obj.shadow !== false,
+            animation: (['none','fade','pop','slide-up','slide-down','slide-left','slide-right','zoom-in','zoom-out','bounce','typewriter','shake','blur-in','rotate-in'].includes(String(obj.animation))
+              ? String(obj.animation)
+              : 'pop') as TimelineElement['animation'],
+          };
+          nextProject = { ...nextProject, elements: [...nextProject.elements, element] };
+          continue;
+        }
+
+        if (action.type === 'split_clip') {
+          const timelineTime = Number(action.value);
+          if (!Number.isFinite(timelineTime)) continue;
+          let acc = 0;
+          const index = nextProject.clips.findIndex((clip) => {
+            const d = clipDuration(clip);
+            const hit = timelineTime > acc + 0.15 && timelineTime < acc + d - 0.15;
+            if (!hit) acc += d;
+            return hit;
+          });
+          if (index >= 0) {
+            const clip = nextProject.clips[index];
+            const local = Math.max(0, timelineTime - nextProject.clips.slice(0, index).reduce((sum, item) => sum + clipDuration(item), 0));
+            const splitSource = clip.trimStart + local * clip.speed;
+            if (splitSource - clip.trimStart >= 0.15 && clip.trimEnd - splitSource >= 0.15) {
+              const a: VideoClip = { ...clip, trimEnd: splitSource };
+              const b: VideoClip = { ...clip, id: makeVideoId('clip'), trimStart: splitSource, transitionIn: { type: 'none', duration: 0.5 } };
+              nextProject = { ...nextProject, clips: nextProject.clips.flatMap((item) => item.id === clip.id ? [a, b] : [item]) };
             }
-            if (action.type === 'trim_clip') {
-              const start = Math.max(0, Math.min(next.sourceDuration - 0.1, Number(action.value)));
-              const end = Math.max(start + 0.1, Math.min(next.sourceDuration, Number(action.value2)));
-              if (Number.isFinite(start) && Number.isFinite(end)) {
-                next.trimStart = start;
-                next.trimEnd = end;
+          }
+          continue;
+        }
+
+        if (action.type === 'reorder_clip' && action.object) {
+          const from = Math.round(Number(action.object.fromIndex));
+          const to = Math.round(Number(action.object.toIndex));
+          if (Number.isFinite(from) && Number.isFinite(to) && from >= 0 && from < nextProject.clips.length) {
+            const clips = [...nextProject.clips];
+            const [moved] = clips.splice(from, 1);
+            clips.splice(Math.max(0, Math.min(to, clips.length)), 0, moved);
+            nextProject = { ...nextProject, clips };
+          }
+          continue;
+        }
+
+        if (action.type === 'delete_clip' && action.clipId) {
+          nextProject = { ...nextProject, clips: nextProject.clips.filter((clip) => clip.id !== action.clipId) };
+          continue;
+        }
+
+        if (action.type === 'duplicate_clip' && action.clipId) {
+          const clip = nextProject.clips.find((item) => item.id === action.clipId);
+          if (clip) {
+            const copy = { ...clip, id: makeVideoId('clip'), name: `${clip.name} copy` };
+            const i = nextProject.clips.findIndex((item) => item.id === clip.id);
+            const clips = [...nextProject.clips];
+            clips.splice(i + 1, 0, copy);
+            nextProject = { ...nextProject, clips };
+          }
+          continue;
+        }
+
+        if (action.type === 'transform_element' || action.type === 'set_element_opacity') {
+          nextProject = {
+            ...nextProject,
+            elements: nextProject.elements.map((element) => {
+              if (action.elementId !== element.id) return element;
+              const next = { ...element };
+              if (action.type === 'set_element_opacity' && Number.isFinite(Number(action.value))) {
+                next.opacity = Math.max(0, Math.min(1, Number(action.value)));
               }
-            }
-            if (action.type === 'transform_clip' && action.object) {
-              const transform = { ...next.transform };
-              const obj = action.object;
-              if (Number.isFinite(Number(obj.offset_x))) transform.offset_x = Number(obj.offset_x);
-              if (Number.isFinite(Number(obj.offset_y))) transform.offset_y = Number(obj.offset_y);
-              if (Number.isFinite(Number(obj.scale))) transform.scale = Math.max(0.1, Math.min(4, Number(obj.scale)));
-              if (Number.isFinite(Number(obj.scale_x))) transform.scale_x = Math.max(0.05, Math.min(4, Number(obj.scale_x)));
-              if (Number.isFinite(Number(obj.scale_y))) transform.scale_y = Math.max(0.05, Math.min(4, Number(obj.scale_y)));
-              if (Number.isFinite(Number(obj.rotation))) transform.rotation = Number(obj.rotation);
-              next.transform = transform;
-            }
-            if (action.type === 'set_clip_adjustments' && action.object) {
-              next.adjustments = { ...next.adjustments, ...Object.fromEntries(
-                Object.entries(action.object).filter(([, value]) => Number.isFinite(Number(value))).map(([key, value]) => [key, Number(value)])
-              ) };
-            }
-            if (action.type === 'fit_clip') {
-              const mode = String(action.value || 'contain') === 'cover' ? 'cover' : 'contain';
-              const sourceAspect = next.source_width && next.source_height
-                ? next.source_width / next.source_height
-                : project.canvas.width / Math.max(1, project.canvas.height);
-              const effectiveAspect = croppedAspect(sourceAspect, next.transform.crop);
-              const cover = coverFit(project.canvas.width, project.canvas.height, effectiveAspect);
-              const fitScale = mode === 'contain'
-                ? Math.min(project.canvas.width / Math.max(1, cover.w), project.canvas.height / Math.max(1, cover.h))
-                : 1;
-              next.transform = {
-                ...DEFAULT_TRANSFORM,
-                crop: next.transform.crop,
-                scale: Math.max(0.05, Math.min(4, fitScale)),
-              };
-            }
-          }
-          return next;
-        }),
-      }), 'AI edit');
-    }
+              if (action.type === 'transform_element' && action.object) {
+                const obj = action.object;
+                if (Number.isFinite(Number(obj.x))) next.x = Number(obj.x);
+                if (Number.isFinite(Number(obj.y))) next.y = Number(obj.y);
+                if (Number.isFinite(Number(obj.width))) next.width = Math.max(8, Number(obj.width));
+                if (Number.isFinite(Number(obj.height))) next.height = Math.max(8, Number(obj.height));
+                if (Number.isFinite(Number(obj.rotation))) next.rotation = Number(obj.rotation);
+                if (Number.isFinite(Number(obj.opacity))) next.opacity = Math.max(0, Math.min(1, Number(obj.opacity)));
+              }
+              return next;
+            }),
+          };
+          continue;
+        }
 
-    const elementActions = actions.filter((action) => action.type === 'transform_element' || action.type === 'set_element_opacity');
-    if (elementActions.length) {
-      updateProject((p) => ({
-        ...p,
-        elements: p.elements.map((element) => {
-          const relevant = elementActions.filter((action) => action.elementId === element.id);
-          if (!relevant.length) return element;
-          let next = { ...element };
-          for (const action of relevant) {
-            if (action.type === 'set_element_opacity' && Number.isFinite(Number(action.value))) {
-              next.opacity = Math.max(0, Math.min(1, Number(action.value)));
-            }
-            if (action.type === 'transform_element' && action.object) {
-              const obj = action.object;
-              if (Number.isFinite(Number(obj.x))) next.x = Number(obj.x);
-              if (Number.isFinite(Number(obj.y))) next.y = Number(obj.y);
-              if (Number.isFinite(Number(obj.width))) next.width = Math.max(8, Number(obj.width));
-              if (Number.isFinite(Number(obj.height))) next.height = Math.max(8, Number(obj.height));
-              if (Number.isFinite(Number(obj.rotation))) next.rotation = Number(obj.rotation);
-              if (Number.isFinite(Number(obj.opacity))) next.opacity = Math.max(0, Math.min(1, Number(obj.opacity)));
-            }
+        if (action.type === 'set_keyframe' && action.clipId && action.object) {
+          const clip = nextProject.clips.find((item) => item.id === action.clipId);
+          const property = String(action.object.property || '') as KeyframeProperty;
+          const t = Number(action.object.t);
+          const value = Number(action.object.value);
+          if (clip && KEYFRAMABLE_PROPERTIES.some((item) => item.id === property) && Number.isFinite(t) && Number.isFinite(value)) {
+            nextProject = {
+              ...nextProject,
+              clips: nextProject.clips.map((item) =>
+                item.id === clip.id
+                  ? { ...item, keyframes: upsertClipKeyframe(item, property, Math.max(0, Math.min(clipDuration(item), t)), value) }
+                  : item
+              ),
+            };
           }
-          return next;
-        }),
-      }), 'AI overlay edit');
-    }
+          continue;
+        }
 
-    for (const action of actions) {
-      if (action.type === 'set_aspect' && typeof action.value === 'string' && ['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'].includes(action.value)) {
-        const aspect = action.value as AspectRatio;
-        const canvas = aspect === 'original' ? project.canvas : { ...CANVAS_SIZES[aspect] };
-        updateProject((p) => ({ ...p, aspect, canvas }), 'AI change canvas');
-      } else if (action.type === 'delete_clip' && action.clipId) {
-        deleteClip(action.clipId);
-      } else if (action.type === 'duplicate_clip' && action.clipId) {
-        const clip = docRef.current.project.clips.find((item) => item.id === action.clipId);
-        if (clip) duplicateClip(clip);
+        if (!action.clipId) continue;
+        const clip = nextProject.clips.find((item) => item.id === action.clipId);
+        if (!clip) continue;
+        let next = { ...clip };
+        const numberValue = Number(action.value);
+
+        if (action.type === 'set_clip_speed' && Number.isFinite(numberValue)) next.speed = Math.max(0.25, Math.min(4, numberValue));
+        if (action.type === 'set_clip_volume' && Number.isFinite(numberValue)) next.volume = Math.max(0, Math.min(1, numberValue));
+        if (action.type === 'set_clip_mute') next.muted = Boolean(action.value);
+        if (action.type === 'set_clip_filter') next.filter = String(action.value || 'none');
+        if (action.type === 'set_clip_effect') next.effect = String(action.value || 'none') as VideoClip['effect'];
+
+        if (action.type === 'set_clip_transition') {
+          next.transitionIn = {
+            type: String(action.value || 'none') as VideoClip['transitionIn']['type'],
+            duration: Math.max(0.2, Math.min(2, Number(action.value2) || 0.5)),
+          };
+        }
+
+        if (action.type === 'trim_clip') {
+          const start = Math.max(0, Math.min(next.sourceDuration - 0.1, Number(action.value)));
+          const end = Math.max(start + 0.1, Math.min(next.sourceDuration, Number(action.value2)));
+          if (Number.isFinite(start) && Number.isFinite(end)) {
+            next.trimStart = start;
+            next.trimEnd = end;
+          }
+        }
+
+        if (action.type === 'transform_clip' && action.object) {
+          const transform = { ...next.transform };
+          const obj = action.object;
+          if (Number.isFinite(Number(obj.offset_x))) transform.offset_x = Number(obj.offset_x);
+          if (Number.isFinite(Number(obj.offset_y))) transform.offset_y = Number(obj.offset_y);
+          if (Number.isFinite(Number(obj.scale))) transform.scale = Math.max(0.1, Math.min(4, Number(obj.scale)));
+          if (Number.isFinite(Number(obj.scale_x))) transform.scale_x = Math.max(0.05, Math.min(4, Number(obj.scale_x)));
+          if (Number.isFinite(Number(obj.scale_y))) transform.scale_y = Math.max(0.05, Math.min(4, Number(obj.scale_y)));
+          if (Number.isFinite(Number(obj.rotation))) transform.rotation = Number(obj.rotation);
+          next.transform = transform;
+        }
+
+        if (action.type === 'set_clip_adjustments' && action.object) {
+          next.adjustments = {
+            ...next.adjustments,
+            ...Object.fromEntries(
+              Object.entries(action.object)
+                .filter(([, value]) => Number.isFinite(Number(value)))
+                .map(([key, value]) => [key, Number(value)])
+            ),
+          };
+        }
+
+        if (action.type === 'fit_clip') {
+          const mode = String(action.value || 'contain') === 'cover' ? 'cover' : 'contain';
+          const sourceAspect = next.source_width && next.source_height
+            ? next.source_width / next.source_height
+            : nextProject.canvas.width / Math.max(1, nextProject.canvas.height);
+          const effectiveAspect = croppedAspect(sourceAspect, next.transform.crop);
+          const cover = coverFit(nextProject.canvas.width, nextProject.canvas.height, effectiveAspect);
+          const fitScale = mode === 'contain'
+            ? Math.min(nextProject.canvas.width / Math.max(1, cover.w), nextProject.canvas.height / Math.max(1, cover.h))
+            : 1;
+          next.transform = {
+            ...DEFAULT_TRANSFORM,
+            crop: next.transform.crop,
+            scale: Math.max(0.05, Math.min(4, fitScale)),
+          };
+        }
+
+        nextProject = {
+          ...nextProject,
+          clips: nextProject.clips.map((item) => item.id === clip.id ? next : item),
+        };
       }
+
+      return nextProject;
+    }, 'AI edit plan');
+
+    for (const action of safeActions) {
+      if (action.type === 'duplicate_clip' && action.clipId) setSelectedClipId(action.clipId);
     }
 
-    notify(`Applied ${actions.length} AI edit ${actions.length === 1 ? 'change' : 'changes'}.`);
-  }, [deleteClip, duplicateClip, notify, project.canvas, updateProject]);
+    notify(`Applied ${safeActions.length} AI edit ${safeActions.length === 1 ? 'change' : 'changes'}.`);
+  }, [notify, updateProject]);
 
   const moveClip = (id: string, dir: -1 | 1) => {
     updateProject((p) => {
@@ -4172,6 +4294,16 @@ function VideoEditor() {
             selectedClipId={selectedClipId}
             selectedElementId={selectedElementId}
             onApplyActions={applyAIActions}
+            onAddStockVideo={(media) => {
+              addStockVideo({
+                url: media.url,
+                width: media.width,
+                height: media.height,
+                duration: media.duration,
+                photographer: media.photographer,
+                provider: media.provider,
+              });
+            }}
             onAddMedia={({ url, name }) => {
               const maxW = project.canvas.width * 0.78;
               const maxH = project.canvas.height * 0.52;
