@@ -20,7 +20,7 @@ import VideoAIStudio, { type VideoAIEditAction } from '@/components/studio/Video
 import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
-  placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
+  placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipAdjustments, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
   type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type VideoClip, type VideoProject,
 } from '@/lib/video/project';
 import {
@@ -1593,6 +1593,9 @@ function VideoEditor() {
   const addMainClipKeyframe = useCallback((prop: KeyframeProperty) => {
     const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
     if (!clip) return;
+    /* Color-grade properties sample the RESOLVED adjustment stack so a new
+       keyframe captures what the frame currently looks like. */
+    const graded = resolveClipAdjustments(clip, selectedClipTimeIn);
     const values = resolveClipValues(clip, selectedClipTimeIn);
     const value =
       prop === 'pos_x_kf' ? values.offset_x :
@@ -1600,6 +1603,14 @@ function VideoEditor() {
       prop === 'scale_kf' ? values.scale :
       prop === 'rotation_kf' ? values.rotation :
       prop === 'opacity_kf' ? values.opacity :
+      prop === 'brightness_kf' ? graded.brightness :
+      prop === 'contrast_kf' ? graded.contrast :
+      prop === 'saturate_kf' ? graded.saturate :
+      prop === 'hue_kf' ? graded.hue :
+      prop === 'temperature_kf' ? graded.temperature :
+      prop === 'exposure_kf' ? graded.exposure :
+      prop === 'vignette_kf' ? graded.vignette :
+      prop === 'blur_kf' ? graded.blur :
       values.volume;
     updateClip(clip.id, { keyframes: upsertClipKeyframe(clip, prop, selectedClipTimeIn, value) }, 'Add clip keyframe', `clip-kf-${clip.id}-${prop}`);
   }, [selectedClipId, selectedClipTimeIn, updateClip]);

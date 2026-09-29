@@ -139,7 +139,7 @@ export interface TimelineTrack {
 /* Note: property ids deliberately avoid names that already exist on
    TimelineElement (x/y/scale/rotation/opacity/volume are numbers there) —
    keyframe lists live under *_kf keys so the two never collide. */
-export type KeyframeProperty = 'pos_x_kf' | 'pos_y_kf' | 'scale_kf' | 'rotation_kf' | 'opacity_kf' | 'volume_kf';
+export type KeyframeProperty = 'pos_x_kf' | 'pos_y_kf' | 'scale_kf' | 'rotation_kf' | 'opacity_kf' | 'volume_kf' | 'brightness_kf' | 'contrast_kf' | 'saturate_kf' | 'hue_kf' | 'temperature_kf' | 'exposure_kf' | 'vignette_kf' | 'blur_kf';
 
 export const KEYFRAMABLE_PROPERTIES: { id: KeyframeProperty; label: string; min: number; max: number }[] = [
   { id: 'pos_x_kf', label: 'Position X', min: -2000, max: 4000 },
@@ -148,6 +148,15 @@ export const KEYFRAMABLE_PROPERTIES: { id: KeyframeProperty; label: string; min:
   { id: 'rotation_kf', label: 'Rotation', min: -180, max: 180 },
   { id: 'opacity_kf', label: 'Opacity', min: 0, max: 1 },
   { id: 'volume_kf', label: 'Volume', min: 0, max: 1 },
+  /* color grade — animate the adjustment stack (Resolve-style ramps) */
+  { id: 'brightness_kf', label: 'Brightness', min: 20, max: 200 },
+  { id: 'contrast_kf', label: 'Contrast', min: 20, max: 200 },
+  { id: 'saturate_kf', label: 'Saturation', min: 0, max: 200 },
+  { id: 'hue_kf', label: 'Hue shift', min: -180, max: 180 },
+  { id: 'temperature_kf', label: 'Temperature', min: -100, max: 100 },
+  { id: 'exposure_kf', label: 'Exposure', min: 20, max: 200 },
+  { id: 'vignette_kf', label: 'Vignette', min: 0, max: 100 },
+  { id: 'blur_kf', label: 'Blur', min: 0, max: 20 },
 ];
 
 export interface ElementKeyframe {
@@ -217,6 +226,29 @@ export function resolveElementValues(
     rotation: sampleKeyframes(kf?.rotation_kf, timeIn, el.rotation),
     opacity: Math.max(0, Math.min(1, sampleKeyframes(kf?.opacity_kf, timeIn, el.opacity))),
     volume: Math.max(0, Math.min(1, sampleKeyframes(kf?.volume_kf, timeIn, el.volume ?? 1))),
+  };
+}
+
+/**
+ * Animated COLOR GRADE for a main video clip. Every keyed adjustment
+ * property overrides the static value at `timeIn`; unkeyed properties fall
+ * through to the clip's static adjustment. Ranges clamp to the same bounds
+ * the UI uses so a stray keyframe can't overdrive the filter stack.
+ */
+export function resolveClipAdjustments(clip: VideoClip, timeIn: number): ClipAdjustments {
+  const kf = clip.keyframes;
+  const a = clip.adjustments;
+  const clamped = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  return {
+    ...a,
+    brightness: clamped(sampleKeyframes(kf?.brightness_kf, timeIn, a.brightness), 20, 200),
+    contrast: clamped(sampleKeyframes(kf?.contrast_kf, timeIn, a.contrast), 20, 200),
+    saturate: clamped(sampleKeyframes(kf?.saturate_kf, timeIn, a.saturate), 0, 200),
+    hue: clamped(sampleKeyframes(kf?.hue_kf, timeIn, a.hue), -180, 180),
+    temperature: clamped(sampleKeyframes(kf?.temperature_kf, timeIn, a.temperature), -100, 100),
+    exposure: clamped(sampleKeyframes(kf?.exposure_kf, timeIn, a.exposure), 20, 200),
+    vignette: clamped(sampleKeyframes(kf?.vignette_kf, timeIn, a.vignette), 0, 100),
+    blur: clamped(sampleKeyframes(kf?.blur_kf, timeIn, a.blur), 0, 20),
   };
 }
 
@@ -711,7 +743,7 @@ export function resolveTime(project: VideoProject, t: number): { clip: VideoClip
 function sanitizeKeyframes(input: unknown): ElementKeyframeMap | undefined {
   if (!input || typeof input !== 'object') return undefined;
   const out: ElementKeyframeMap = {};
-  const valid: KeyframeProperty[] = ['pos_x_kf', 'pos_y_kf', 'scale_kf', 'rotation_kf', 'opacity_kf', 'volume_kf'];
+  const valid: KeyframeProperty[] = ['pos_x_kf', 'pos_y_kf', 'scale_kf', 'rotation_kf', 'opacity_kf', 'volume_kf', 'brightness_kf', 'contrast_kf', 'saturate_kf', 'hue_kf', 'temperature_kf', 'exposure_kf', 'vignette_kf', 'blur_kf'];
   for (const prop of valid) {
     const raw = (input as Record<string, unknown>)[prop];
     if (!Array.isArray(raw)) continue;

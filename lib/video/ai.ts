@@ -2360,6 +2360,14 @@ object = {
   t,
   value
 }
+property — motion: pos_x_kf, pos_y_kf, scale_kf, rotation_kf | audio: opacity_kf, volume_kf | COLOR GRADE (animates the adjustment stack over the clip): brightness_kf, contrast_kf, saturate_kf, hue_kf, temperature_kf, exposure_kf, vignette_kf, blur_kf.
+Grade ramp recipes (professional looks):
+• Sunset warm-up: temperature_kf −20 at t=0 → +35 at clip end.
+• Flashback bleach: saturate_kf 100 at start → 25 at end.
+• Horror tighten: contrast_kf 100 → 150 with vignette_kf 0 → 60 across the clip.
+• Dream drift: exposure_kf 100 → 118 and blur_kf 0 → 2.5.
+• Day-for-night: exposure_kf 100 → 55, saturate_kf 100 → 55, temperature_kf 0 → −45.
+Grade keyframes use clip-local seconds (0 = clip start) and need at least TWO points to ramp; pair them with a matching static set_clip_adjustments baseline.
 
 add_text_element
 object = {

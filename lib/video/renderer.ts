@@ -24,9 +24,9 @@
    ============================================================ */
 
 import {
-  clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, projectDuration, normalizeProject, isPlaceholder,
+  clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder,
   coverFit, croppedAspect, resolveElementValues,
-  type VideoProject, type TimelineElement, type VideoClip, type CropRect,
+  type VideoProject, type TimelineElement, type VideoClip, type CropRect, type ClipAdjustments,
 } from '@/lib/video/project';
 
 export interface ExportSettings {
@@ -645,11 +645,11 @@ function clipDrawRect(
   return { sx, sy, sw, sh, dw, dh };
 }
 
-function filterCssFor(clip: VideoClip): string {
+function filterCssFor(clip: VideoClip, adjustmentsOverride?: ClipAdjustments): string {
   const preset = FILTER_PRESETS.find((f) => f.id === clip.filter);
   const parts: string[] = [];
   if (preset && preset.css) parts.push(preset.css);
-  const a = clip.adjustments;
+  const a = adjustmentsOverride ?? clip.adjustments;
   if (a.brightness !== 100) parts.push(`brightness(${a.brightness}%)`);
   if (a.exposure !== 100) parts.push(`brightness(${a.exposure}%)`);
   if (a.contrast !== 100) parts.push(`contrast(${a.contrast}%)`);
@@ -1321,7 +1321,7 @@ export class VideoRenderer {
               ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
               ctx.rotate((animated.rotation * Math.PI) / 180);
               ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
-              ctx.filter = [filterCssFor(clip), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
+              ctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
               // cache frames keep the source's aspect — dest rect already matches
               ctx.drawImage(frame.bmp as CanvasImageSource, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
               ctx.filter = 'none';
@@ -1336,7 +1336,7 @@ export class VideoRenderer {
             ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
             ctx.rotate((animated.rotation * Math.PI) / 180);
             ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
-            ctx.filter = [filterCssFor(clip), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
+            ctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
             ctx.drawImage(video, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
             ctx.filter = 'none';
             ctx.restore();
