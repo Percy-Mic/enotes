@@ -34,7 +34,8 @@ export type VideoAIEditAction = {
     | 'add_text_element'
     | 'split_clip'
     | 'reorder_clip'
-    | 'add_stock_video';
+    | 'add_stock_video'
+    | 'add_library_audio';
   clipId?: string | null;
   elementId?: string | null;
   value?: number | string | boolean | null;
@@ -62,6 +63,7 @@ type Props = {
   onAddCaptions?: (captions: VideoAICaption[]) => void;
   onAddMedia?: (media: { url: string; name: string }) => void;
   onAddStockVideo?: (media: { url: string; name: string; width: number; height: number; duration: number; photographer: string; provider: 'pexels' | 'pixabay' }) => void;
+  onAddLibraryAudio?: (soundId: string) => Promise<void> | void;
   onApplyActions?: (actions: VideoAIEditAction[]) => void;
 };
 
@@ -112,6 +114,7 @@ export default function VideoAIStudio({
   onAddCaptions,
   onAddMedia,
   onAddStockVideo,
+  onAddLibraryAudio,
   onApplyActions,
 }: Props) {
   const [prompt, setPrompt] = useState('');
@@ -172,6 +175,18 @@ export default function VideoAIStudio({
             actions: message.actions || [],
           })),
           prompt: text,
+          audioLibrary: await (async () => {
+            try {
+              const { data } = await supabase
+                .from('sounds')
+                .select('id,title,artist,category,duration_seconds,commercial_use,premium')
+                .order('plays', { ascending: false })
+                .limit(80);
+              return Array.isArray(data) ? data : [];
+            } catch {
+              return [];
+            }
+          })(),
         }),
       });
 
@@ -181,6 +196,17 @@ export default function VideoAIStudio({
       const output = data?.output || {};
       const actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
       const captions: VideoAICaption[] = Array.isArray(output.captions) ? output.captions : [];
+
+      const libraryAudioActions = actions.filter((action) => action.type === 'add_library_audio');
+      for (const action of libraryAudioActions) {
+        const soundId = typeof action.object?.soundId === 'string' ? action.object.soundId : '';
+        if (!soundId || !onAddLibraryAudio) continue;
+        try {
+          await onAddLibraryAudio(soundId);
+        } catch {
+          /* A missing/unavailable library item must not block the rest of the edit. */
+        }
+      }
 
       const stockActions = actions.filter((action) => action.type === 'add_stock_video');
       for (const action of stockActions) {
@@ -215,7 +241,8 @@ export default function VideoAIStudio({
         onApplyActions(actions.filter((action) =>
           action.type !== 'generate_captions' &&
           action.type !== 'transcribe' &&
-          action.type !== 'add_stock_video'
+          action.type !== 'add_stock_video' &&
+          action.type !== 'add_library_audio'
         ));
       }
 
