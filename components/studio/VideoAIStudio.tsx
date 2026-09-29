@@ -6,11 +6,7 @@ import {
   Captions,
   Check,
   ChevronRight,
-  ImagePlus,
   Loader2,
-  Mic2,
-  Pause,
-  Play,
   Sparkles,
   Wand2,
 } from 'lucide-react';
