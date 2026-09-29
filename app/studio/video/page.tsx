@@ -16,7 +16,7 @@ import { useEntitlements } from '@/lib/entitlements';
 import { uploadFile } from '@/lib/storage/upload';
 import { normalizeVideoDuration, ExportCancelledError } from '@/lib/video/renderer';
 import SharePostPicker from '@/components/community/SharePostPicker';
-import VideoAIStudio from '@/components/studio/VideoAIStudio';
+import VideoAIStudio, { type VideoAIEditAction } from '@/components/studio/VideoAIStudio';
 import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
@@ -995,6 +995,74 @@ function VideoEditor() {
     }, 'Duplicate clip');
     setSelectedClipId(copy.id);
   };
+
+  const applyAIActions = useCallback((actions: VideoAIEditAction[]) => {
+    if (!actions.length) return;
+
+    const clipActions = actions.filter((action) => action.type !== 'set_aspect' && action.type !== 'delete_clip' && action.type !== 'duplicate_clip' && action.type !== 'generate_captions');
+    if (clipActions.length) {
+      updateProject((p) => ({
+        ...p,
+        clips: p.clips.map((clip) => {
+          const relevant = clipActions.filter((action) => action.clipId === clip.id);
+          if (!relevant.length) return clip;
+          let next = { ...clip };
+          for (const action of relevant) {
+            const numberValue = Number(action.value);
+            if (action.type === 'set_clip_speed' && Number.isFinite(numberValue)) next.speed = Math.max(0.25, Math.min(4, numberValue));
+            if (action.type === 'set_clip_volume' && Number.isFinite(numberValue)) next.volume = Math.max(0, Math.min(1, numberValue));
+            if (action.type === 'set_clip_mute') next.muted = Boolean(action.value);
+            if (action.type === 'set_clip_filter') next.filter = String(action.value || 'none');
+            if (action.type === 'set_clip_effect') next.effect = String(action.value || 'none') as VideoClip['effect'];
+            if (action.type === 'set_clip_transition') {
+              next.transitionIn = {
+                type: String(action.value || 'none') as VideoClip['transitionIn']['type'],
+                duration: Math.max(0.2, Math.min(2, Number(action.value2) || 0.5)),
+              };
+            }
+            if (action.type === 'trim_clip') {
+              const start = Math.max(0, Math.min(next.sourceDuration - 0.1, Number(action.value)));
+              const end = Math.max(start + 0.1, Math.min(next.sourceDuration, Number(action.value2)));
+              if (Number.isFinite(start) && Number.isFinite(end)) {
+                next.trimStart = start;
+                next.trimEnd = end;
+              }
+            }
+            if (action.type === 'transform_clip' && action.object) {
+              const transform = { ...next.transform };
+              const obj = action.object;
+              if (Number.isFinite(Number(obj.offset_x))) transform.offset_x = Number(obj.offset_x);
+              if (Number.isFinite(Number(obj.offset_y))) transform.offset_y = Number(obj.offset_y);
+              if (Number.isFinite(Number(obj.scale))) transform.scale = Math.max(0.1, Math.min(4, Number(obj.scale)));
+              if (Number.isFinite(Number(obj.scale_x))) transform.scale_x = Math.max(0.05, Math.min(4, Number(obj.scale_x)));
+              if (Number.isFinite(Number(obj.scale_y))) transform.scale_y = Math.max(0.05, Math.min(4, Number(obj.scale_y)));
+              if (Number.isFinite(Number(obj.rotation))) transform.rotation = Number(obj.rotation);
+              next.transform = transform;
+            }
+            if (action.type === 'set_clip_adjustments' && action.object) {
+              next.adjustments = { ...next.adjustments, ...Object.fromEntries(
+                Object.entries(action.object).filter(([, value]) => Number.isFinite(Number(value))).map(([key, value]) => [key, Number(value)])
+              ) };
+            }
+          }
+          return next;
+        }),
+      }), 'AI edit');
+    }
+
+    for (const action of actions) {
+      if (action.type === 'set_aspect' && typeof action.value === 'string' && ['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'].includes(action.value)) {
+        setAspect(action.value as AspectRatio);
+      } else if (action.type === 'delete_clip' && action.clipId) {
+        deleteClip(action.clipId);
+      } else if (action.type === 'duplicate_clip' && action.clipId) {
+        const clip = docRef.current.project.clips.find((item) => item.id === action.clipId);
+        if (clip) duplicateClip(clip);
+      }
+    }
+
+    notify(`Applied ${actions.length} AI edit ${actions.length === 1 ? 'change' : 'changes'}.`);
+  }, [deleteClip, duplicateClip, notify, setAspect, updateProject]);
 
   const moveClip = (id: string, dir: -1 | 1) => {
     updateProject((p) => {
@@ -3929,6 +3997,9 @@ function VideoEditor() {
                     ? 'video'
                     : null
             }
+            selectedClipId={selectedClipId}
+            selectedElementId={selectedElementId}
+            onApplyActions={applyAIActions}
             onAddMedia={({ url, name }) => {
               const maxW = project.canvas.width * 0.78;
               const maxH = project.canvas.height * 0.52;
