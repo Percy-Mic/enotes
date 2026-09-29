@@ -3804,6 +3804,19 @@ function VideoEditor() {
                 );
               })}
 
+              {/* detected beat markers */}
+              {(project.beatMarkers || []).filter((t) => t >= 0 && t <= duration).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className="absolute inset-y-0 z-30 w-px bg-emerald-300/60"
+                  style={{ left: LABEL_W + t * pxPerSec }}
+                  onClick={() => seekTo(t)}
+                  aria-label={'Beat at ' + fmt(t)}
+                  title={'Beat ' + fmt(t)}
+                />
+              ))}
+
               {/* playhead line across all lanes */}
               <div
                 className="pointer-events-none absolute inset-y-0 z-50 w-px bg-[#FFB6C1] shadow-[0_0_8px_rgba(255,182,193,.8)]"
@@ -3833,10 +3846,13 @@ function VideoEditor() {
               <div className="mt-1.5 flex items-center gap-1.5 overflow-x-auto border-t border-white/10 bg-[#101010]/96 px-1.5 py-1.5 backdrop-blur-xl md:hidden" aria-label="Selected item actions">
                 {selectedClip && (
                   <>
-                    <button onClick={() => openTool('motion')} className={EDITOR_ACTION_PILL} aria-label="Edit clip"><Scissors className="h-4 w-4" />Edit</button>
+                    <button onClick={() => openTool('motion')} className={EDITOR_ACTION_PILL} aria-label="Frame tools"><Sparkles className="h-4 w-4" />Frame</button>
+                    <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Effects"><Sparkles className="h-4 w-4" />Effects</button>
+                    <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
                     <button onClick={() => setClipSpeedMenuOpen((v) => !v)} className={EDITOR_ACTION_PILL} aria-label="Change clip speed"><SkipForward className="h-4 w-4" />Speed</button>
+                    <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL} aria-label="Toggle clip audio">{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Volume'}</button>
                     <button onClick={() => deleteClip(selectedClip.id)} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Delete clip"><Trash2 className="h-4 w-4" />Delete</button>
                   </>
                 )}
