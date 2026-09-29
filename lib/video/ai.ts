@@ -100,7 +100,7 @@ async function uploadGeminiFileFromUrl(mediaUrl: string, key: string, mimeType: 
     if (state === 'FAILED') throw new Error('Gemini could not process the video file.');
     await new Promise((resolve) => setTimeout(resolve, Math.min(2500, 700 + attempt * 80)));
     const statusResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/${encodeURIComponent(file.name)}`,
+      `https://generativelanguage.googleapis.com/v1beta/${String(file.name).split('/').map(encodeURIComponent).join('/')}`,
       {
         headers: { 'x-goog-api-key': key },
         cache: 'no-store',
