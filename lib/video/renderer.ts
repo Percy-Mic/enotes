@@ -501,31 +501,34 @@ export interface EffectOffset { scaleMul: number; dx: number; dy: number }
 
 function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOffset {
   const p = Math.min(1, Math.max(0, timeIn / Math.max(dur, 0.1)));
+  const i = Math.min(1, Math.max(0, clip.effect_intensity ?? 1));
   switch (clip.effect) {
-    case 'zoom': return { scaleMul: 1 + 0.12 * p, dx: 0, dy: 0 };
-    case 'shake': { const t = timeIn * 18; return { scaleMul: 1.04, dx: Math.sin(t) * 6, dy: Math.cos(t * 1.7) * 6 }; }
-    case 'pulse': return { scaleMul: 1 + 0.04 * Math.sin((timeIn * Math.PI * 2) / 0.8), dx: 0, dy: 0 };
-    case 'glitch': { const t = timeIn * 42; return { scaleMul: 1.01, dx: Math.sin(t) * 3, dy: Math.cos(t * 1.37) * 2 }; }
-    case 'dream': return { scaleMul: 1 + 0.018 * Math.sin(timeIn * 3), dx: 0, dy: 0 };
-    case 'film': return { scaleMul: 1 + 0.008 * Math.sin(timeIn * 1.7), dx: 0, dy: 0 };
-    case 'chromatic': return { scaleMul: 1.015, dx: Math.sin(timeIn * 9) * 2, dy: Math.cos(timeIn * 7) * 1.5 };
+    case 'zoom': return { scaleMul: 1 + 0.12 * i * p, dx: 0, dy: 0 };
+    case 'shake': { const t = timeIn * 18; return { scaleMul: 1 + 0.04 * i, dx: Math.sin(t) * 6 * i, dy: Math.cos(t * 1.7) * 6 * i }; }
+    case 'pulse': return { scaleMul: 1 + 0.04 * i * Math.sin((timeIn * Math.PI * 2) / 0.8), dx: 0, dy: 0 };
+    case 'glitch': { const t = timeIn * 42; return { scaleMul: 1 + 0.01 * i, dx: Math.sin(t) * 3 * i, dy: Math.cos(t * 1.37) * 2 * i }; }
+    case 'dream': return { scaleMul: 1 + 0.018 * i * Math.sin(timeIn * 3), dx: 0, dy: 0 };
+    case 'film': return { scaleMul: 1 + 0.008 * i * Math.sin(timeIn * 1.7), dx: 0, dy: 0 };
+    case 'chromatic': return { scaleMul: 1 + 0.015 * i, dx: Math.sin(timeIn * 9) * 2 * i, dy: Math.cos(timeIn * 7) * 1.5 * i };
     default: return { scaleMul: 1, dx: 0, dy: 0 };
   }
 }
 
 function effectFilterCss(clip: VideoClip, timeIn: number): string {
+  const i = Math.min(1, Math.max(0, clip.effect_intensity ?? 1));
   switch (clip.effect) {
-    case 'vhs': return 'contrast(1.08) saturate(0.9) sepia(0.12)';
-    case 'dream': return 'brightness(1.08) saturate(1.08) blur(0.7px)';
-    case 'film': return 'contrast(1.06) saturate(0.92) sepia(0.05)';
-    case 'chromatic': return 'saturate(1.18) hue-rotate(' + (Math.sin(timeIn * 8) * 3) + 'deg)';
+    case 'vhs': return 'contrast(' + (1 + 0.08 * i) + ') saturate(' + (1 - 0.1 * i) + ') sepia(' + (0.12 * i) + ')';
+    case 'dream': return 'brightness(' + (1 + 0.08 * i) + ') saturate(' + (1 + 0.08 * i) + ') blur(' + (0.7 * i) + 'px)';
+    case 'film': return 'contrast(' + (1 + 0.06 * i) + ') saturate(' + (1 - 0.08 * i) + ') sepia(' + (0.05 * i) + ')';
+    case 'chromatic': return 'saturate(' + (1 + 0.18 * i) + ') hue-rotate(' + (Math.sin(timeIn * 8) * 3 * i) + 'deg)';
     default: return '';
   }
 }
 
 function drawEffectOverlay(ctx: CanvasRenderingContext2D, effect: VideoClip['effect'], timeIn: number, W: number, H: number) {
+  const i = Math.min(1, Math.max(0, (ctx as CanvasRenderingContext2D & { __effectIntensity?: number }).__effectIntensity ?? 1));
   if (effect === 'flash') {
-    const alpha = Math.max(0, Math.sin(timeIn * Math.PI * 5)) * 0.18;
+    const alpha = Math.max(0, Math.sin(timeIn * Math.PI * 5)) * 0.18 * i;
     if (alpha > 0.01) {
       ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
       ctx.fillRect(0, 0, W, H);
@@ -541,7 +544,7 @@ function drawEffectOverlay(ctx: CanvasRenderingContext2D, effect: VideoClip['eff
     ctx.restore();
   } else if (effect === 'vhs') {
     ctx.save();
-    ctx.globalAlpha = 0.12;
+    ctx.globalAlpha = 0.12 * i;
     ctx.fillStyle = '#fff';
     for (let y = 0; y < H; y += Math.max(8, H / 90)) ctx.fillRect(0, y, W, 1);
     ctx.restore();

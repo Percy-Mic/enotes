@@ -101,6 +101,49 @@ function fmt(t: number): string {
 
 const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+type LookPreviewProps = {
+  project: VideoProject;
+  clipId: string;
+  playhead: number;
+  effect?: VideoClip['effect'];
+  filter?: string;
+};
+
+function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<VideoRenderer | null>(null);
+  if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+
+  useEffect(() => {
+    const render = async () => {
+      const canvas = canvasRef.current;
+      const renderer = rendererRef.current;
+      if (!canvas || !renderer) return;
+      const previewProject: VideoProject = {
+        ...project,
+        clips: project.clips.map((clip) =>
+          clip.id === clipId
+            ? { ...clip, ...(effect !== undefined ? { effect } : {}), ...(filter !== undefined ? { filter } : {}) }
+            : clip
+        ),
+      };
+      try {
+        await renderer.drawFrame(canvas, previewProject, playhead, { previewing: true, playing: false });
+      } catch {
+        /* Media may briefly be undecodable while the user is scrubbing. */
+      }
+    };
+    void render();
+  }, [project, clipId, playhead, effect, filter]);
+
+  return (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/50">
+      <canvas ref={canvasRef} className="block aspect-video h-auto w-full object-contain" />
+    </div>
+  );
+}
+
+
 async function detectBeatMarkers(audio: AudioTrack): Promise<number[]> {
   if (!audio.src) return [];
   const response = await fetch(audio.src, { mode: 'cors' });
@@ -240,6 +283,8 @@ function VideoEditor() {
   const [rippleEnabled, setRippleEnabled] = useState(false);
   const [tool, setTool] = useState<Tool>('media');
   const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
+  const [lookPreviewEffect, setLookPreviewEffect] = useState<VideoClip['effect'] | null>(null);
+  const [lookPreviewFilter, setLookPreviewFilter] = useState<string | null>(null);
   const [clipSoundMenuOpen, setClipSoundMenuOpen] = useState(false);
   const [clipSpeedMenuOpen, setClipSpeedMenuOpen] = useState(false);
   const [frameMode, setFrameMode] = useState<'motion' | 'layer' | 'ai-drawing' | 'ai-portrait'>('motion');
@@ -4887,17 +4932,24 @@ function VideoEditor() {
                   )}
                 </div>
 
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-white/60">Filter</p>
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div><p className="text-xs font-semibold text-white">Filter Library</p><p className="text-[10px] text-white/40">Hover to audition. Click to apply.</p></div>
+                    <span className="rounded-full bg-white/10 px-2 py-1 text-[9px] font-semibold text-white/55">LIVE PREVIEW</span>
+                  </div>
+                  <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} filter={lookPreviewFilter ?? selectedClip.filter} effect={selectedClip.effect} />
+                  <div className="mt-3 grid grid-cols-3 gap-2">
                     {FILTER_PRESETS.map((f) => (
-                      <button
-                        key={f.id}
+                      <button key={f.id}
+                        onMouseEnter={() => setLookPreviewFilter(f.id)} onMouseLeave={() => setLookPreviewFilter(null)}
+                        onFocus={() => setLookPreviewFilter(f.id)} onBlur={() => setLookPreviewFilter(null)}
                         onClick={() => updateClip(selectedClip.id, { filter: f.id }, 'Apply filter')}
                         aria-pressed={selectedClip.filter === f.id}
-                        className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${selectedClip.filter === f.id ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
-                      >
-                        {f.name}
+                        className={`group overflow-hidden rounded-xl border p-1 text-left transition ${selectedClip.filter === f.id ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+                        <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+                          <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-black/50" />
+                          <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold">{f.name}</span>
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -4969,29 +5021,38 @@ function VideoEditor() {
                   </div>
                   <Slider label="Noise reduction" min={0} max={100} step={5} value={selectedClip.audioProcessing?.noiseReduction ?? 0} onChange={(v) => setNoiseReduction(v)} />
                 </div>
-                {/* motion effects — rendered into the export, not just preview */}
-                <div>
-                  <p className="mb-1.5 text-xs font-semibold text-white/60">Effects</p>
-                  <div className="flex flex-wrap gap-1.5">
+                {/* Effect library — audition the real clip before committing. */}
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div className="mb-3 flex items-center justify-between">
+                    <div><p className="text-xs font-semibold text-white">Effect Library</p><p className="text-[10px] text-white/40">Hover to preview. Click to apply. Preview and export use the same renderer.</p></div>
+                    <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[9px] font-semibold text-[#ffb6c1]">AUDITION</span>
+                  </div>
+                  <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} effect={lookPreviewEffect ?? selectedClip.effect} filter={selectedClip.filter} />
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {EFFECT_PRESETS.map((fx) => {
                       const gated = fx.id !== 'none' && fx.id !== 'zoom' && !has('video.advanced_effects');
                       return (
-                        <button
-                          key={fx.id}
-                          onClick={() => updateClip(selectedClip.id, { effect: fx.id }, 'Apply effect')}
-                          disabled={gated}
-                          aria-pressed={selectedClip.effect === fx.id}
-                          title={gated ? 'Pro effect' : fx.hint}
-                          className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${
-                            selectedClip.effect === fx.id ? 'bg-[#E5798F] text-white' : gated ? 'bg-white/5 text-white/30' : 'bg-white/10'
-                          }`}
-                        >
-                          {fx.name}{gated ? ' ⭐' : ''}
+                        <button key={fx.id}
+                          onMouseEnter={() => setLookPreviewEffect(fx.id)} onMouseLeave={() => setLookPreviewEffect(null)}
+                          onFocus={() => setLookPreviewEffect(fx.id)} onBlur={() => setLookPreviewEffect(null)}
+                          onClick={() => updateClip(selectedClip.id, { effect: fx.id, effect_intensity: fx.id === 'none' ? 0 : (selectedClip.effect_intensity ?? 1) }, 'Apply effect')}
+                          disabled={gated} aria-pressed={selectedClip.effect === fx.id}
+                          title={gated ? 'Advanced effect' : fx.hint}
+                          className={`group rounded-xl border p-2 text-left transition focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${selectedClip.effect === fx.id ? 'border-[#E5798F] bg-[#E5798F]/10' : gated ? 'border-white/5 bg-white/[0.02] text-white/30' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+                          <div className="mb-2 flex h-14 items-center justify-center rounded-lg bg-gradient-to-br from-white/10 via-white/[0.03] to-black"><span className="text-[10px] font-bold">{fx.name}</span></div>
+                          <div className="flex items-center justify-between gap-2"><span className="truncate text-[9px] text-white/45">{fx.hint}</span>{gated && <span className="text-[9px]">PRO</span>}</div>
                         </button>
                       );
                     })}
                   </div>
+                  {selectedClip.effect !== 'none' && (
+                    <div className="mt-3 rounded-xl bg-black/20 p-2.5">
+                      <Slider label={`Effect intensity ${Math.round((selectedClip.effect_intensity ?? 1) * 100)}%`} min={0} max={100} value={(selectedClip.effect_intensity ?? 1) * 100}
+                        onChange={(v) => updateClip(selectedClip.id, { effect_intensity: v / 100 }, 'Effect intensity', `fx-intensity-${selectedClip.id}`)} />
+                    </div>
+                  )}
                 </div>
+
                 {/* transition into this clip */}
                 <div>
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Transition in</p>

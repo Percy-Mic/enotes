@@ -86,6 +86,7 @@ export interface VideoClip {
   filter: string;                // css filter preset id or 'none'
   /** motion effect applied while this clip plays (renders into the export) */
   effect: EffectType;
+  effect_intensity?: number;
   /** transition INTO this clip (plays over the previous clip's tail) */
   transitionIn: { type: TransitionType; duration: number };
   /** Optional transform/audio keyframes for professional motion control. */
@@ -444,6 +445,7 @@ export function normalizeProject(input: unknown): VideoProject {
       volume: Math.max(0, Math.min(1, clip.volume == null ? 1 : Number(clip.volume))), muted: Boolean(clip.muted),
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
       effect: (clip.effect || 'none') as EffectType,
+      effect_intensity: clamp(Number(clip.effect_intensity) || 1, 0, 1),
       transitionIn: { ...DEFAULT_TRANSITION, ...(clip.transitionIn && typeof clip.transitionIn === 'object' ? clip.transitionIn : {}) } as VideoClip['transitionIn'],
       ...(sanitizeKeyframes(clip.keyframes) ? { keyframes: sanitizeKeyframes(clip.keyframes) } : {}),
       ...(Number(clip.source_width) > 0 ? { source_width: Number(clip.source_width) } : {}),
