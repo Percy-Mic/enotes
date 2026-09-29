@@ -2196,7 +2196,6 @@ ${JSON.stringify(
         'add_text_element',
         'split_clip',
         'reorder_clip',
-        'add_library_audio',
       ]);
 
     const elementActionTypes =
@@ -2349,6 +2348,8 @@ ${JSON.stringify(
               'transcribe' ||
             action.type ===
               'add_stock_video' ||
+            action.type ===
+              'add_library_audio' ||
             (
               clipActionTypes.has(
                 action.type,
