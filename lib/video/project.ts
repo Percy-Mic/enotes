@@ -328,6 +328,8 @@ export interface VideoProject {
   tracks: TimelineTrack[];
   /* project-wide original-audio mute */
   masterMuted: boolean;
+  /** Optional project-time beat markers detected from a selected audio track. */
+  beatMarkers?: number[];
 }
 
 export const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
