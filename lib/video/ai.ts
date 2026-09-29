@@ -23,6 +23,7 @@ export interface AIJobInput {
   project?: unknown;
   mediaType?: 'image' | 'video' | 'audio' | null;
   selection?: { clipId?: string | null; elementId?: string | null; audioId?: string | null } | null;
+  conversation?: Array<{ role: 'user' | 'assistant'; text: string; actions?: unknown[] }> | null;
 }
 
 export interface AIResult {
@@ -36,7 +37,7 @@ const GEMINI_KEY = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI
 const ASSEMBLY_KEY = () => process.env.ASSEMBLYAI_API_KEY;
 const GROQ_KEY = () => process.env.GROQ_API_KEY;
 
-async function geminiStructured(prompt: string, schema: Record<string, unknown>, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite') {
+async function geminiStructured(prompt: string, schema: Record<string, unknown>, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', media?: { url?: string | null; type?: 'video' | 'image' | 'audio' | null }) {
   const key = GEMINI_KEY();
   if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
 
@@ -44,7 +45,18 @@ async function geminiStructured(prompt: string, schema: Record<string, unknown>,
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
-      model: model.replace(/^models\//, ''), input: prompt, store: false,
+      model: model.replace(/^models\//, ''),
+      input: media?.url
+        ? [
+            { type: 'text', text: prompt },
+            {
+              type: media.type || 'video',
+              uri: media.url,
+              mime_type: media.type === 'image' ? 'image/jpeg' : media.type === 'audio' ? 'audio/mpeg' : 'video/mp4',
+            },
+          ]
+        : prompt,
+      store: false,
       response_format: { type: 'text', mime_type: 'application/json', schema },
     }),
     cache: 'no-store',
@@ -296,13 +308,62 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
       properties: {
         message: { type: 'string' }, summary: { type: 'string' },
         actions: { type: 'array', items: { type: 'object', properties: {
-          type: { type: 'string', enum: ['set_clip_speed','set_clip_volume','set_clip_mute','set_clip_filter','set_clip_effect','set_clip_transition','trim_clip','transform_clip','set_clip_adjustments','fit_clip','set_aspect','delete_clip','duplicate_clip','generate_captions','transcribe','transform_element','set_element_opacity'] },
+          type: { type: 'string', enum: ['set_clip_speed','set_clip_volume','set_clip_mute','set_clip_filter','set_clip_effect','set_clip_transition','trim_clip','transform_clip','set_clip_adjustments','fit_clip','set_aspect','delete_clip','duplicate_clip','generate_captions','transcribe','transform_element','set_element_opacity','set_keyframe','add_text_element','split_clip','reorder_clip','add_stock_video'] },
           clipId: { type: ['string','null'] }, elementId: { type: ['string','null'] }, value: { type: ['number','string','boolean','null'] }, value2: { type: ['number','string','boolean','null'] }, object: { type: ['object','null'] },
         }, required: ['type'] } },
       }, required: ['message','summary','actions'],
     };
-    const prompt = 'You are the editing comrade inside enotes Studio. Return only safe, reversible project-edit actions from the allowed action types. Never invent ids. If the user says this/it/the clip, use the selected clip. If the user asks for captions/subtitles/CC, return generate_captions. If the user asks for a transcript/transcribe, return transcribe. If unsupported, explain it and return no action. Keep actions minimal. Allowed semantics: set_clip_speed value 0.25..4; set_clip_volume value 0..1; set_clip_mute boolean; set_clip_filter known ids; set_clip_effect known ids; set_clip_transition value type and value2 duration; trim_clip value start and value2 end; transform_clip object offset_x,offset_y,scale,scale_x,scale_y,rotation; set_clip_adjustments object with brightness,contrast,saturate,hue,blur,sepia,grayscale,exposure,temperature,tint,vibrance,vignette,grain,sharpen; fit_clip value contain or cover; transform_element object x,y,width,height,rotation,opacity; set_element_opacity value 0..1; set_aspect value original/16:9/9:16/1:1/4:5/3:2/21:9; delete_clip/duplicate_clip clipId; generate_captions needs no value. User request: ' + (input.prompt || 'Suggest a useful improvement') + '. Selection: ' + JSON.stringify(input.selection || {}) + '. Project: ' + JSON.stringify(compactProject);
-    let plan = await geminiStructured(prompt, schema);
+    const conversation = Array.isArray(input.conversation) ? input.conversation.slice(-10) : [];
+    const conversationText = conversation.map((message) => {
+      const actions = Array.isArray(message.actions) ? ` Actions: ${JSON.stringify(message.actions).slice(0, 2400)}` : '';
+      return `${message.role.toUpperCase()}: ${String(message.text || '').slice(0, 1800)}${actions}`;
+    }).join('\\n');
+
+    const prompt = `You are the professional editing agent inside enotes Studio. You are not a generic chatbot. Turn the user's natural-language request into real, safe, reversible editor operations.
+
+CRITICAL BEHAVIOR:
+- Maintain conversation context. If the user says "it", "this", "that", "the suggestions", "do it", "implement it", or "apply that", resolve it from the immediately preceding messages and action list. Never ask them to repeat context that is already present.
+- Inspect the supplied project state and selected media. Never invent IDs.
+- For requests such as "make it an advertisement", create a concrete commercial edit using the existing footage: stronger opening, tighter pacing, readable headline/CTA, intentional transitions, tasteful color treatment, motion/keyframes, and a suitable aspect ratio when inferable.
+- You may trim, split, duplicate, reorder, change speed, add transitions, add text, add keyframes, transform/crop, color grade, apply effects, and change the canvas.
+- If the user explicitly allows extra footage, you may emit add_stock_video with a concise search query. Do not claim it was added unless the action is emitted.
+- Never merely explain how to do an edit when the requested operation is supported. Emit the operation.
+- Use up to 16 actions when a coherent edit requires multiple changes. Prefer non-destructive edits and never delete clips unless explicitly requested.
+
+ALLOWED ACTIONS:
+set_clip_speed value 0.25..4
+set_clip_volume value 0..1
+set_clip_mute boolean
+set_clip_filter value
+set_clip_effect value
+set_clip_transition value=type, value2=duration
+trim_clip value=start, value2=end
+transform_clip object={offset_x,offset_y,scale,scale_x,scale_y,rotation}
+set_clip_adjustments object={brightness,contrast,saturate,hue,blur,sepia,grayscale,exposure,temperature,tint,vibrance,vignette,grain,sharpen}
+fit_clip value=contain|cover
+set_aspect value=original|16:9|9:16|1:1|4:5|3:2|21:9
+delete_clip clipId
+duplicate_clip clipId
+transform_element object={x,y,width,height,rotation,opacity}
+set_element_opacity value=0..1
+set_keyframe object={property,t,value}
+add_text_element object={text,start,end,x,y,width,height,font_size,color,background,animation}
+split_clip value=timeline seconds
+reorder_clip object={fromIndex,toIndex}
+add_stock_video object={query,orientation}
+
+Previous conversation:
+${conversationText || '(none)'}
+
+Current request:
+${input.prompt || 'Suggest a useful improvement'}
+
+Selection:
+${JSON.stringify(input.selection || {})}
+
+Project:
+${JSON.stringify(compactProject)}`;
+    let plan = await geminiStructured(prompt, schema, process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', input.mediaUrl ? { url: input.mediaUrl, type: input.mediaType || 'video' } : undefined);
     if (!plan || typeof plan !== 'object') plan = { message: 'I could not create a safe edit plan.', summary: '', actions: [] };
     const actions = Array.isArray((plan as any).actions) ? (plan as any).actions.slice(0, 8) : [];
     const validClipIds = new Set(compactProject.clips.map((clip: any) => clip.id));
@@ -316,7 +377,7 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
     const clipActionTypes = new Set([
       'set_clip_speed','set_clip_volume','set_clip_mute','set_clip_filter','set_clip_effect',
       'set_clip_transition','trim_clip','transform_clip','set_clip_adjustments','fit_clip',
-      'delete_clip','duplicate_clip',
+      'delete_clip','duplicate_clip','set_keyframe','add_text_element','split_clip','reorder_clip',
     ]);
     const elementActionTypes = new Set(['transform_element','set_element_opacity']);
     const sanitizedActions = actions
@@ -329,7 +390,13 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
         action.type === 'set_aspect' ||
         action.type === 'generate_captions' ||
         action.type === 'transcribe' ||
-        (clipActionTypes.has(action.type) && validClipIds.has(action.clipId)) ||
+        action.type === 'add_stock_video' ||
+        (clipActionTypes.has(action.type) && (
+          action.type === 'add_text_element' ||
+          action.type === 'split_clip' ||
+          action.type === 'reorder_clip' ||
+          validClipIds.has(action.clipId)
+        )) ||
         (elementActionTypes.has(action.type) && validElementIds.has(action.elementId))
       );
     let captions: unknown[] = []; let transcript: unknown = null;
