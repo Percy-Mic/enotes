@@ -5352,10 +5352,32 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
 
   const multiTouchRef = useRef(false);
   const rotationGestureRef = useRef(0);
+  const activeDragCleanupRef = useRef<(() => void) | null>(null);
 
   useMobileGestures(ref, {
-    onMultiTouchStart: () => { multiTouchRef.current = true; rotationGestureRef.current = rotation; },
+    onMultiTouchStart: () => {
+      multiTouchRef.current = true;
+      rotationGestureRef.current = rotation;
+      activeDragCleanupRef.current?.();
+      activeDragCleanupRef.current = null;
+    },
     onMultiTouchEnd: () => { multiTouchRef.current = false; },
+    onTwoFingerPan: (delta) => {
+      if (multiTouchRef.current && base.width > 0 && base.height > 0) {
+        const dx = delta.x / base.width;
+        const dy = delta.y / base.height;
+        const width = 1 - current.left - current.right;
+        const height = 1 - current.top - current.bottom;
+        const left = clampNum(current.left + dx, 0, 1 - width);
+        const top = clampNum(current.top + dy, 0, 1 - height);
+        onChange({
+          left,
+          right: 1 - left - width,
+          top,
+          bottom: 1 - top - height,
+        });
+      }
+    },
     onPinch: (scale, center) => {
       const factor = clampNum(scale, 0.82, 1.22);
       const visibleWidth = 1 - current.left - current.right;
@@ -5421,8 +5443,11 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
+      if (activeDragCleanupRef.current === onUp) activeDragCleanupRef.current = null;
     };
-    window.addEventListener('pointermove', onMove);
+    activeDragCleanupRef.current?.();
+    activeDragCleanupRef.current = onUp;
+    window.addEventListener('pointermove', onMove, { passive: false });
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   };
@@ -5447,9 +5472,12 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
       <div className="pointer-events-none absolute inset-0 bg-black/[0.08]" />
       {/* surviving window */}
       <div
+        onPointerDown={(e) => {
+          if (e.pointerType !== 'mouse') e.preventDefault();
+          beginDrag(e, 'move');
+        }}
         className="absolute touch-none border-2 border-white bg-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.18)]"
         style={{ left: inner.left, top: inner.top, width: inner.width, height: inner.height, cursor: 'move' }}
-        onPointerDown={(e) => beginDrag(e, 'move')}
       >
         {/* rule-of-thirds guides */}
         <div className="pointer-events-none absolute inset-0">
