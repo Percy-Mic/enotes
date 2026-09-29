@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { supabase } from '@/lib/supabase/client';
 import {
   Bot,
   Captions,
