@@ -1679,12 +1679,18 @@ export async function runVideoAI(
       ? await updateProjectVisionIndex(supabase, auth.user.id, input.projectId, rawProject, input.visionFrames)
       : await loadProjectVisionIndex(supabase, auth.user.id, input.projectId);
 
+    const compactCanvas =
+      rawProject.canvas &&
+      typeof rawProject.canvas === 'object'
+        ? (rawProject.canvas as Record<string, unknown>)
+        : {};
+
     const compactProject = {
       aspect:
         rawProject.aspect,
 
       canvas:
-        rawProject.canvas,
+        compactCanvas,
 
       clips: Array.isArray(
         rawProject.clips,
