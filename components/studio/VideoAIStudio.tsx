@@ -26,8 +26,11 @@ export type VideoAIEditAction = {
     | 'delete_clip'
     | 'duplicate_clip'
     | 'generate_captions'
-    | 'transcribe';
+    | 'transcribe'
+    | 'transform_element'
+    | 'set_element_opacity';
   clipId?: string | null;
+  elementId?: string | null;
   value?: number | string | boolean | null;
   value2?: number | string | boolean | null;
   object?: Record<string, unknown> | null;
@@ -78,6 +81,8 @@ function actionLabel(action: VideoAIEditAction) {
     case 'duplicate_clip': return 'Clip duplicated';
     case 'generate_captions': return 'Captions generated';
     case 'transcribe': return 'Transcript generated';
+    case 'transform_element': return 'Overlay transform adjusted';
+    case 'set_element_opacity': return 'Overlay opacity adjusted';
     default: return 'Edit applied';
   }
 }
