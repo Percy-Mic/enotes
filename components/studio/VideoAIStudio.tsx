@@ -151,6 +151,17 @@ export default function VideoAIStudio({
           project,
           mediaUrl: selectedMediaUrl,
           mediaType: selectedMediaType,
+          mediaUrls: (() => {
+            const raw = project && typeof project === 'object' ? project as { clips?: Array<{ src?: string }> } : {};
+            const urls = Array.isArray(raw.clips)
+              ? raw.clips
+                  .map((clip) => clip?.src)
+                  .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+                  .slice(0, 10)
+              : [];
+            if (selectedMediaUrl && !urls.includes(selectedMediaUrl)) urls.unshift(selectedMediaUrl);
+            return urls.slice(0, 10).map((url) => ({ url, type: 'video' as const }));
+          })(),
           selection: {
             clipId: selectedClipId,
             elementId: selectedElementId,
