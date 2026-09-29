@@ -22,6 +22,7 @@ export interface AIJobInput {
   language?: string | null;
   project?: unknown;
   mediaType?: 'image' | 'video' | 'audio' | null;
+  mediaUrls?: Array<{ url: string; type?: 'image' | 'video' | 'audio' | null }> | null;
   selection?: { clipId?: string | null; elementId?: string | null; audioId?: string | null } | null;
   conversation?: Array<{ role: 'user' | 'assistant'; text: string; actions?: unknown[] }> | null;
 }
@@ -37,7 +38,7 @@ const GEMINI_KEY = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI
 const ASSEMBLY_KEY = () => process.env.ASSEMBLYAI_API_KEY;
 const GROQ_KEY = () => process.env.GROQ_API_KEY;
 
-async function geminiStructured(prompt: string, schema: Record<string, unknown>, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', media?: { url?: string | null; type?: 'video' | 'image' | 'audio' | null }) {
+async function geminiStructured(prompt: string, schema: Record<string, unknown>, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', media?: Array<{ url?: string | null; type?: 'video' | 'image' | 'audio' | null }>) {
   const key = GEMINI_KEY();
   if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
 
@@ -46,14 +47,17 @@ async function geminiStructured(prompt: string, schema: Record<string, unknown>,
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
     body: JSON.stringify({
       model: model.replace(/^models\//, ''),
-      input: media?.url
+      input: media?.length
         ? [
             { type: 'text', text: prompt },
-            {
-              type: media.type || 'video',
-              uri: media.url,
-              mime_type: media.type === 'image' ? 'image/jpeg' : media.type === 'audio' ? 'audio/mpeg' : 'video/mp4',
-            },
+            ...media
+              .filter((item) => item?.url)
+              .map((item) => ({
+                type: item.type || 'video',
+                uri: item.url,
+                mime_type: item.type === 'image' ? 'image/jpeg' : item.type === 'audio' ? 'audio/mpeg' : 'video/mp4',
+                processing: (item.type || 'video') === 'video' ? 'agentic' : undefined,
+              })),
           ]
         : prompt,
       store: false,
@@ -363,7 +367,10 @@ ${JSON.stringify(input.selection || {})}
 
 Project:
 ${JSON.stringify(compactProject)}`;
-    let plan = await geminiStructured(prompt, schema, process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', input.mediaUrl ? { url: input.mediaUrl, type: input.mediaType || 'video' } : undefined);
+    const mediaInputs = Array.isArray(input.mediaUrls) && input.mediaUrls.length
+      ? input.mediaUrls.slice(0, 10)
+      : input.mediaUrl ? [{ url: input.mediaUrl, type: input.mediaType || 'video' }] : [];
+    let plan = await geminiStructured(prompt, schema, process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', mediaInputs.length ? mediaInputs : undefined);
     if (!plan || typeof plan !== 'object') plan = { message: 'I could not create a safe edit plan.', summary: '', actions: [] };
     const actions = Array.isArray((plan as any).actions) ? (plan as any).actions.slice(0, 8) : [];
     const validClipIds = new Set(compactProject.clips.map((clip: any) => clip.id));
