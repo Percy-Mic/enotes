@@ -2423,6 +2423,53 @@ function VideoEditor() {
   const [soundPages, setSoundPages] = useState(1);
   const [soundCount, setSoundCount] = useState(0);
   const [soundBusy, setSoundBusy] = useState(false);
+  const [previewingSoundId, setPreviewingSoundId] = useState<string | null>(null);
+  const soundPreviewRef = useRef<HTMLAudioElement | null>(null);
+
+  const toggleSoundPreview = useCallback((sound: SoundBrowserItem) => {
+    const current = soundPreviewRef.current;
+    if (current && previewingSoundId === sound.id) {
+      current.pause();
+      current.currentTime = 0;
+      soundPreviewRef.current = null;
+      setPreviewingSoundId(null);
+      return;
+    }
+
+    if (current) {
+      current.pause();
+      current.currentTime = 0;
+    }
+
+    const audio = new Audio(sound.url);
+    audio.preload = 'auto';
+    audio.onended = () => {
+      if (soundPreviewRef.current === audio) {
+        soundPreviewRef.current = null;
+        setPreviewingSoundId(null);
+      }
+    };
+    audio.onerror = () => {
+      if (soundPreviewRef.current === audio) {
+        soundPreviewRef.current = null;
+        setPreviewingSoundId(null);
+      }
+      notify('Sound preview could not be loaded.');
+    };
+    soundPreviewRef.current = audio;
+    setPreviewingSoundId(sound.id);
+    void audio.play().catch(() => {
+      if (soundPreviewRef.current === audio) {
+        soundPreviewRef.current = null;
+        setPreviewingSoundId(null);
+      }
+    });
+  }, [notify, previewingSoundId]);
+
+  useEffect(() => () => {
+    soundPreviewRef.current?.pause();
+    soundPreviewRef.current = null;
+  }, []);
 
   const soundCategories = [
     'Cinematic', 'Ambient', 'Nature', 'City', 'Footsteps',
@@ -4140,13 +4187,17 @@ function VideoEditor() {
                             </button>
                           </div>
 
-                          <audio
-                            src={s.url}
-                            controls
-                            preload="none"
-                            className="mt-2 h-8 w-full"
-                            aria-label={`Preview ${s.title}`}
-                          />
+                          <button
+                            type="button"
+                            onClick={() => toggleSoundPreview(s)}
+                            className="mt-2 flex w-full items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left text-[10px] font-semibold text-white/75 transition hover:bg-white/[0.08] active:scale-[0.99]"
+                            aria-label={`${previewingSoundId === s.id ? 'Pause' : 'Preview'} ${s.title}`}
+                          >
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E5798F] text-white">
+                              {previewingSoundId === s.id ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
+                            </span>
+                            <span>{previewingSoundId === s.id ? 'Previewing…' : 'Preview sound'}</span>
+                          </button>
 
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <div className="min-w-0 truncate text-[9px] text-white/35">
@@ -4200,7 +4251,15 @@ function VideoEditor() {
                           <p className="truncate text-xs font-semibold">{s.title}</p>
                           <p className="truncate text-[10px] text-white/50">{s.artist} · {s.category}</p>
                         </div>
-                        <audio src={s.url} controls preload="none" className="h-8 max-w-[130px]" />
+                        <button
+                          type="button"
+                          onClick={() => toggleSoundPreview(s)}
+                          className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.06] px-2.5 text-[9px] font-semibold text-white/75 transition hover:bg-white/10"
+                          aria-label={`${previewingSoundId === s.id ? 'Pause' : 'Preview'} ${s.title}`}
+                        >
+                          {previewingSoundId === s.id ? <Pause className="h-3 w-3 fill-current" /> : <Play className="h-3 w-3 fill-current" />}
+                          {previewingSoundId === s.id ? 'Pause' : 'Preview'}
+                        </button>
                         <button onClick={() => addSoundTrack(s, 'music')} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white">
                           Add
                         </button>
