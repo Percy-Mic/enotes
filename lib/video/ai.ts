@@ -1700,43 +1700,30 @@ export async function runVideoAI(
                 ],
               },
 
+              // Optional fields are intentionally omitted when unused.
+              // Gemini's generateContent responseSchema path used here expects
+              // a single protobuf Schema type rather than JSON-Schema unions.
               clipId: {
-                type: [
-                  'string',
-                  'null',
-                ],
+                type: 'string',
               },
 
               elementId: {
-                type: [
-                  'string',
-                  'null',
-                ],
+                type: 'string',
               },
 
+              // Primitive action values are returned as strings and normalized
+              // server-side below. This keeps the Gemini schema valid while
+              // preserving numbers and booleans for the editor executor.
               value: {
-                type: [
-                  'number',
-                  'string',
-                  'boolean',
-                  'null',
-                ],
+                type: 'string',
               },
 
               value2: {
-                type: [
-                  'number',
-                  'string',
-                  'boolean',
-                  'null',
-                ],
+                type: 'string',
               },
 
               object: {
-                type: [
-                  'object',
-                  'null',
-                ],
+                type: 'object',
               },
             },
 
@@ -1828,6 +1815,8 @@ CRITICAL BEHAVIOR:
 - Use multiple actions when a professional result requires multiple changes.
 - You may use up to 16 actions.
 - Do not fabricate media or clip IDs.
+- For action fields, omit optional fields when they are not needed.
+- Primitive value/value2 fields are strings in the response format, but they represent the actual value: write numbers such as "1.25" and booleans as "true" or "false".
 
 ADVERTISEMENT MODE:
 
@@ -2172,8 +2161,54 @@ ${JSON.stringify(
         'set_element_opacity',
       ]);
 
+    const normalizeAction = (action: any) => {
+      const normalized = { ...action };
+
+      const numericValueTypes = new Set([
+        'set_clip_speed',
+        'set_clip_volume',
+        'set_clip_transition',
+        'set_element_opacity',
+        'split_clip',
+      ]);
+
+      const numericValue2Types = new Set([
+        'set_clip_transition',
+        'trim_clip',
+      ]);
+
+      const booleanValueTypes = new Set([
+        'set_clip_mute',
+      ]);
+
+      if (numericValueTypes.has(normalized.type)) {
+        const parsed = Number(normalized.value);
+        normalized.value = Number.isFinite(parsed)
+          ? parsed
+          : normalized.value;
+      }
+
+      if (numericValue2Types.has(normalized.type)) {
+        const parsed = Number(normalized.value2);
+        normalized.value2 = Number.isFinite(parsed)
+          ? parsed
+          : normalized.value2;
+      }
+
+      if (booleanValueTypes.has(normalized.type)) {
+        if (typeof normalized.value === 'string') {
+          const lowered = normalized.value.trim().toLowerCase();
+          if (lowered === 'true') normalized.value = true;
+          if (lowered === 'false') normalized.value = false;
+        }
+      }
+
+      return normalized;
+    };
+
     const sanitizedActions =
       actions
+        .map(normalizeAction)
         .map((action: any) => ({
           ...action,
 
