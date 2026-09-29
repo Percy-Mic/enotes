@@ -999,7 +999,7 @@ function VideoEditor() {
   const applyAIActions = useCallback((actions: VideoAIEditAction[]) => {
     if (!actions.length) return;
 
-    const clipActions = actions.filter((action) => action.type !== 'set_aspect' && action.type !== 'delete_clip' && action.type !== 'duplicate_clip' && action.type !== 'generate_captions' && action.type !== 'transcribe');
+    const clipActions = actions.filter((action) => action.type !== 'set_aspect' && action.type !== 'delete_clip' && action.type !== 'duplicate_clip' && action.type !== 'generate_captions' && action.type !== 'transcribe' && action.type !== 'transform_element' && action.type !== 'set_element_opacity');
     if (clipActions.length) {
       updateProject((p) => ({
         ...p,
@@ -1048,6 +1048,33 @@ function VideoEditor() {
           return next;
         }),
       }), 'AI edit');
+    }
+
+    const elementActions = actions.filter((action) => action.type === 'transform_element' || action.type === 'set_element_opacity');
+    if (elementActions.length) {
+      updateProject((p) => ({
+        ...p,
+        elements: p.elements.map((element) => {
+          const relevant = elementActions.filter((action) => action.elementId === element.id);
+          if (!relevant.length) return element;
+          let next = { ...element };
+          for (const action of relevant) {
+            if (action.type === 'set_element_opacity' && Number.isFinite(Number(action.value))) {
+              next.opacity = Math.max(0, Math.min(1, Number(action.value)));
+            }
+            if (action.type === 'transform_element' && action.object) {
+              const obj = action.object;
+              if (Number.isFinite(Number(obj.x))) next.x = Number(obj.x);
+              if (Number.isFinite(Number(obj.y))) next.y = Number(obj.y);
+              if (Number.isFinite(Number(obj.width))) next.width = Math.max(8, Number(obj.width));
+              if (Number.isFinite(Number(obj.height))) next.height = Math.max(8, Number(obj.height));
+              if (Number.isFinite(Number(obj.rotation))) next.rotation = Number(obj.rotation);
+              if (Number.isFinite(Number(obj.opacity))) next.opacity = Math.max(0, Math.min(1, Number(obj.opacity)));
+            }
+          }
+          return next;
+        }),
+      }), 'AI overlay edit');
     }
 
     for (const action of actions) {
