@@ -2127,7 +2127,7 @@ ${JSON.stringify(
       )
         ? (plan as any).actions.slice(
             0,
-            16,
+            12,
           )
         : [];
 
@@ -2262,7 +2262,12 @@ ${JSON.stringify(
       return true;
     });
 
-    if (isAdvertisementRequest && !useOnlyUserMedia && compactProject.clips.length < 2) {
+    if (
+      isAdvertisementRequest &&
+      !useOnlyUserMedia &&
+      compactProject.clips.length < 2 &&
+      !plannedActions.some((action: any) => action.type === 'add_stock_video')
+    ) {
       plannedActions.push({
         type: 'add_stock_video',
         object: {
@@ -2272,13 +2277,13 @@ ${JSON.stringify(
       });
     }
 
-    const hasAdText = plannedActions.some((action: any) =>
+    const adTextCount = plannedActions.filter((action: any) =>
       action.type === 'add_text_element' &&
       typeof action.object?.text === 'string' &&
       String(action.object.text).trim()
-    );
+    ).length;
 
-    if (isAdvertisementRequest && !hasAdText) {
+    if (isAdvertisementRequest && adTextCount < 2) {
       const duration = Math.max(3, Number(compactProject.clips.reduce((sum: number, clip: any) => sum + Math.max(0.1, (Number(clip.trimEnd) || 1) - (Number(clip.trimStart) || 0)) / Math.max(0.05, Number(clip.speed) || 1), 0)) || 6);
       plannedActions.push(
         {
@@ -2374,7 +2379,8 @@ ${JSON.stringify(
                 action.elementId,
               )
             ),
-        );
+        )
+        .slice(0, 16);
 
     let captions: unknown[] =
       [];
