@@ -3866,6 +3866,17 @@ function VideoEditor() {
             projectId={projectId}
             project={project}
             selectedMediaUrl={selectedClip?.src || selectedElement?.src || null}
+            selectedMediaType={
+              selectedClip
+                ? 'video'
+                : selectedElement?.kind === 'image'
+                  ? 'image'
+                  : selectedElement?.kind === 'video'
+                    ? 'video'
+                    : selectedElement?.kind === 'gif'
+                      ? 'image'
+                      : null
+            }
             onAddMedia={({ url, name }) => {
               const maxW = project.canvas.width * 0.78;
               const maxH = project.canvas.height * 0.52;
