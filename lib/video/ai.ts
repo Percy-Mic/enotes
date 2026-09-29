@@ -22,6 +22,7 @@ export interface AIJobInput {
   language?: string | null;
   project?: unknown;
   mediaType?: 'image' | 'video' | 'audio' | null;
+  selection?: { clipId?: string | null; elementId?: string | null; audioId?: string | null } | null;
 }
 
 export interface AIResult {
@@ -34,6 +35,26 @@ export interface AIResult {
 const GEMINI_KEY = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
 const ASSEMBLY_KEY = () => process.env.ASSEMBLYAI_API_KEY;
 const GROQ_KEY = () => process.env.GROQ_API_KEY;
+
+async function geminiStructured(prompt: string, schema: Record<string, unknown>, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite') {
+  const key = GEMINI_KEY();
+  if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
+
+  const response = await fetch('https://generativelanguage.googleapis.com/v1/interactions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      model: model.replace(/^models\//, ''), input: prompt, store: false,
+      response_format: { type: 'text', mime_type: 'application/json', schema },
+    }),
+    cache: 'no-store',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error?.message || `Gemini request failed (${response.status}).`);
+  const text = data?.output_text || data?.output?.map?.((item: { content?: Array<{ text?: string }> }) => item.content?.map((part) => part.text || '').join('') || '').join('') || data?.steps?.map?.((step: { content?: Array<{ text?: string }> }) => step.content?.map((part) => part.text || '').join('') || '').join('') || '';
+  if (!text) throw new Error('Gemini returned an empty structured response.');
+  return parseJson(text);
+}
 
 async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite') {
   const key = GEMINI_KEY();
@@ -156,9 +177,11 @@ async function assemblyTranscript(mediaUrl: string, language?: string | null) {
     body: JSON.stringify({
       audio_url: mediaUrl,
       language_code: language || undefined,
-      speech_models: ['universal-2'],
+      speech_models: [process.env.ASSEMBLYAI_MODEL || 'universal-3-5-pro'],
       punctuate: true,
       format_text: true,
+      speaker_labels: true,
+      ...(language ? {} : { language_detection: true }),
     }),
     cache: 'no-store',
   });
@@ -189,6 +212,38 @@ async function assemblyTranscript(mediaUrl: string, language?: string | null) {
   throw new Error('Transcription is still processing. Try again in a moment.');
 }
 
+type TranscriptWord = { text?: string; start?: number; end?: number; confidence?: number; speaker?: string };
+
+function buildCaptions(words: TranscriptWord[]) {
+  const clean = words.filter((word) => typeof word.text === 'string' && Number.isFinite(Number(word.start)) && Number.isFinite(Number(word.end)))
+    .map((word) => ({ text: String(word.text).trim(), start: Number(word.start) / 1000, end: Number(word.end) / 1000, confidence: Number.isFinite(Number(word.confidence)) ? Number(word.confidence) : null, speaker: word.speaker || null }))
+    .filter((word) => word.text);
+  const captions: Array<{ id: string; text: string; start: number; end: number; confidence: number | null; needsReview: boolean; speaker?: string | null }> = [];
+  let group: typeof clean = [];
+  const flush = () => {
+    if (!group.length) return;
+    const start = group[0].start; const end = group[group.length - 1].end;
+    const text = group.map((word) => word.text).join(' ').replace(/\s+([,.!?;:])/g, '$1').trim();
+    const confidenceValues = group.map((word) => word.confidence).filter((value): value is number => value != null);
+    const confidence = confidenceValues.length ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length : null;
+    captions.push({ id: `caption-${captions.length}`, text, start, end: Math.max(start + 0.25, end), confidence, needsReview: confidence != null && confidence < 0.78, speaker: group[0].speaker || null });
+    group = [];
+  };
+  for (const word of clean) {
+    const previous = group[group.length - 1]; const candidate = [...group, word];
+    const candidateText = candidate.map((item) => item.text).join(' ');
+    const punctuationBreak = /[.!?]$/.test(previous?.text || '');
+    const speakerBreak = !!(previous?.speaker && word.speaker && previous.speaker !== word.speaker);
+    const gapBreak = !!(previous && word.start - previous.end > 0.55);
+    const durationBreak = group.length > 0 && word.end - group[0].start > 3.2;
+    const lengthBreak = candidate.length > 7 || candidateText.length > 48;
+    if (group.length && (punctuationBreak || speakerBreak || gapBreak || durationBreak || lengthBreak)) flush();
+    group.push(word);
+  }
+  flush();
+  return captions;
+}
+
 function parseJson(text: string) {
   const cleaned = text.replace(/^\s*\`\`\`(?:json)?/i, '').replace(/\`\`\`\s*$/i, '').trim();
   try { return JSON.parse(cleaned); } catch { return { text: cleaned }; }
@@ -207,13 +262,8 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
     if (operation === 'transcribe') return { operation, provider: ASSEMBLY_KEY() ? 'assemblyai' : 'groq', output: transcript };
 
     const captions = transcript.words.length
-      ? transcript.words.map((w: { text: string; start: number; end: number }, i: number) => ({
-          id: `caption-${i}`,
-          text: w.text,
-          start: w.start / 1000,
-          end: w.end / 1000,
-        }))
-      : [{ id: 'caption-0', text: transcript.text, start: 0, end: 4 }];
+      ? buildCaptions(transcript.words as TranscriptWord[])
+      : [{ id: 'caption-0', text: transcript.text, start: 0, end: 4, confidence: null, needsReview: true, speaker: null }];
     return { operation, provider: ASSEMBLY_KEY() ? 'assemblyai' : 'groq', output: { ...transcript, captions } };
   }
 
@@ -229,13 +279,50 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
     return { operation, provider: 'remove.bg', output };
   }
 
-  if (operation === 'assistant' || operation === 'analyze') {
+  if (operation === 'assistant') {
+    const rawProject = (input.project && typeof input.project === 'object') ? input.project as Record<string, unknown> : {};
+    const compactProject = {
+      aspect: rawProject.aspect, canvas: rawProject.canvas,
+      clips: Array.isArray(rawProject.clips) ? rawProject.clips.map((clip: any) => ({
+        id: clip.id, name: clip.name, sourceDuration: clip.sourceDuration, trimStart: clip.trimStart, trimEnd: clip.trimEnd,
+        speed: clip.speed, volume: clip.volume, muted: clip.muted, filter: clip.filter, effect: clip.effect, transitionIn: clip.transitionIn,
+        transform: clip.transform ? { scale: clip.transform.scale, scale_x: clip.transform.scale_x, scale_y: clip.transform.scale_y, offset_x: clip.transform.offset_x, offset_y: clip.transform.offset_y, rotation: clip.transform.rotation, crop: clip.transform.crop } : null,
+      })) : [],
+      elements: Array.isArray(rawProject.elements) ? rawProject.elements.map((el: any) => ({ id: el.id, kind: el.kind, content: typeof el.content === 'string' ? el.content.slice(0, 180) : '', start: el.start, end: el.end, x: el.x, y: el.y, width: el.width, height: el.height, rotation: el.rotation, opacity: el.opacity })) : [],
+      audio: Array.isArray(rawProject.audio) ? rawProject.audio.map((audio: any) => ({ id: audio.id, name: audio.name, start: audio.start, trimStart: audio.trimStart, trimEnd: audio.trimEnd, volume: audio.volume, kind: audio.kind })) : [],
+    };
+    const schema = {
+      type: 'object',
+      properties: {
+        message: { type: 'string' }, summary: { type: 'string' },
+        actions: { type: 'array', items: { type: 'object', properties: {
+          type: { type: 'string', enum: ['set_clip_speed','set_clip_volume','set_clip_mute','set_clip_filter','set_clip_effect','set_clip_transition','trim_clip','transform_clip','set_clip_adjustments','set_aspect','delete_clip','duplicate_clip','generate_captions'] },
+          clipId: { type: ['string','null'] }, value: { type: ['number','string','boolean','null'] }, value2: { type: ['number','string','boolean','null'] }, object: { type: ['object','null'] },
+        }, required: ['type'] } },
+      }, required: ['message','summary','actions'],
+    };
+    const prompt = 'You are the editing comrade inside enotes Studio. Return only safe, reversible project-edit actions from the allowed action types. Never invent ids. If the user says this/it/the clip, use the selected clip. If the user asks for captions/subtitles/CC, return generate_captions. If unsupported, explain it and return no action. Keep actions minimal. Allowed semantics: set_clip_speed value 0.25..4; set_clip_volume value 0..1; set_clip_mute boolean; set_clip_filter known ids; set_clip_effect known ids; set_clip_transition value type and value2 duration; trim_clip value start and value2 end; transform_clip object offset_x,offset_y,scale,scale_x,scale_y,rotation; set_clip_adjustments object with brightness,contrast,saturate,hue,blur,sepia,grayscale,exposure,temperature,tint,vibrance,vignette,grain,sharpen; set_aspect value original/16:9/9:16/1:1/4:5/3:2/21:9; delete_clip/duplicate_clip clipId; generate_captions needs no value. User request: ' + (input.prompt || 'Suggest a useful improvement') + '. Selection: ' + JSON.stringify(input.selection || {}) + '. Project: ' + JSON.stringify(compactProject);
+    let plan = await geminiStructured(prompt, schema);
+    if (!plan || typeof plan !== 'object') plan = { message: 'I could not create a safe edit plan.', summary: '', actions: [] };
+    const actions = Array.isArray((plan as any).actions) ? (plan as any).actions.slice(0, 8) : [];
+    const validClipIds = new Set(compactProject.clips.map((clip: any) => clip.id));
+    const selectedClipId = input.selection?.clipId || null;
+    const sanitizedActions = actions.map((action: any) => ({ ...action, clipId: action.clipId || selectedClipId || null })).filter((action: any) => action.type === 'set_aspect' || action.type === 'generate_captions' || validClipIds.has(action.clipId));
+    let captions: unknown[] = []; let transcript: unknown = null;
+    if (sanitizedActions.some((action: any) => action.type === 'generate_captions')) {
+      if (!input.mediaUrl || !/^https?:\/\//i.test(input.mediaUrl)) throw new Error('Select an imported video or audio clip first so I can generate accurate captions.');
+      const transcriptResult = ASSEMBLY_KEY() ? await assemblyTranscript(input.mediaUrl, input.language) : await groqTranscript(input.mediaUrl, input.language);
+      transcript = transcriptResult;
+      captions = transcriptResult.words.length ? buildCaptions(transcriptResult.words as TranscriptWord[]) : [{ id: 'caption-0', text: transcriptResult.text, start: 0, end: 4, confidence: null, needsReview: true, speaker: null }];
+    }
+    return { operation, provider: 'gemini' + (captions.length ? ' + ' + (ASSEMBLY_KEY() ? 'assemblyai' : 'groq') : ''), output: { message: String((plan as any).message || 'I prepared an edit plan.'), summary: String((plan as any).summary || ''), actions: sanitizedActions, captions, transcript, captionCount: captions.length, reviewCount: captions.filter((caption: any) => caption?.needsReview).length } };
+  }
+
+  if (operation === 'analyze') {
     const project = JSON.stringify(input.project || {}).slice(0, 30000);
-    const prompt = operation === 'analyze'
-      ? `You are the AI editor inside a professional mobile-first video editor. Analyze this project JSON and return STRICT JSON with: summary, pacing, audio, visual, text, recommendations (array of objects with title, reason, action). Do not invent media. Project: ${project}`
-      : `You are the editing assistant for enotes Studio. Give concise, practical editing instructions based on this project. User request: ${input.prompt || 'Suggest improvements'}. Project JSON: ${project}`;
+    const prompt = `You are the AI editor inside a professional mobile-first video editor. Analyze this project JSON and return STRICT JSON with: summary, pacing, audio, visual, text, recommendations (array of objects with title, reason, action). Do not invent media. Project: ${project}`;
     const result = await geminiText(prompt);
-    return { operation, provider: 'gemini', output: operation === 'analyze' ? parseJson(result) : { text: result } };
+    return { operation, provider: 'gemini', output: parseJson(result) };
   }
 
   throw new Error(
