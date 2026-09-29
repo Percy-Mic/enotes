@@ -999,7 +999,7 @@ function VideoEditor() {
   const applyAIActions = useCallback((actions: VideoAIEditAction[]) => {
     if (!actions.length) return;
 
-    const clipActions = actions.filter((action) => action.type !== 'set_aspect' && action.type !== 'delete_clip' && action.type !== 'duplicate_clip' && action.type !== 'generate_captions');
+    const clipActions = actions.filter((action) => action.type !== 'set_aspect' && action.type !== 'delete_clip' && action.type !== 'duplicate_clip' && action.type !== 'generate_captions' && action.type !== 'transcribe');
     if (clipActions.length) {
       updateProject((p) => ({
         ...p,
