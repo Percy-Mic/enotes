@@ -107,7 +107,14 @@ async function extractProjectVisionFrames(project: unknown, selectedClipId?: str
   const clips = Array.isArray(raw.clips) ? raw.clips : [];
   const frames: VisionFrame[] = [];
 
-  for (const clip of clips.slice(0, 8)) {
+  const orderedClips = selectedClipId
+    ? [
+        ...clips.filter((clip) => clip?.id === selectedClipId),
+        ...clips.filter((clip) => clip?.id !== selectedClipId),
+      ]
+    : clips;
+
+  for (const clip of orderedClips.slice(0, 8)) {
     const clipId = typeof clip.id === 'string' ? clip.id : '';
     const src = typeof clip.src === 'string' ? clip.src : '';
     if (!clipId || !/^https?:\\/\\//i.test(src)) continue;
