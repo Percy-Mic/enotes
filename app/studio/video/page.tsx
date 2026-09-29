@@ -4038,14 +4038,27 @@ function VideoEditor() {
             }}
             onAddCaptions={(captions) => {
               const baseZ = Math.max(...project.elements.map((item) => item.z), 0);
-              const created = captions.map((caption, index): TimelineElement => ({
+              const clipIndex = selectedClipId ? project.clips.findIndex((item) => item.id === selectedClipId) : -1;
+              const captionClip = clipIndex >= 0 ? project.clips[clipIndex] : null;
+              const captionTimelineStart = clipIndex >= 0
+                ? project.clips.slice(0, clipIndex).reduce((sum, item) => sum + clipDuration(item), 0)
+                : 0;
+              const sourceStart = captionClip?.trimStart ?? 0;
+              const sourceEnd = captionClip?.trimEnd ?? Number.POSITIVE_INFINITY;
+              const playbackSpeed = Math.max(0.05, captionClip?.speed ?? 1);
+              const created = captions
+                .filter((caption) => caption.end > sourceStart && caption.start < sourceEnd)
+                .map((caption, index): TimelineElement => {
+                  const localStart = Math.max(0, (caption.start - sourceStart) / playbackSpeed);
+                  const localEnd = Math.max(localStart + 0.25, (Math.min(caption.end, sourceEnd) - sourceStart) / playbackSpeed);
+                  return {
                 id: makeVideoId('caption'),
                 kind: 'text',
                 content: caption.text,
                 src: null,
                 track_id: project.tracks[0]?.id,
-                start: caption.start,
-                end: Math.max(caption.start + 0.25, caption.end),
+                start: captionClip ? captionTimelineStart + localStart : caption.start,
+                end: captionClip ? captionTimelineStart + localEnd : Math.max(caption.start + 0.25, caption.end),
                 x: project.canvas.width * 0.08,
                 y: project.canvas.height * 0.76,
                 width: project.canvas.width * 0.84,
@@ -4062,7 +4075,8 @@ function VideoEditor() {
                 stroke_color: '#000000',
                 shadow: true,
                 animation: 'pop',
-              }));
+                  };
+                });
               if (!created.length) return;
               updateProject((p) => ({ ...p, elements: [...p.elements, ...created] }), 'Add AI captions');
               setSelectedClipId(null);
