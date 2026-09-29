@@ -21,6 +21,7 @@ export interface AIJobInput {
   prompt?: string | null;
   language?: string | null;
   project?: unknown;
+  mediaType?: 'image' | 'video' | 'audio' | null;
 }
 
 export interface AIResult {
@@ -66,6 +67,14 @@ async function geminiText(prompt: string, model = process.env.GEMINI_MODEL || 'g
 
   if (!text) throw new Error('Gemini returned an empty response.');
   return text;
+}
+
+function inferMediaType(mediaUrl: string): 'image' | 'video' | 'audio' | 'unknown' {
+  const pathname = mediaUrl.split('?')[0].split('#')[0].toLowerCase();
+  if (/\\.(?:jpe?g|png|webp)$/i.test(pathname)) return 'image';
+  if (/\\.(?:mp4|webm|mov|m4v|avi|mkv)$/i.test(pathname)) return 'video';
+  if (/\\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(pathname)) return 'audio';
+  return 'unknown';
 }
 
 async function removeImageBackground(mediaUrl: string) {
@@ -211,6 +220,10 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
   if (operation === 'remove-background') {
     if (!input.mediaUrl || !/^https?:\/\//i.test(input.mediaUrl)) {
       throw new Error('Select an imported image first. Background removal works on image media.');
+    }
+    const mediaType = input.mediaType || inferMediaType(input.mediaUrl);
+    if (mediaType !== 'image') {
+      throw new Error('Background removal currently supports images only (JPG, PNG, or WebP). Video background removal needs a video-capable segmentation provider.');
     }
     const output = await removeImageBackground(input.mediaUrl);
     return { operation, provider: 'remove.bg', output };
