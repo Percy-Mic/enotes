@@ -154,7 +154,10 @@ async function geminiStructured(
     body: JSON.stringify({
       model: model.replace(/^models\//, ''),
       input: mediaParts.length
-        ? [{ type: 'text', text: prompt }, ...mediaParts]
+        ? [{
+            type: 'user_input',
+            content: [{ type: 'text', text: prompt }, ...mediaParts],
+          }]
         : prompt,
       store: false,
       response_format: { type: 'text', mime_type: 'application/json', schema },
