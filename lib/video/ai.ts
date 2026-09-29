@@ -256,7 +256,7 @@ async function geminiStructured(
     const type = item.type || 'video';
 
     if (item.url.startsWith('data:image/')) {
-      const match = item.url.match(/^data:(image\\/[^;]+);base64,(.+)$/);
+      const match = item.url.match(/^data:(image\/[^;]+);base64,(.+)$/);
       if (match) {
         mediaParts.push({
           inline_data: {
@@ -325,16 +325,24 @@ async function geminiStructured(
               {
                 role: 'user',
                 parts: [
-                  ...mediaParts.map((part) => ({
-                    file_data: {
-                      file_uri: String(
-                        part.uri,
-                      ),
-                      mime_type: String(
-                        part.mime_type,
-                      ),
-                    },
-                  })),
+                  ...mediaParts.map((part) => {
+                    if (part.inline_data) {
+                      return {
+                        inline_data: part.inline_data,
+                      };
+                    }
+
+                    return {
+                      file_data: {
+                        file_uri: String(
+                          part.uri,
+                        ),
+                        mime_type: String(
+                          part.mime_type,
+                        ),
+                      },
+                    };
+                  }),
                   {
                     text: prompt,
                   },
