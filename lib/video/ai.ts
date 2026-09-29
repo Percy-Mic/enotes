@@ -25,6 +25,7 @@ export interface AIJobInput {
   mediaUrls?: Array<{ url: string; type?: 'image' | 'video' | 'audio' | null }> | null;
   selection?: { clipId?: string | null; elementId?: string | null; audioId?: string | null } | null;
   conversation?: Array<{ role: 'user' | 'assistant'; text: string; actions?: unknown[] }> | null;
+  conversationId?: string | null;
 }
 
 export interface AIResult {
@@ -381,6 +382,132 @@ function parseJson(text: string) {
   try { return JSON.parse(cleaned); } catch { return { text: cleaned }; }
 }
 
+async function loadAIMemoryContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  projectId?: string | null,
+) {
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('ai_memory_enabled, ai_personalization_enabled')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  const memoryEnabled = settings?.ai_memory_enabled !== false;
+  const personalizationEnabled = settings?.ai_personalization_enabled !== false;
+  if (!memoryEnabled || !personalizationEnabled) return { enabled: false, memories: [] as Array<Record<string, unknown>> };
+
+  let query = supabase
+    .from('video_ai_memories')
+    .select('id,memory_type,content,confidence,importance,use_count,last_used_at,project_id')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .or('expires_at.is.null,expires_at.gt.now()')
+    .order('importance', { ascending: false })
+    .order('confidence', { ascending: false })
+    .limit(16);
+
+  if (projectId) {
+    query = query.or(`project_id.is.null,project_id.eq.${projectId}`);
+  } else {
+    query = query.is('project_id', null);
+  }
+
+  const { data } = await query;
+  const memories = Array.isArray(data) ? data : [];
+
+  if (memories.length) {
+    await supabase
+      .from('video_ai_memories')
+      .update({
+        last_used_at: new Date().toISOString(),
+        use_count: memories.map((memory) => Number(memory.use_count || 0)).reduce((max, value) => Math.max(max, value), 0) + 1,
+      })
+      .eq('user_id', userId)
+      .eq('is_active', true)
+      .in('id', memories.map((memory) => memory.id));
+  }
+
+  return { enabled: true, memories };
+}
+
+function deriveExplicitMemory(prompt: string): { memoryType: string; content: string; importance: number } | null {
+  const text = String(prompt || '').trim().replace(/\s+/g, ' ');
+  if (!text || text.length < 8) return null;
+
+  const recurring =
+    /\b(from now on|going forward|always|every time|for all my videos|for my videos|my default)\b/i.test(text);
+  const preference =
+    /\b(i prefer|i like|i want|use|make it|keep it|my style|my preference)\b/i.test(text);
+  const correction =
+    /^(no[,.!? ]|actually[,.!? ]|that's wrong|not like that|don't do that|do not do that)/i.test(text) ||
+    /\b(don't|do not|never)\b/i.test(text);
+
+  if (!recurring && !preference && !correction) return null;
+
+  const memoryType = correction ? 'correction' : recurring ? 'recurring_instruction' : 'preference';
+  const importance = correction || recurring ? 0.85 : 0.65;
+  return {
+    memoryType,
+    content: text.slice(0, 800),
+    importance,
+  };
+}
+
+async function rememberUserInstruction(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  projectId: string | null | undefined,
+  prompt: string,
+) {
+  const candidate = deriveExplicitMemory(prompt);
+  if (!candidate) return;
+
+  const { data: settings } = await supabase
+    .from('user_settings')
+    .select('ai_memory_enabled, ai_personalization_enabled')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (settings?.ai_memory_enabled === false || settings?.ai_personalization_enabled === false) return;
+
+  const { data: existing } = await supabase
+    .from('video_ai_memories')
+    .select('id,confidence,importance,use_count')
+    .eq('user_id', userId)
+    .eq('memory_type', candidate.memoryType)
+    .eq('content', candidate.content)
+    .limit(1)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await supabase
+      .from('video_ai_memories')
+      .update({
+        confidence: Math.min(1, Math.max(Number(existing.confidence || 0.8), 0.8) + 0.05),
+        importance: Math.max(Number(existing.importance || 0.5), candidate.importance),
+        use_count: Number(existing.use_count || 0) + 1,
+        last_used_at: new Date().toISOString(),
+        is_active: true,
+        archived_at: null,
+      })
+      .eq('id', existing.id)
+      .eq('user_id', userId);
+    return;
+  }
+
+  await supabase.from('video_ai_memories').insert({
+    user_id: userId,
+    project_id: projectId || null,
+    memory_type: candidate.memoryType,
+    content: candidate.content,
+    metadata: { source: 'explicit_user_instruction', captured_at: new Date().toISOString() },
+    confidence: 0.85,
+    importance: candidate.importance,
+    use_count: 1,
+    is_active: true,
+  });
+}
+
 export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
@@ -433,6 +560,10 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
         }, required: ['type'] } },
       }, required: ['message','summary','actions'],
     };
+    const memoryContext = await loadAIMemoryContext(supabase, auth.user.id, input.projectId);
+    const memoryText = memoryContext.memories.length
+      ? memoryContext.memories.map((memory) => `- [${memory.memory_type}] ${String(memory.content).slice(0, 800)}`).join('\\n')
+      : '(no saved AI memories)';
     const conversation = Array.isArray(input.conversation) ? input.conversation.slice(-10) : [];
     const conversationText = conversation.map((message) => {
       const actions = Array.isArray(message.actions) ? ` Actions: ${JSON.stringify(message.actions).slice(0, 2400)}` : '';
@@ -471,6 +602,9 @@ add_text_element object={text,start,end,x,y,width,height,font_size,color,backgro
 split_clip value=timeline seconds
 reorder_clip object={fromIndex,toIndex}
 add_stock_video object={query,orientation}
+
+Saved AI memory:
+${memoryText}
 
 Previous conversation:
 ${conversationText || '(none)'}
@@ -529,7 +663,8 @@ ${JSON.stringify(compactProject)}`;
       transcript = transcriptResult;
       if (sanitizedActions.some((action: any) => action.type === 'generate_captions')) captions = transcriptResult.words.length ? buildCaptions(transcriptResult.words as TranscriptWord[]) : [{ id: 'caption-0', text: transcriptResult.text, start: 0, end: 4, confidence: null, needsReview: true, speaker: null }];
     }
-    return { operation, provider: 'gemini' + (captions.length ? ' + ' + (ASSEMBLY_KEY() ? 'assemblyai' : 'groq') : ''), output: { message: String((plan as any).message || 'I prepared an edit plan.'), summary: String((plan as any).summary || ''), actions: sanitizedActions, captions, transcript, captionCount: captions.length, reviewCount: captions.filter((caption: any) => caption?.needsReview).length } };
+    await rememberUserInstruction(supabase, auth.user.id, input.projectId, input.prompt || '');
+    return { operation, provider: 'gemini' + (captions.length ? ' + ' + (ASSEMBLY_KEY() ? 'assemblyai' : 'groq') : ''), output: { message: String((plan as any).message || 'I prepared an edit plan.'), summary: String((plan as any).summary || ''), actions: sanitizedActions, captions, transcript, captionCount: captions.length, reviewCount: captions.filter((caption: any) => caption?.needsReview).length, memoryUsed: memoryContext.memories.length } };
   }
 
   if (operation === 'analyze') {
