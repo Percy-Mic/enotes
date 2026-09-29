@@ -28,7 +28,7 @@ export async function POST(request: Request) {
         const { data: auth } = await db.auth.getUser();
         if (auth.user) {
           await db.from('video_ai_actions').insert(
-            actions.slice(0, 16).map((action: any) => ({
+            actions.slice(0, 24).map((action: any) => ({
               user_id: auth.user.id,
               project_id: body.projectId,
               conversation_id: null,

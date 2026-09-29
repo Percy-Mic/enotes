@@ -31,6 +31,7 @@ export type VideoAIEditAction = {
     | 'transcribe'
     | 'transform_element'
     | 'set_element_opacity'
+    | 'retime_element'
     | 'set_keyframe'
     | 'add_text_element'
     | 'split_clip'
@@ -182,6 +183,7 @@ type Props = {
 };
 
 const SUGGESTIONS = [
+  { label: 'Finish the entire edit', prompt: 'Finish the entire edit professionally in one pass. Treat every clip: trim weak frames, tighten pacing, apply one consistent color treatment across the whole timeline, add professional transitions between clips, and deliver the right text/motion layer for this piece. Emit the complete action list now.' },
   { label: 'Make it an advertisement', prompt: 'Turn this project into a polished short advertisement. You may reuse, trim, reorder, duplicate, and style the existing footage. If extra B-roll would materially improve it, request suitable free stock footage.' },
   { label: 'Make this cinematic', prompt: 'Make the selected clip feel cinematic using real editor effects, color adjustments, motion, and tasteful keyframes.' },
   { label: 'Improve the pacing', prompt: 'Improve the pacing of this project. Use cuts, trims, speed changes, beat-friendly timing, and clip ordering where appropriate.' },
@@ -208,6 +210,7 @@ function actionLabel(action: VideoAIEditAction) {
     case 'generate_captions': return 'Captions generated';
     case 'transcribe': return 'Transcript generated';
     case 'transform_element': return 'Overlay transform adjusted';
+    case 'retime_element': return 'Overlay retimed';
     case 'set_element_opacity': return 'Overlay opacity adjusted';
     case 'set_keyframe': return 'Motion keyframe added';
     case 'add_text_element': return 'Text added';

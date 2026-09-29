@@ -1999,10 +1999,22 @@ CRITICAL BEHAVIOR:
 - Prefer reversible, non-destructive edits.
 - Never delete clips unless the user explicitly requests deletion.
 - Use multiple actions when a professional result requires multiple changes.
-- You may use up to 16 actions.
+- You may use up to 24 actions.
 - Do not fabricate media or clip IDs.
 - For action fields, omit optional fields when they are not needed.
 - Primitive value/value2 fields are strings in the response format, but they represent the actual value: write numbers such as "1.25" and booleans as "true" or "false".
+
+PROFESSIONAL COMPLETENESS CONTRACT:
+When the user asks you to finish, complete, professionally edit, or polish the project (or picks a mode like advertisement/cinematic/social), you deliver a COMPLETE edit in ONE response, not a proposal:
+1. Cover the WHOLE timeline: every clip gets intentional treatment — an appropriate trim (tight openings, no dead frames), a transition where two clips meet, and a shared color treatment (same filter family or matched set_clip_adjustments) so the piece reads as one film.
+2. Treat the grade as ONE decision: emit clipId = "all" for shared look actions (set_clip_filter, set_clip_adjustments) instead of repeating them per clip — this saves budget for storytelling actions. Use per-clip clipId only when a clip genuinely needs different treatment (e.g. an underexposed shot).
+3. Deliver the story layer: for ads/promos include headline + CTA text; for cinematic edits include tasteful keyframed motion (set_keyframe scale/rotation) on at least the opening clip; for social edits include safe-area-aware text placement (keep text inside 90% of canvas width, above the bottom 15%).
+4. Finish the audio level: if speech matters, set_clip_volume explicitly (e.g. "0.9"); do not leave volume ambiguous when a clip competes with music.
+5. Reference clips by their id from the timeline manifest, or positionally with clipIndex (0-based, matching the manifest) when targeting "the second clip", "the last clip", etc.
+6. Order of emission matters: structural actions (reorder_clip, split_clip, delete_clip, duplicate_clip, trim_clip, set_clip_speed) are applied BEFORE text overlays, so compute text start/end in FINAL timeline time after trims and speed changes.
+7. add_text_element supports font_family (e.g. "Poppins, sans-serif"), font_weight (400-900), stroke_color, background (CSS color or "transparent"), shadow (boolean), and animation — use consistent typography for all text in one edit. The executor also honors align ("center").
+8. retime_element moves an existing text/overlay element to a new timeline window without recreating it: object = { elementId or implicit selection, start, end }. Prefer this over re-adding text when the user asks to "move the text later".
+9. Before answering, verify: does the action list alone, applied in order, produce the promised result? If a step is missing, emit it. Never end with "let me know if you want me to apply this" — the executor applies everything automatically.
 
 ADVERTISEMENT MODE:
 
@@ -2174,8 +2186,20 @@ object = {
   font_size,
   color,
   background,
-  animation
+  animation,
+  font_family,
+  font_weight,
+  stroke_color,
+  shadow,
+  align
 }
+
+retime_element
+object = {
+  start,
+  end
+}
+(elementId = which overlay to move; timings in FINAL project-time seconds)
 
 split_clip
 value = timeline seconds
@@ -2294,16 +2318,39 @@ TIMELINE RULES:
 
     const mediaInputs = [...visionInputs, ...sourceInputs].slice(0, 18);
 
-    let plan =
-      await geminiStructured(
+    let critiqueHint: string | null = null;
+
+    const plannerModel =
+      process.env.GEMINI_PLANNER_MODEL ||
+      process.env.GEMINI_MODEL ||
+      'gemini-3.5-flash-lite';
+
+    let plan: any = null;
+
+    try {
+      plan = await geminiStructured(
         prompt,
         schema,
-        process.env.GEMINI_MODEL ||
-          'gemini-3.5-flash-lite',
-        mediaInputs.length
-          ? mediaInputs
-          : undefined,
+        plannerModel,
+        mediaInputs.length ? mediaInputs : undefined,
       );
+    } catch {
+      /* A planner-model hiccup must not kill the request — retry below. */
+    }
+
+    if (!plan || typeof plan !== 'object' || !Array.isArray(plan.actions) || !plan.actions.length) {
+      /* One structured retry: the first attempt may have returned an empty
+         plan despite an actionable request. */
+      plan = await geminiStructured(
+        prompt +
+          '\n\nCRITICAL: Your previous response contained no usable actions. ' +
+          'Inspect the project timeline and emit concrete actions now. ' +
+          'An empty actions array is not an acceptable answer for an actionable request.',
+        schema,
+        plannerModel,
+        mediaInputs.length ? mediaInputs : undefined,
+      );
+    }
 
     if (
       !plan ||
@@ -2319,7 +2366,10 @@ TIMELINE RULES:
 
     /*
      * Keep the server-side safety limit aligned
-     * with the AI prompt.
+     * with the AI prompt. A complete professional edit
+     * (grade every clip + trim + reorder + two text
+     * overlays + transitions) routinely needs 15-20
+     * actions, so the budget is 24.
      */
     const actions =
       Array.isArray(
@@ -2327,7 +2377,7 @@ TIMELINE RULES:
       )
         ? (plan as any).actions.slice(
             0,
-            12,
+            24,
           )
         : [];
 
@@ -2378,31 +2428,14 @@ TIMELINE RULES:
               .elements[0].id
           : null;
 
-    const clipActionTypes =
-      new Set([
-        'set_clip_speed',
-        'set_clip_volume',
-        'set_clip_mute',
-        'set_clip_filter',
-        'set_clip_effect',
-        'set_clip_transition',
-        'trim_clip',
-        'transform_clip',
-        'set_clip_adjustments',
-        'fit_clip',
-        'delete_clip',
-        'duplicate_clip',
-        'set_keyframe',
-        'add_text_element',
-        'split_clip',
+    const clipActionTypes = new Set([
+        'set_clip_speed', 'set_clip_volume', 'set_clip_mute', 'set_clip_filter', 'set_clip_effect',
+        'set_clip_transition', 'trim_clip', 'transform_clip', 'set_clip_adjustments', 'fit_clip',
+        'delete_clip', 'duplicate_clip', 'set_keyframe', 'add_text_element', 'split_clip',
         'reorder_clip',
       ]);
 
-    const elementActionTypes =
-      new Set([
-        'transform_element',
-        'set_element_opacity',
-      ]);
+    const elementActionTypes = new Set(['transform_element', 'set_element_opacity', 'retime_element']);
 
     const normalizeAction = (action: any) => {
       const normalized = { ...action };
@@ -2521,66 +2554,74 @@ TIMELINE RULES:
       );
     }
 
+    /*
+     * Sanitizer v2.
+     *
+     * Beyond normalization this pass:
+     *   • resolves a per-clip 0-based clipIndex against the timeline
+     *     manifest when the model targets clips positionally,
+     *   • keeps 'all'-targeted actions intact so the client executor
+     *     can fan them out to every clip (a unified look is one action,
+     *     not N — decisive for professional consistency),
+     *   • drops truly invalid actions instead of silently retargeting
+     *     them to the selection, which corrupted whole-project edits.
+     */
+    const timelineManifest = compactProject.timeline as Array<Record<string, unknown>>;
+
+    const resolveByClipIndex = (action: any): string | null => {
+      const idx = Number(action.clipIndex);
+      if (!Number.isInteger(idx) || idx < 0 || idx >= timelineManifest.length) return null;
+      const entry = timelineManifest[idx];
+      return entry && typeof entry.clipId === 'string' ? entry.clipId : null;
+    };
+
     const sanitizedActions =
       plannedActions
         .map(normalizeAction)
-        .map((action: any) => ({
-          ...action,
-
-          clipId:
-            action.clipId &&
-            validClipIds.has(
-              action.clipId,
-            )
+        .map((action: any) => {
+          const resolved =
+            action.clipId && validClipIds.has(action.clipId)
               ? action.clipId
-              : selectedClipId,
-
-          elementId:
-            action.elementId &&
-            validElementIds.has(
-              action.elementId,
-            )
-              ? action.elementId
-              : selectedElementId,
-        }))
-        .filter(
-          (action: any) =>
-            action.type ===
-              'set_aspect' ||
-            action.type ===
-              'generate_captions' ||
-            action.type ===
-              'transcribe' ||
-            action.type ===
-              'add_stock_video' ||
-            action.type ===
-              'add_library_audio' ||
-            (
-              clipActionTypes.has(
-                action.type,
-              ) &&
-              (
-                action.type ===
-                  'add_text_element' ||
-                action.type ===
-                  'split_clip' ||
-                action.type ===
-                  'reorder_clip' ||
-                validClipIds.has(
-                  action.clipId,
-                )
-              )
-            ) ||
-            (
-              elementActionTypes.has(
-                action.type,
-              ) &&
-              validElementIds.has(
-                action.elementId,
-              )
-            ),
+              : resolveByClipIndex(action);
+          return { ...action, clipId: resolved ?? undefined };
+        })
+        .filter((action: any) => {
+          if (
+            action.type === 'set_aspect' ||
+            action.type === 'generate_captions' ||
+            action.type === 'transcribe' ||
+            action.type === 'add_stock_video' ||
+            action.type === 'add_library_audio'
+          ) return true;
+          if (action.clipId === 'all') return true;
+          if (clipActionTypes.has(action.type)) {
+            return (
+              action.type === 'add_text_element' ||
+              action.type === 'split_clip' ||
+              action.type === 'reorder_clip' ||
+              validClipIds.has(action.clipId)
+            );
+          }
+          if (elementActionTypes.has(action.type)) {
+            return (
+              action.type === 'retime_element' ||
+              validElementIds.has(action.elementId)
+            );
+          }
+          return false;
+        })
+        .map((action: any) =>
+          action.clipId === 'all'
+            ? action
+            : {
+                ...action,
+                elementId:
+                  action.elementId && validElementIds.has(action.elementId)
+                    ? action.elementId
+                    : selectedElementId,
+              },
         )
-        .slice(0, 16);
+        .slice(0, 24);
 
     let captions: unknown[] =
       [];
@@ -2653,6 +2694,120 @@ TIMELINE RULES:
       }
     }
 
+    /*
+     * Editor-in-the-loop critic pass.
+     *
+     * After the planner commits to a plan, the critic sees ONLY the
+     * plan (no frames — cheap) and checks professional-completeness:
+     * missing clip coverage, consistency of the look, timing sanity,
+     * unreadable text placement. It may ADD missing finishing actions
+     * or FIX broken ones — it can never remove the planner's intent.
+     * One bounded round keeps latency predictable.
+     */
+    try {
+      if (
+        Array.isArray(sanitizedActions) &&
+        sanitizedActions.length > 0 &&
+        Array.isArray(compactProject.clips) &&
+        compactProject.clips.length > 1
+      ) {
+        const allCount = sanitizedActions.filter(
+          (action: any) => action.clipId === 'all'
+        ).length;
+        const gradedClipIds = new Set(
+          sanitizedActions
+            .filter((action: any) => action.clipId && action.clipId !== 'all')
+            .map((action: any) => action.clipId)
+        );
+        const ungradedClips = Math.max(
+          0,
+          compactProject.clips.length - allCount - gradedClipIds.size
+        );
+
+        const criticSchema = {
+          type: 'object',
+          properties: {
+            add: { type: 'array', items: { type: 'object' } },
+            fixes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  index: { type: 'number' },
+                  action: { type: 'object' },
+                },
+                required: ['index', 'action'],
+              },
+            },
+          },
+          required: ['add', 'fixes'],
+        };
+
+        const criticPrompt = `You are the finishing QA pass for an AI video editor. Inspect this edit plan produced by another model and improve it to a PROFESSIONALLY COMPLETE state.
+
+Checks:
+1. Every clip should receive intentional treatment (trim, transition, color/adjustment, or is deliberately left natural). If clips are untouched and the plan's summary implies a styled edit, add set_clip_adjustments or set_clip_transition actions for them (use clipId from the timeline manifest).
+2. The look must be CONSISTENT across clips: same filter family / similar adjustment direction for the same intent. If clips receive contradictory treatments without editorial reason, fix them.
+3. Text overlays must be readable: inside the canvas, large enough (font_size >= 24 for ${JSON.stringify(compactProject.canvas)}), not overlapping each other in time unless designed as layers. Fix violations.
+4. Timing sanity: no text cue beyond the project timeline (${JSON.stringify(compactProject.timeline).slice(0, 4000)}); trims within source bounds (${JSON.stringify(compactProject.clips.map((c: any) => ({ id: c.id, sourceDuration: c.sourceDuration, trimStart: c.trimStart, trimEnd: c.trimEnd }))).slice(0, 4000)}). Fix violations.
+5. Do not remove or weaken the planner's creative intent. Only add missing finishing actions or repair broken ones.
+6. Same response rules as the planner: only whitelisted action types, clipId must come from the manifest, values as strings, omit unused fields, max 16 total actions in 'add'.
+
+Plan under review:
+${JSON.stringify(sanitizedActions).slice(0, 14000)}
+
+Return {"add": [...], "fixes": [{"index": <0-based index into the plan>, "action": {...}}]}. Both fields are required; return empty arrays when nothing needs changing.`;
+
+        const critique: any = await geminiStructured(criticPrompt, criticSchema, plannerModel);
+
+        if (critique && typeof critique === 'object') {
+          const planTypes = new Set(sanitizedActions.map((action: any) => action.type));
+          const addedRaw = Array.isArray(critique.add) ? critique.add.slice(0, 16) : [];
+          const sanitizedAdded = addedRaw
+            .map(normalizeAction)
+            .filter((action: any) => {
+              if (action.clipId === 'all') return true;
+              if (
+                action.type === 'set_aspect' ||
+                action.type === 'add_stock_video' ||
+                action.type === 'add_library_audio' ||
+                action.type === 'add_text_element' ||
+                action.type === 'split_clip' ||
+                action.type === 'reorder_clip' ||
+                action.type === 'retime_element'
+              ) return true;
+              return clipActionTypes.has(action.type) && validClipIds.has(action.clipId);
+            });
+
+          for (const fix of (Array.isArray(critique.fixes) ? critique.fixes : []).slice(0, 24)) {
+            const idx = Number(fix?.index);
+            const replacement = fix?.action;
+            if (
+              Number.isInteger(idx) &&
+              idx >= 0 &&
+              idx < sanitizedActions.length &&
+              replacement &&
+              typeof replacement === 'object'
+            ) {
+              sanitizedActions[idx] = normalizeAction({ ...sanitizedActions[idx], ...replacement });
+            }
+          }
+
+          for (const action of sanitizedAdded) {
+            /* Multiple text additions are legitimate (headline + CTA) — keep them all. */
+            sanitizedActions.push(action);
+          }
+
+          if (ungradedClips > 0 && !sanitizedActions.some((action: any) => action.clipId === 'all' || planTypes.has('set_clip_adjustments'))) {
+            /* Signal-only nudge: the next user request gets a completeness hint. */
+            critiqueHint = `The project has ${ungradedClips} clip(s) with no intentional treatment yet.`;
+          }
+        }
+      }
+    } catch {
+      /* QA is enhancement, never a hard dependency. */
+    }
+
     await rememberUserInstruction(
       supabase,
       auth.user.id,
@@ -2680,10 +2835,11 @@ TIMELINE RULES:
             'I prepared an edit plan.',
         ),
 
-        summary: String(
-          (plan as any)
-            .summary || '',
-        ),
+        summary:
+          String(
+            (plan as any).summary || '',
+          ) +
+          (critiqueHint ? ` — Note: ${critiqueHint}` : ''),
 
         actions:
           sanitizedActions,

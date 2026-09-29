@@ -1104,7 +1104,21 @@ function VideoEditor() {
   const applyAIActions = useCallback((actions: VideoAIEditAction[]) => {
     if (!actions.length) return;
 
-    const safeActions = actions.slice(0, 16);
+    /* 'all' targets mean one shared decision applied to every clip
+       (e.g. a unified color grade). Expanding them here keeps the AI's
+       budget free for storytelling actions instead of N-1 repeats. */
+    const expanded: VideoAIEditAction[] = [];
+    for (const action of actions.slice(0, 24)) {
+      if (action.clipId === 'all' && action.type !== 'set_keyframe') {
+        for (const clip of docRef.current.project.clips) {
+          expanded.push({ ...action, clipId: clip.id });
+        }
+      } else {
+        expanded.push(action);
+      }
+    }
+
+    const safeActions = expanded.slice(0, 64);
 
     updateProject((p) => {
       let nextProject = { ...p };
@@ -1146,7 +1160,7 @@ function VideoEditor() {
             font_family: String(obj.font_family || 'Poppins, sans-serif'),
             font_weight: Number.isFinite(Number(obj.font_weight)) ? Number(obj.font_weight) : 800,
             color: String(obj.color || '#FFFFFF'),
-            align: 'center',
+            align: (['center', 'left', 'right'].includes(String(obj.align)) ? String(obj.align) : 'center') as TimelineElement['align'],
             background: obj.background == null ? 'transparent' : String(obj.background),
             stroke_color: String(obj.stroke_color || '#000000'),
             shadow: obj.shadow !== false,
@@ -1210,6 +1224,26 @@ function VideoEditor() {
           continue;
         }
 
+        if (action.type === 'retime_element') {
+          const target = nextProject.elements.find((element) => action.elementId === element.id);
+          if (target && action.object) {
+            const start = Number(action.object.start);
+            const end = Number(action.object.end);
+            if (Number.isFinite(start) || Number.isFinite(end)) {
+              const dur = Math.max(0.25, target.end - target.start);
+              const safeStart = Number.isFinite(start) ? Math.max(0, start) : target.start;
+              const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(projectDuration(nextProject), end)) : Math.min(projectDuration(nextProject), safeStart + dur);
+              nextProject = {
+                ...nextProject,
+                elements: nextProject.elements.map((element) =>
+                  element.id === target.id ? { ...element, start: safeStart, end: safeEnd } : element
+                ),
+              };
+            }
+          }
+          continue;
+        }
+
         if (action.type === 'transform_element' || action.type === 'set_element_opacity') {
           nextProject = {
             ...nextProject,
@@ -1234,20 +1268,39 @@ function VideoEditor() {
           continue;
         }
 
-        if (action.type === 'set_keyframe' && action.clipId && action.object) {
-          const clip = nextProject.clips.find((item) => item.id === action.clipId);
+        if (action.type === 'set_keyframe' && action.object) {
           const property = String(action.object.property || '') as KeyframeProperty;
           const t = Number(action.object.t);
           const value = Number(action.object.value);
-          if (clip && KEYFRAMABLE_PROPERTIES.some((item) => item.id === property) && Number.isFinite(t) && Number.isFinite(value)) {
-            nextProject = {
-              ...nextProject,
-              clips: nextProject.clips.map((item) =>
-                item.id === clip.id
-                  ? { ...item, keyframes: upsertClipKeyframe(item, property, Math.max(0, Math.min(clipDuration(item), t)), value) }
-                  : item
-              ),
-            };
+          if (!KEYFRAMABLE_PROPERTIES.some((item) => item.id === property) || !Number.isFinite(t) || !Number.isFinite(value)) continue;
+
+          if (action.elementId) {
+            const element = nextProject.elements.find((item) => item.id === action.elementId);
+            if (element) {
+              nextProject = {
+                ...nextProject,
+                elements: nextProject.elements.map((item) =>
+                  item.id === element.id
+                    ? { ...item, keyframes: upsertKeyframe(item, property, Math.max(0, t), value) }
+                    : item
+                ),
+              };
+            }
+            continue;
+          }
+
+          if (action.clipId && action.clipId !== 'all') {
+            const clip = nextProject.clips.find((item) => item.id === action.clipId);
+            if (clip) {
+              nextProject = {
+                ...nextProject,
+                clips: nextProject.clips.map((item) =>
+                  item.id === clip.id
+                    ? { ...item, keyframes: upsertClipKeyframe(item, property, Math.max(0, Math.min(clipDuration(item), t)), value) }
+                    : item
+                ),
+              };
+            }
           }
           continue;
         }
