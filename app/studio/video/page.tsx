@@ -5473,204 +5473,157 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
   onReset: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const current: CropRect = crop ?? { top: 0, right: 0, bottom: 0, left: 0 };
+  const cropRef = useRef<CropRect>(crop ?? { top: 0, right: 0, bottom: 0, left: 0 });
+  const rotationRef = useRef(rotation);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const singleRef = useRef<{ pointerId:number; mode:'move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'; startX:number; startY:number; startCrop:CropRect } | null>(null);
+  const multiRef = useRef<{ distance:number; angle:number; center:{x:number;y:number}; crop:CropRect; rotation:number } | null>(null);
 
-  const inner = {
-    left: base.left + current.left * base.width,
-    top: base.top + current.top * base.height,
-    width: (1 - current.left - current.right) * base.width,
-    height: (1 - current.top - current.bottom) * base.height,
+  useEffect(() => { cropRef.current = crop ?? { top: 0, right: 0, bottom: 0, left: 0 }; }, [crop]);
+  useEffect(() => { rotationRef.current = rotation; }, [rotation]);
+
+  const emitCrop = (next: CropRect) => {
+    const safe = sanitizeCrop(next);
+    cropRef.current = safe;
+    onChange(safe);
   };
 
-  const multiTouchRef = useRef(false);
-  const rotationGestureRef = useRef(0);
-  const activeDragCleanupRef = useRef<(() => void) | null>(null);
-
-  useMobileGestures(ref, {
-    onMultiTouchStart: () => {
-      multiTouchRef.current = true;
-      rotationGestureRef.current = rotation;
-      activeDragCleanupRef.current?.();
-      activeDragCleanupRef.current = null;
-    },
-    onMultiTouchEnd: () => { multiTouchRef.current = false; },
-    onTwoFingerPan: (delta) => {
-      if (multiTouchRef.current && base.width > 0 && base.height > 0) {
-        const dx = delta.x / base.width;
-        const dy = delta.y / base.height;
-        const width = 1 - current.left - current.right;
-        const height = 1 - current.top - current.bottom;
-        const left = clampNum(current.left + dx, 0, 1 - width);
-        const top = clampNum(current.top + dy, 0, 1 - height);
-        onChange({
-          left,
-          right: 1 - left - width,
-          top,
-          bottom: 1 - top - height,
-        });
-      }
-    },
-    onPinch: (scale, center) => {
-      const factor = clampNum(scale, 0.82, 1.22);
-      const visibleWidth = 1 - current.left - current.right;
-      const visibleHeight = 1 - current.top - current.bottom;
-      const rect = ref.current?.getBoundingClientRect();
-      if (!rect || rect.width <= 0 || rect.height <= 0) return;
-      const cx = clampNum((center.x - rect.left) / rect.width, 0, 1);
-      const cy = clampNum((center.y - rect.top) / rect.height, 0, 1);
-      const nextWidth = clampNum(visibleWidth * factor, 0.06, 1);
-      const nextHeight = clampNum(visibleHeight * factor, 0.06, 1);
-      const left = clampNum(cx - (cx - current.left) * (nextWidth / Math.max(0.001, visibleWidth)), 0, 1 - nextWidth);
-      const top = clampNum(cy - (cy - current.top) * (nextHeight / Math.max(0.001, visibleHeight)), 0, 1 - nextHeight);
-      onChange({ left, right: 1 - left - nextWidth, top, bottom: 1 - top - nextHeight });
-    },
-    onRotate: (degrees) => {
-      if (!onRotate) return;
-      rotationGestureRef.current += degrees;
-      const next = ((rotationGestureRef.current + 180) % 360 + 360) % 360 - 180;
-      onRotate(next);
-    },
-  });
-
-  const beginDrag = (e: React.PointerEvent, mode: 'move' | 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw') => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.pointerType !== 'mouse' && multiTouchRef.current) return;
-    const overlay = ref.current;
-    if (!overlay) return;
-    const rect = overlay.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0 || base.width <= 0 || base.height <= 0) return;
-
-    /*
-     * `base` is already in screen/CSS pixels. The previous implementation
-     * calculated movement against the entire preview, which made crop
-     * handles inaccurate whenever the media frame did not fill the canvas.
-     * Use the actual cropable media frame as the coordinate system.
-     */
-    const start = { x: e.clientX, y: e.clientY };
-    const startCrop = { ...current };
-    const MIN = 0.06; // surviving region never shrinks below 6% per axis
-    const dxFromScreen = (clientX: number) => (clientX - start.x) / base.width;
-    const dyFromScreen = (clientY: number) => (clientY - start.y) / base.height;
-
-    const onMove = (ev: PointerEvent) => {
-      const dx = dxFromScreen(ev.clientX);
-      const dy = dyFromScreen(ev.clientY);
-      let { top, right, bottom, left } = startCrop;
-
-      if (mode === 'move') {
-        const shiftX = clampNum(dx, -left, right);
-        const shiftY = clampNum(dy, -top, bottom);
-        left += shiftX; right -= shiftX;
-        top += shiftY; bottom -= shiftY;
-      } else {
-        if (mode.includes('n')) top = clampNum(top + dy, 0, 1 - bottom - MIN);
-        if (mode.includes('s')) bottom = clampNum(bottom - dy, 0, 1 - top - MIN);
-        if (mode.includes('w')) left = clampNum(left + dx, 0, 1 - right - MIN);
-        if (mode.includes('e')) right = clampNum(right - dx, 0, 1 - left - MIN);
-      }
-      onChange({ top, right, bottom, left });
-    };
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-      if (activeDragCleanupRef.current === onUp) activeDragCleanupRef.current = null;
-    };
-    activeDragCleanupRef.current?.();
-    activeDragCleanupRef.current = onUp;
-    window.addEventListener('pointermove', onMove, { passive: false });
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
+  const begin = (ev: React.PointerEvent) => {
+    if (ev.pointerType === 'mouse' && ev.button !== 0) return;
+    const target = ev.target as HTMLElement | null;
+    const mode = (target?.closest?.('[data-crop-handle]') as HTMLElement | null)?.dataset.cropHandle as 'move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw' || 'move';
+    pointersRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pointersRef.current.size === 1) {
+      singleRef.current = { pointerId:ev.pointerId, mode, startX:ev.clientX, startY:ev.clientY, startCrop:{...cropRef.current} };
+    } else if (pointersRef.current.size === 2) {
+      const [a,b] = Array.from(pointersRef.current.values());
+      const dx=b.x-a.x, dy=b.y-a.y;
+      multiRef.current = {
+        distance:Math.max(1,Math.hypot(dx,dy)),
+        angle:Math.atan2(dy,dx)*180/Math.PI,
+        center:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},
+        crop:{...cropRef.current},
+        rotation:rotationRef.current,
+      };
+      singleRef.current = null;
+    }
+    try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch {}
   };
 
-  /*
-   * Keep the visual crop handles compact, but give each one a 44px minimum
-   * touch target. This is important on phones where a fingertip should not
-   * have to land exactly on a 12–20px visual control.
-   */
-  const handleCls = 'absolute z-20 flex h-11 w-11 touch-none items-center justify-center rounded-md';
-  const edgeCls = 'absolute z-20 touch-none';
+  const move = (ev: React.PointerEvent) => {
+    if (!pointersRef.current.has(ev.pointerId)) return;
+    pointersRef.current.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
+    const entries=Array.from(pointersRef.current.entries());
+    if (entries.length >= 2 && multiRef.current) {
+      ev.preventDefault();
+      const [a,b]=entries.slice(0,2).map(([,p])=>p);
+      const dx=b.x-a.x, dy=b.y-a.y;
+      const distance=Math.max(1,Math.hypot(dx,dy));
+      const angle=Math.atan2(dy,dx)*180/Math.PI;
+      const center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
+      const rect=ref.current?.getBoundingClientRect();
+      if (!rect || rect.width<=0 || rect.height<=0) return;
+      const start=multiRef.current;
+      const zoom=clampNum(start.distance/distance,0.25,4);
+      const sw=1-start.crop.left-start.crop.right;
+      const sh=1-start.crop.top-start.crop.bottom;
+      const nw=clampNum(sw*zoom,0.06,1);
+      const nh=clampNum(sh*zoom,0.06,1);
+      const cx=clampNum((center.x-rect.left)/rect.width,0,1);
+      const cy=clampNum((center.y-rect.top)/rect.height,0,1);
+      let left=clampNum(cx-(cx-start.crop.left)*(nw/Math.max(.001,sw)),0,1-nw);
+      let top=clampNum(cy-(cy-start.crop.top)*(nh/Math.max(.001,sh)),0,1-nh);
+      left=clampNum(left+(center.x-start.center.x)/rect.width,0,1-nw);
+      top=clampNum(top+(center.y-start.center.y)/rect.height,0,1-nh);
+      emitCrop({left,right:1-left-nw,top,bottom:1-top-nh});
+      if (onRotate) {
+        const delta=normalizeCropAngle(angle-start.angle);
+        if (Math.abs(delta)>0.15) {
+          const next=((start.rotation+delta+180)%360+360)%360-180;
+          rotationRef.current=next;
+          onRotate(next);
+        }
+      }
+      return;
+    }
+    const g=singleRef.current;
+    if (!g || g.pointerId!==ev.pointerId) return;
+    ev.preventDefault();
+    const dx=(ev.clientX-g.startX)/Math.max(1,base.width);
+    const dy=(ev.clientY-g.startY)/Math.max(1,base.height);
+    let {top,right,bottom,left}=g.startCrop;
+    const min=.06;
+    if (g.mode==='move') {
+      const sx=clampNum(dx,-left,right), sy=clampNum(dy,-top,bottom);
+      left+=sx; right-=sx; top+=sy; bottom-=sy;
+    } else {
+      if(g.mode.includes('n')) top=clampNum(top+dy,0,1-bottom-min);
+      if(g.mode.includes('s')) bottom=clampNum(bottom-dy,0,1-top-min);
+      if(g.mode.includes('w')) left=clampNum(left+dx,0,1-right-min);
+      if(g.mode.includes('e')) right=clampNum(right-dx,0,1-left-min);
+    }
+    emitCrop({top,right,bottom,left});
+  };
+
+  const end=(ev:React.PointerEvent)=>{
+    pointersRef.current.delete(ev.pointerId);
+    try { ev.currentTarget.releasePointerCapture(ev.pointerId); } catch {}
+    if(pointersRef.current.size===0){singleRef.current=null;multiRef.current=null;}
+    else if(pointersRef.current.size===1){
+      const [id,p]=Array.from(pointersRef.current.entries())[0];
+      singleRef.current={pointerId:id,mode:'move',startX:p.x,startY:p.y,startCrop:{...cropRef.current}};
+      multiRef.current=null;
+    }
+  };
+
+  const current=cropRef.current;
+  const inner={
+    left:base.left+current.left*base.width,
+    top:base.top+current.top*base.height,
+    width:Math.max(8,(1-current.left-current.right)*base.width),
+    height:Math.max(8,(1-current.top-current.bottom)*base.height),
+  };
 
   return (
-    <div
-      ref={ref}
-      className="absolute inset-0 z-30"
-      style={{ touchAction: 'none' }}
-      role="dialog"
-      aria-label="Crop editor — drag the window or handles, then apply"
-    >
-      {/* dim the area that will be cut */}
-      <div className="pointer-events-none absolute inset-0 bg-black/[0.08]" />
-      {/* surviving window */}
-      <div
-        onPointerDown={(e) => {
-          if (e.pointerType !== 'mouse') e.preventDefault();
-          beginDrag(e, 'move');
-        }}
-        className="absolute touch-none border-2 border-white bg-transparent shadow-[0_0_0_1px_rgba(255,255,255,0.18)]"
-        style={{ left: inner.left, top: inner.top, width: inner.width, height: inner.height, cursor: 'move' }}
-      >
-        {/* rule-of-thirds guides */}
-        <div className="pointer-events-none absolute inset-0">
+    <div ref={ref} className="absolute inset-0 z-[70] overflow-hidden" style={{touchAction:'none'}} role="dialog" aria-label="Crop editor">
+      <div className="pointer-events-none absolute inset-0 bg-black/[0.18]" />
+      <div className="pointer-events-none absolute border-2 border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25)]" style={{left:inner.left,top:inner.top,width:inner.width,height:inner.height}}>
+        <div className="absolute inset-0">
           <div className="absolute inset-y-0 left-1/3 w-px bg-white/30" />
           <div className="absolute inset-y-0 left-2/3 w-px bg-white/30" />
           <div className="absolute inset-x-0 top-1/3 h-px bg-white/30" />
           <div className="absolute inset-x-0 top-2/3 h-px bg-white/30" />
         </div>
-        {/* Corner handles: 44px touch targets with compact visual grips. */}
-        <span onPointerDown={(e) => beginDrag(e, 'nw')} className={`${handleCls} -left-5 -top-5 cursor-nwse-resize`} aria-label="Resize crop top-left" role="slider">
-          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
-        </span>
-        <span onPointerDown={(e) => beginDrag(e, 'ne')} className={`${handleCls} -right-5 -top-5 cursor-nesw-resize`} aria-label="Resize crop top-right" role="slider">
-          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
-        </span>
-        <span onPointerDown={(e) => beginDrag(e, 'sw')} className={`${handleCls} -left-5 -bottom-5 cursor-nesw-resize`} aria-label="Resize crop bottom-left" role="slider">
-          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
-        </span>
-        <span onPointerDown={(e) => beginDrag(e, 'se')} className={`${handleCls} -right-5 -bottom-5 cursor-nwse-resize`} aria-label="Resize crop bottom-right" role="slider">
-          <span className="h-5 w-5 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
-        </span>
-        {/* Edge handles: wide/tall invisible targets, small visible grips. */}
-        <span onPointerDown={(e) => beginDrag(e, 'n')} className={`${edgeCls} -top-5 inset-x-5 h-10 cursor-ns-resize`} aria-label="Resize crop top" role="slider">
-          <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
-        </span>
-        <span onPointerDown={(e) => beginDrag(e, 's')} className={`${edgeCls} -bottom-5 inset-x-5 h-10 cursor-ns-resize`} aria-label="Resize crop bottom" role="slider">
-          <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
-        </span>
-        <span onPointerDown={(e) => beginDrag(e, 'w')} className={`${edgeCls} -left-5 inset-y-5 w-10 cursor-ew-resize`} aria-label="Resize crop left" role="slider">
-          <span className="absolute left-1/2 top-1/2 h-10 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
-        </span>
-        <span onPointerDown={(e) => beginDrag(e, 'e')} className={`${edgeCls} -right-5 inset-y-5 w-10 cursor-ew-resize`} aria-label="Resize crop right" role="slider">
-          <span className="absolute left-1/2 top-1/2 h-10 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
-        </span>
+        {([
+          ['nw','-left-5 -top-5 cursor-nwse-resize'],['ne','-right-5 -top-5 cursor-nesw-resize'],
+          ['sw','-left-5 -bottom-5 cursor-nesw-resize'],['se','-right-5 -bottom-5 cursor-nwse-resize']
+        ] as const).map(([mode,cls]) => (
+          <span key={mode} data-crop-handle={mode} className={"absolute z-20 h-11 w-11 touch-none rounded-md "+cls} role="slider" aria-label={"Resize crop "+mode}>
+            <span className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
+          </span>
+        ))}
+        {([
+          ['n','-top-5 inset-x-5 h-10 cursor-ns-resize'],['s','-bottom-5 inset-x-5 h-10 cursor-ns-resize'],
+          ['w','-left-5 inset-y-5 w-10 cursor-ew-resize'],['e','-right-5 inset-y-5 w-10 cursor-ew-resize']
+        ] as const).map(([mode,cls]) => (
+          <span key={mode} data-crop-handle={mode} className={"absolute z-20 touch-none "+cls} role="slider" aria-label={"Resize crop "+mode}>
+            <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
+          </span>
+        ))}
       </div>
-
-      {/* apply / cancel / reset */}
-      <div className="absolute inset-x-0 bottom-2 flex items-center justify-center gap-2">
-        <button
-          onClick={onCancel}
-          className="flex items-center gap-1 rounded-full border border-white/25 bg-black/70 px-4 py-2 text-xs font-semibold backdrop-blur focus-visible:ring-2 focus-visible:ring-white"
-        >
-          <X className="h-3.5 w-3.5" /> Cancel
-        </button>
-        <button
-          onClick={onReset}
-          className="rounded-full border border-white/25 bg-black/70 px-4 py-2 text-xs font-semibold backdrop-blur focus-visible:ring-2 focus-visible:ring-white"
-        >
-          Reset
-        </button>
-        <button
-          onClick={onApply}
-          className="flex items-center gap-1 rounded-full bg-[#E5798F] px-4 py-2 text-xs font-bold text-white shadow focus-visible:ring-2 focus-visible:ring-white"
-        >
-          <Check className="h-3.5 w-3.5" /> Apply crop
-        </button>
+      <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
+        <div className="rounded-full bg-black/65 px-3 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">Drag · Pinch to zoom · Two fingers to move · Rotate</div>
+      </div>
+      <div className="pointer-events-auto absolute inset-x-0 bottom-2 flex items-center justify-center gap-2">
+        <button onClick={onCancel} className="flex items-center gap-1 rounded-full border border-white/25 bg-black/75 px-4 py-2 text-xs font-semibold backdrop-blur"><X className="h-3.5 w-3.5" />Cancel</button>
+        <button onClick={onReset} className="rounded-full border border-white/25 bg-black/75 px-4 py-2 text-xs font-semibold backdrop-blur">Reset</button>
+        <button onClick={onApply} className="flex items-center gap-1 rounded-full bg-[#E5798F] px-4 py-2 text-xs font-bold text-white shadow"><Check className="h-3.5 w-3.5" />Apply</button>
       </div>
     </div>
   );
 }
 
+function normalizeCropAngle(value:number){let r=value%360;if(r>180)r-=360;if(r<-180)r+=360;return r;}
 /** Recently exported/imported studio media — fills template placeholders without re-uploading. */
 function LibraryPicker({ meId, onPick }: {
   meId: string | null;
