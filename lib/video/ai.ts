@@ -38,36 +38,149 @@ const GEMINI_KEY = () => process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI
 const ASSEMBLY_KEY = () => process.env.ASSEMBLYAI_API_KEY;
 const GROQ_KEY = () => process.env.GROQ_API_KEY;
 
-async function geminiStructured(prompt: string, schema: Record<string, unknown>, model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite', media?: Array<{ url?: string | null; type?: 'video' | 'image' | 'audio' | null }>) {
+async function uploadGeminiFileFromUrl(mediaUrl: string, key: string, mimeType: string) {
+  const source = await fetch(mediaUrl, { cache: 'no-store' });
+  if (!source.ok) throw new Error(`Could not read project media (${source.status}).`);
+  const contentLength = Number(source.headers.get('content-length') || 0);
+  const maxInlineBytes = 95 * 1024 * 1024;
+  if (contentLength > maxInlineBytes) {
+    throw new Error('This video is larger than the free inline AI limit. Use a shorter/proxy clip for AI analysis.');
+  }
+
+  const bytes = await source.arrayBuffer();
+  if (bytes.byteLength > maxInlineBytes) {
+    throw new Error('This video is larger than the free inline AI limit. Use a shorter/proxy clip for AI analysis.');
+  }
+
+  const start = await fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-goog-api-key': key,
+      'x-goog-upload-protocol': 'resumable',
+      'x-goog-upload-command': 'start',
+      'x-goog-upload-header-content-length': String(bytes.byteLength),
+      'x-goog-upload-header-content-type': mimeType,
+    },
+    body: JSON.stringify({
+      file: { display_name: `enotes-ai-${crypto.randomUUID()}` },
+    }),
+    cache: 'no-store',
+  });
+
+  if (!start.ok) {
+    const message = await start.text().catch(() => '');
+    throw new Error(message || `Gemini file upload could not start (${start.status}).`);
+  }
+
+  const uploadUrl = start.headers.get('x-goog-upload-url');
+  if (!uploadUrl) throw new Error('Gemini did not return a resumable upload URL.');
+
+  const uploaded = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'content-length': String(bytes.byteLength),
+      'x-goog-upload-offset': '0',
+      'x-goog-upload-command': 'upload, finalize',
+    },
+    body: bytes,
+    cache: 'no-store',
+  });
+
+  const uploadedData = await uploaded.json().catch(() => ({}));
+  if (!uploaded.ok) {
+    throw new Error(uploadedData?.error?.message || `Gemini file upload failed (${uploaded.status}).`);
+  }
+
+  const file = uploadedData?.file;
+  if (!file?.name || !file?.uri) throw new Error('Gemini file upload returned no usable file URI.');
+
+  let state = String(file.state || '');
+  for (let attempt = 0; attempt < 36 && state && state !== 'ACTIVE'; attempt += 1) {
+    if (state === 'FAILED') throw new Error('Gemini could not process the video file.');
+    await new Promise((resolve) => setTimeout(resolve, Math.min(2500, 700 + attempt * 80)));
+    const statusResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${encodeURIComponent(file.name)}`,
+      {
+        headers: { 'x-goog-api-key': key },
+        cache: 'no-store',
+      },
+    );
+    const statusData = await statusResponse.json().catch(() => ({}));
+    if (!statusResponse.ok) throw new Error(statusData?.error?.message || 'Could not check Gemini video processing status.');
+    state = String(statusData?.state || statusData?.file?.state || '');
+  }
+
+  if (state && state !== 'ACTIVE') throw new Error('Gemini video processing timed out.');
+  return {
+    uri: String(file.uri),
+    mimeType: String(file.mimeType || mimeType),
+  };
+}
+
+async function geminiStructured(
+  prompt: string,
+  schema: Record<string, unknown>,
+  model = process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+  media?: Array<{ url?: string | null; type?: 'video' | 'image' | 'audio' | null }>,
+) {
   const key = GEMINI_KEY();
   if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
 
+  const mediaParts: Array<Record<string, unknown>> = [];
+  for (const item of (media || []).slice(0, 10)) {
+    if (!item?.url) continue;
+    const type = item.type || 'video';
+    const mimeType =
+      type === 'image' ? 'image/jpeg' :
+      type === 'audio' ? 'audio/mpeg' :
+      'video/mp4';
+
+    const uploaded = await uploadGeminiFileFromUrl(item.url, key, mimeType);
+    mediaParts.push({
+      type,
+      uri: uploaded.uri,
+      mime_type: uploaded.mimeType,
+      ...(type === 'video' ? { processing: 'agentic' } : {}),
+    });
+  }
+
   const response = await fetch('https://generativelanguage.googleapis.com/v1/interactions', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+    headers: {
+      'content-type': 'application/json',
+      'x-goog-api-key': key,
+    },
     body: JSON.stringify({
-      model: model.replace(/^models\//, ''),
-      input: media?.length
-        ? [
-            { type: 'text', text: prompt },
-            ...media
-              .filter((item) => item?.url)
-              .map((item) => ({
-                type: item.type || 'video',
-                uri: item.url,
-                mime_type: item.type === 'image' ? 'image/jpeg' : item.type === 'audio' ? 'audio/mpeg' : 'video/mp4',
-                processing: (item.type || 'video') === 'video' ? 'agentic' : undefined,
-              })),
-          ]
+      model: model.replace(/^models\\//, ''),
+      input: mediaParts.length
+        ? [{ type: 'text', text: prompt }, ...mediaParts]
         : prompt,
       store: false,
       response_format: { type: 'text', mime_type: 'application/json', schema },
     }),
     cache: 'no-store',
   });
+
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.error?.message || `Gemini request failed (${response.status}).`);
-  const text = data?.output_text || data?.output?.map?.((item: { content?: Array<{ text?: string }> }) => item.content?.map((part) => part.text || '').join('') || '').join('') || data?.steps?.map?.((step: { content?: Array<{ text?: string }> }) => step.content?.map((part) => part.text || '').join('') || '').join('') || '';
+  if (!response.ok) {
+    const message =
+      data?.error?.message ||
+      data?.error?.details?.[0]?.message ||
+      `Gemini request failed (${response.status}).`;
+    throw new Error(message);
+  }
+
+  const text =
+    data?.output_text ||
+    data?.output?.map?.((item: { content?: Array<{ text?: string }> }) =>
+      item.content?.map((part) => part.text || '').join('') || ''
+    ).join('') ||
+    data?.steps?.map?.((step: { content?: Array<{ text?: string }> }) =>
+      step.content?.map((part) => part.text || '').join('') || ''
+    ).join('') ||
+    '';
+
   if (!text) throw new Error('Gemini returned an empty structured response.');
   return parseJson(text);
 }
