@@ -218,6 +218,7 @@ function VideoEditor() {
   /* ---------- refs & playback ---------- */
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const replaceInputRef = useRef<HTMLInputElement>(null);
+  const audioReplaceInputRef = useRef<HTMLInputElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<VideoRenderer>(new VideoRenderer());
   const docRef = useRef(doc);
@@ -3839,6 +3840,38 @@ function VideoEditor() {
             }}
           />
 
+          <input
+            ref={audioReplaceInputRef}
+            type="file"
+            accept="audio/*"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              e.currentTarget.value = '';
+              if (!file || !selectedAudio || !meId) return;
+              try {
+                const up = await uploadFile(file, 'studio-media', meId);
+                const durationSeconds = await new Promise<number>((resolve) => {
+                  const audio = document.createElement('audio');
+                  audio.preload = 'metadata';
+                  audio.onloadedmetadata = () => resolve(Number.isFinite(audio.duration) ? audio.duration : selectedAudio.sourceDuration || 15);
+                  audio.onerror = () => resolve(selectedAudio.sourceDuration || 15);
+                  audio.src = URL.createObjectURL(file);
+                });
+                updateAudio(selectedAudio.id, {
+                  src: up.url,
+                  name: file.name,
+                  sourceDuration: durationSeconds,
+                  trimStart: 0,
+                  trimEnd: durationSeconds,
+                }, 'Replace audio');
+                notify('Audio replaced.');
+              } catch (error) {
+                notify(error instanceof Error ? error.message : 'Audio replacement failed.');
+              }
+            }}
+          />
+
           {/* Contextual actions are hidden while a tool drawer is open so mobile never has two competing control layers. */}
           {!toolDrawerOpen && (selectedClip || selectedElement || selectedAudio) ? (
             <>
@@ -3868,7 +3901,7 @@ function VideoEditor() {
                 {selectedAudio && (
                   <>
                     <button onClick={() => openTool('audio')} className={EDITOR_ACTION_PILL} aria-label="Adjust audio"><SlidersHorizontal className="h-4 w-4" />Adjust</button>
-                    <button onClick={() => replaceInputRef.current?.click()} className={EDITOR_ACTION_PILL} aria-label="Replace audio"><Film className="h-4 w-4" />Replace</button>
+                    <button onClick={() => audioReplaceInputRef.current?.click()} className={EDITOR_ACTION_PILL} aria-label="Replace audio"><Film className="h-4 w-4" />Replace</button>
                     <button
                       onClick={async () => {
                         if (beatBusy) return;
