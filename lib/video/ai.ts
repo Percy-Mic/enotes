@@ -307,9 +307,31 @@ export async function runVideoAI(input: AIJobInput): Promise<AIResult> {
     const actions = Array.isArray((plan as any).actions) ? (plan as any).actions.slice(0, 8) : [];
     const validClipIds = new Set(compactProject.clips.map((clip: any) => clip.id));
     const validElementIds = new Set(compactProject.elements.map((element: any) => element.id));
-    const selectedClipId = input.selection?.clipId || null;
-    const selectedElementId = input.selection?.elementId || null;
-    const sanitizedActions = actions.map((action: any) => ({ ...action, clipId: action.clipId || selectedClipId || null, elementId: action.elementId || selectedElementId || null })).filter((action: any) => action.type === 'set_aspect' || action.type === 'generate_captions' || action.type === 'transcribe' || validClipIds.has(action.clipId) || validElementIds.has(action.elementId));
+    const selectedClipId = input.selection?.clipId && validClipIds.has(input.selection.clipId)
+      ? input.selection.clipId
+      : compactProject.clips.length === 1 ? compactProject.clips[0].id : null;
+    const selectedElementId = input.selection?.elementId && validElementIds.has(input.selection.elementId)
+      ? input.selection.elementId
+      : compactProject.elements.length === 1 ? compactProject.elements[0].id : null;
+    const clipActionTypes = new Set([
+      'set_clip_speed','set_clip_volume','set_clip_mute','set_clip_filter','set_clip_effect',
+      'set_clip_transition','trim_clip','transform_clip','set_clip_adjustments','fit_clip',
+      'delete_clip','duplicate_clip',
+    ]);
+    const elementActionTypes = new Set(['transform_element','set_element_opacity']);
+    const sanitizedActions = actions
+      .map((action: any) => ({
+        ...action,
+        clipId: action.clipId && validClipIds.has(action.clipId) ? action.clipId : selectedClipId,
+        elementId: action.elementId && validElementIds.has(action.elementId) ? action.elementId : selectedElementId,
+      }))
+      .filter((action: any) =>
+        action.type === 'set_aspect' ||
+        action.type === 'generate_captions' ||
+        action.type === 'transcribe' ||
+        (clipActionTypes.has(action.type) && validClipIds.has(action.clipId)) ||
+        (elementActionTypes.has(action.type) && validElementIds.has(action.elementId))
+      );
     let captions: unknown[] = []; let transcript: unknown = null;
     if (sanitizedActions.some((action: any) => action.type === 'generate_captions' || action.type === 'transcribe')) {
       if (!input.mediaUrl || !/^https?:\/\//i.test(input.mediaUrl)) throw new Error('Select an imported video or audio clip first so I can generate accurate captions.');
