@@ -46,6 +46,7 @@ export interface AIJobInput {
     commercial_use?: boolean;
     premium?: boolean;
   }> | null;
+  visionFrames?: Array<{ clipId: string; time: number; dataUrl: string; label?: string }> | null;
 }
 
 export interface AIResult {
@@ -249,10 +250,23 @@ async function geminiStructured(
     Record<string, unknown>
   > = [];
 
-  for (const item of (media || []).slice(0, 10)) {
+  for (const item of (media || []).slice(0, 18)) {
     if (!item?.url) continue;
 
     const type = item.type || 'video';
+
+    if (item.url.startsWith('data:image/')) {
+      const match = item.url.match(/^data:(image\\/[^;]+);base64,(.+)$/);
+      if (match) {
+        mediaParts.push({
+          inline_data: {
+            mime_type: match[1],
+            data: match[2],
+          },
+        });
+        continue;
+      }
+    }
 
     const mimeType =
       type === 'image'
@@ -1660,6 +1674,43 @@ export async function runVideoAI(
             }),
           )
         : [],
+      tracks: Array.isArray(rawProject.tracks)
+        ? rawProject.tracks.map((track: any) => ({
+            id: track.id,
+            name: track.name,
+            kind: track.kind,
+            order: track.order,
+            muted: track.muted,
+            locked: track.locked,
+          }))
+        : [],
+
+      timeline: (() => {
+        let cursor = 0;
+        const clips = Array.isArray(rawProject.clips) ? rawProject.clips : [];
+        return clips.map((clip: any, index: number) => {
+          const sourceDuration = Math.max(0.1, Number(clip.sourceDuration) || 0.1);
+          const sourceStart = Math.max(0, Math.min(sourceDuration - 0.1, Number(clip.trimStart) || 0));
+          const sourceEnd = Math.max(sourceStart + 0.1, Math.min(sourceDuration, Number(clip.trimEnd) || sourceDuration));
+          const speed = Math.max(0.05, Number(clip.speed) || 1);
+          const duration = Math.max(0.1, (sourceEnd - sourceStart) / speed);
+          const item = {
+            index,
+            clipId: clip.id,
+            name: clip.name,
+            trackId: clip.track_id || null,
+            timelineStart: Number(cursor.toFixed(3)),
+            timelineEnd: Number((cursor + duration).toFixed(3)),
+            timelineDuration: Number(duration.toFixed(3)),
+            sourceStart,
+            sourceEnd,
+            speed,
+          };
+          cursor += duration;
+          return item;
+        });
+      })(),
+
     };
 
     const schema = {
@@ -1815,7 +1866,8 @@ CRITICAL BEHAVIOR:
 - Maintain conversation context.
 - If the user says "it", "this", "that", "the suggestions", "do it", "implement it", or "apply that", resolve the meaning from the immediately preceding messages and actions.
 - Never ask the user to repeat context that is already present.
-- Inspect the supplied project state and selected media.
+- Inspect the supplied project state, timeline manifest, selected media, and attached visual frames.
+- The attached frames are the visual ground truth for what each clip actually contains.
 - Never invent IDs.
 - Never claim an edit was performed unless you emit the corresponding action.
 - Never merely explain how to do an edit when the requested operation is supported.
@@ -2049,6 +2101,13 @@ ADVERTISEMENT EXECUTION RULES:
 Available audio library:
 ${JSON.stringify((input.audioLibrary || []).slice(0, 80))}
 
+VISUAL PROJECT INSPECTION:
+- Representative frames are supplied for the current clips. Use them to understand the actual footage.
+- A clip's metadata tells you WHEN it occurs; its frames tell you WHAT it contains.
+- Never substitute generic assumptions for visible evidence.
+- When the user refers to "this clip", prioritize the selected clip's frames.
+- When the user asks to edit the whole project, inspect the frames across the timeline before choosing an opening, hero shot, supporting shot, or closing shot.
+
 Saved AI memory:
 
 ${memoryText}
@@ -2067,32 +2126,44 @@ ${JSON.stringify(
   input.selection || {},
 )}
 
-Project:
+Project timeline and current state:
 
 ${JSON.stringify(
   compactProject,
 )}
+
+VISUAL INSPECTION FRAMES:
+${JSON.stringify((input.visionFrames || []).slice(0, 18).map((frame) => ({
+  clipId: frame.clipId,
+  time: frame.time,
+  label: frame.label || '',
+})))}
+
+The visual frames attached to this request are the actual representative frames extracted from the current project clips. Match each frame to its clipId/time above. Use what you can actually see in those frames when deciding clip order, trims, text placement, pacing, crop/framing, effects, and advertising structure. If a frame is unavailable or ambiguous, do not invent its contents.
+
+TIMELINE RULES:
+- Treat the timeline manifest as authoritative for clip order and timing.
+- timelineStart/timelineEnd are project-time seconds; sourceStart/sourceEnd are source-media seconds.
+- When suggesting a cut, trim, split, reorder, text cue, or keyframe, reason in project time and use the actual clip IDs.
+- Respect existing overlays, audio, muted tracks, and current transforms.
+- Do not describe a clip as a product/person/location unless the attached visual evidence supports that description.
 `;
 
-    const mediaInputs =
-      Array.isArray(
-        input.mediaUrls,
-      ) &&
-      input.mediaUrls.length
-        ? input.mediaUrls.slice(
-            0,
-            10,
-          )
+    const visionInputs = Array.isArray(input.visionFrames)
+      ? input.visionFrames
+          .filter((frame) => frame && typeof frame.dataUrl === 'string' && frame.dataUrl.startsWith('data:image/'))
+          .slice(0, 18)
+          .map((frame) => ({ url: frame.dataUrl, type: 'image' as const }))
+      : [];
+
+    const sourceInputs =
+      Array.isArray(input.mediaUrls) && input.mediaUrls.length
+        ? input.mediaUrls.slice(0, 6)
         : input.mediaUrl
-          ? [
-              {
-                url: input.mediaUrl,
-                type:
-                  input.mediaType ||
-                  'video',
-              },
-            ]
+          ? [{ url: input.mediaUrl, type: input.mediaType || 'video' }]
           : [];
+
+    const mediaInputs = [...visionInputs, ...sourceInputs].slice(0, 18);
 
     let plan =
       await geminiStructured(
