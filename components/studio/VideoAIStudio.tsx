@@ -255,8 +255,13 @@ export default function VideoAIStudio({
               Tell me what you want changed. I can edit the project, transcribe, and build timed captions.
             </p>
           </div>
-          <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full border border-emerald-300/15 bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold text-emerald-200">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" /> Ready
+          <span className={`ml-auto flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[9px] font-semibold ${
+            busy
+              ? 'border-[#FFB6C1]/20 bg-[#FFB6C1]/10 text-[#FFB6C1]'
+              : 'border-emerald-300/15 bg-emerald-300/10 text-emerald-200'
+          }`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${busy ? 'animate-pulse bg-[#FFB6C1]' : 'bg-emerald-300'}`} />
+            {busy ? 'Analyzing…' : 'Ready'}
           </span>
         </div>
 
