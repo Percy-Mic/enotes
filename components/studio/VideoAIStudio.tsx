@@ -1,103 +1,310 @@
 'use client';
 
-import { useState } from 'react';
-import { Bot, Captions, CheckCircle2, FileAudio, ImagePlus, Loader2, Wand2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  Bot,
+  Captions,
+  Check,
+  ChevronRight,
+  ImagePlus,
+  Loader2,
+  Mic2,
+  Pause,
+  Play,
+  Sparkles,
+  Wand2,
+} from 'lucide-react';
+
+export type VideoAIEditAction = {
+  type:
+    | 'set_clip_speed'
+    | 'set_clip_volume'
+    | 'set_clip_mute'
+    | 'set_clip_filter'
+    | 'set_clip_effect'
+    | 'set_clip_transition'
+    | 'trim_clip'
+    | 'transform_clip'
+    | 'set_clip_adjustments'
+    | 'set_aspect'
+    | 'delete_clip'
+    | 'duplicate_clip'
+    | 'generate_captions';
+  clipId?: string | null;
+  value?: number | string | boolean | null;
+  value2?: number | string | boolean | null;
+  object?: Record<string, unknown> | null;
+};
+
+export type VideoAICaption = {
+  id: string;
+  text: string;
+  start: number;
+  end: number;
+  confidence?: number | null;
+  needsReview?: boolean;
+  speaker?: string | null;
+};
 
 type Props = {
   projectId?: string | null;
   project: unknown;
   selectedMediaUrl?: string | null;
   selectedMediaType?: 'image' | 'video' | 'audio' | null;
-  onAddCaptions?: (captions: { id: string; text: string; start: number; end: number }[]) => void;
+  selectedClipId?: string | null;
+  selectedElementId?: string | null;
+  onAddCaptions?: (captions: VideoAICaption[]) => void;
   onAddMedia?: (media: { url: string; name: string }) => void;
+  onApplyActions?: (actions: VideoAIEditAction[]) => void;
 };
 
-const ACTIONS = [
-  { id: 'analyze', label: 'AI analyze', hint: 'Find pacing, visual and audio improvements', icon: Wand2 },
-  { id: 'assistant', label: 'Editing assistant', hint: 'Ask AI how to improve the current edit', icon: Bot },
-  { id: 'generate-captions', label: 'Auto captions', hint: 'Timestamped captions from your selected media', icon: Captions },
-  { id: 'transcribe', label: 'Transcribe', hint: 'Get a timestamped transcript', icon: FileAudio },
-  { id: 'remove-background', label: 'Remove image background', hint: 'Remove the background from a JPG, PNG, or WebP image', icon: ImagePlus },
-] as const;
+const SUGGESTIONS = [
+  { label: 'Make this cinematic', prompt: 'Make the selected clip feel more cinematic without overdoing it.' },
+  { label: 'Add accurate captions', prompt: 'Generate accurate captions for this video and add them to the timeline.' },
+  { label: 'Improve the pacing', prompt: 'Improve the pacing of the selected clip using safe speed or timing changes.' },
+  { label: 'Make it social-ready', prompt: 'Prepare the selected video for social media with a suitable aspect ratio and clean presentation.' },
+];
 
-export default function VideoAIStudio({ projectId, project, selectedMediaUrl, selectedMediaType, onAddCaptions, onAddMedia }: Props) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [result, setResult] = useState<unknown>(null);
-  const [error, setError] = useState<string | null>(null);
+function actionLabel(action: VideoAIEditAction) {
+  switch (action.type) {
+    case 'set_clip_speed': return `Speed → ${action.value}×`;
+    case 'set_clip_volume': return 'Volume adjusted';
+    case 'set_clip_mute': return action.value ? 'Muted' : 'Unmuted';
+    case 'set_clip_filter': return `Filter → ${String(action.value)}`;
+    case 'set_clip_effect': return `Effect → ${String(action.value)}`;
+    case 'set_clip_transition': return `Transition → ${String(action.value)}`;
+    case 'trim_clip': return 'Trim adjusted';
+    case 'transform_clip': return 'Transform adjusted';
+    case 'set_clip_adjustments': return 'Color adjustments';
+    case 'set_aspect': return `Canvas → ${String(action.value)}`;
+    case 'delete_clip': return 'Clip removed';
+    case 'duplicate_clip': return 'Clip duplicated';
+    case 'generate_captions': return 'Captions generated';
+    default: return 'Edit applied';
+  }
+}
+
+export default function VideoAIStudio({
+  projectId,
+  project,
+  selectedMediaUrl,
+  selectedMediaType,
+  selectedClipId,
+  selectedElementId,
+  onAddCaptions,
+  onAddMedia,
+  onApplyActions,
+}: Props) {
   const [prompt, setPrompt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [conversation, setConversation] = useState<Array<{
+    role: 'user' | 'assistant';
+    text: string;
+    actions?: VideoAIEditAction[];
+    reviewCount?: number;
+  }>>([]);
+  const [lastCaptions, setLastCaptions] = useState<VideoAICaption[]>([]);
 
-  async function run(operation: string) {
-    if (operation === 'remove-background' && selectedMediaType !== 'image') {
-      setError('Remove image background only works with JPG, PNG, or WebP images. Select an image layer first.');
-      return;
-    }
-    setBusy(operation);
+  const selectedLabel = useMemo(() => {
+    if (selectedClipId) return 'Selected video clip';
+    if (selectedElementId) return 'Selected overlay';
+    return 'Whole project';
+  }, [selectedClipId, selectedElementId]);
+
+  async function askAssistant(request?: string) {
+    const text = (request ?? prompt).trim();
+    if (!text || busy) return;
+
+    setBusy(true);
     setError(null);
-    setResult(null);
+    setPrompt('');
+    setConversation((items) => [...items, { role: 'user', text }]);
+
     try {
       const response = await fetch('/api/video/ai', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ operation, projectId, project, mediaUrl: selectedMediaUrl, mediaType: selectedMediaType, prompt }),
+        body: JSON.stringify({
+          operation: 'assistant',
+          projectId,
+          project,
+          mediaUrl: selectedMediaUrl,
+          mediaType: selectedMediaType,
+          selection: {
+            clipId: selectedClipId,
+            elementId: selectedElementId,
+          },
+          prompt: text,
+        }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || 'AI request failed.');
-      setResult(data.output);
-      if (operation === 'generate-captions' && onAddCaptions && Array.isArray(data.output?.captions)) {
-        onAddCaptions(data.output.captions);
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'The editing assistant could not complete that request.');
+
+      const output = data?.output || {};
+      const actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
+      const captions: VideoAICaption[] = Array.isArray(output.captions) ? output.captions : [];
+
+      if (actions.length && onApplyActions) {
+        onApplyActions(actions.filter((action) => action.type !== 'generate_captions'));
       }
-      if (operation === 'remove-background' && onAddMedia && data.output?.url) {
-        onAddMedia({ url: data.output.url, name: 'AI background removed.png' });
+
+      if (captions.length && onAddCaptions) {
+        onAddCaptions(captions);
+        setLastCaptions(captions);
       }
+
+      setConversation((items) => [
+        ...items,
+        {
+          role: 'assistant',
+          text: String(output.message || 'I prepared the edit.'),
+          actions,
+          reviewCount: Number(output.reviewCount) || 0,
+        },
+      ]);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'AI request failed.');
+      setError(e instanceof Error ? e.message : 'The editing assistant failed.');
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-[#E5798F]/30 bg-gradient-to-br from-[#E5798F]/15 to-white/[0.03] p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#E5798F]/20"><Wand2 className="h-5 w-5 text-[#FFB6C1]" /></div>
-          <div><p className="text-sm font-bold">AI Studio</p><p className="text-[10px] text-white/45">AI is an optional layer. Normal editing stays local and instant.</p></div>
+      <div className="overflow-hidden rounded-2xl border border-[#E5798F]/30 bg-gradient-to-br from-[#E5798F]/15 via-white/[0.03] to-black/20">
+        <div className="flex items-center gap-3 p-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#E5798F]/20">
+            <Bot className="h-5 w-5 text-[#FFB6C1]" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-bold">Editing Assistant</p>
+            <p className="mt-0.5 text-[10px] leading-4 text-white/45">
+              Tell me what you want changed. I can edit the project, transcribe, and build timed captions.
+            </p>
+          </div>
+          <span className="ml-auto flex shrink-0 items-center gap-1 rounded-full border border-emerald-300/15 bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold text-emerald-200">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" /> Ready
+          </span>
+        </div>
+
+        <div className="border-t border-white/10 px-3 py-2">
+          <div className="flex items-center gap-2 text-[10px] text-white/45">
+            <Sparkles className="h-3.5 w-3.5 text-[#FFB6C1]" />
+            Working with <span className="font-semibold text-white/70">{selectedLabel}</span>
+          </div>
         </div>
       </div>
 
-      <textarea
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        rows={3}
-        placeholder="Tell the editor what you want… e.g. “Make this feel cinematic and faster.”"
-        className="w-full resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-2.5 text-xs text-white outline-none focus:border-[#E5798F]/70"
-      />
+      {conversation.length > 0 && (
+        <div className="max-h-[34dvh] space-y-2 overflow-y-auto pr-1">
+          {conversation.map((message, index) => (
+            <div key={index} className={message.role === 'user' ? 'ml-8' : 'mr-4'}>
+              <div className={message.role === 'user'
+                ? 'rounded-2xl rounded-br-md bg-[#E5798F] px-3 py-2.5 text-xs text-white'
+                : 'rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.05] px-3 py-2.5 text-xs text-white/85'}>
+                {message.text}
+              </div>
 
-      {!selectedMediaUrl && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-[11px] text-amber-100">Select an imported clip or image on the canvas/timeline first. AI media tools need the saved Studio media URL.</div>}
+              {message.role === 'assistant' && message.actions?.length ? (
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {message.actions.map((action, actionIndex) => (
+                    <span key={actionIndex} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-semibold text-white/55">
+                      <Check className="h-2.5 w-2.5 text-emerald-300" />
+                      {actionLabel(action)}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
 
-      <div className="grid grid-cols-1 gap-2">
-        {ACTIONS.map(({ id, label, hint, icon: Icon }) => {
-          const imageOnly = id === 'remove-background';
-          const disabled = !!busy || (imageOnly && selectedMediaType !== 'image');
-          const actionHint = imageOnly && selectedMediaType !== 'image'
-            ? 'Select an image layer (JPG, PNG, or WebP) to use this tool'
-            : hint;
-          return (
-          <button key={id} type="button" onClick={() => void run(id)} disabled={disabled} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3 text-left transition hover:bg-white/[0.08] disabled:opacity-50">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.07]"><Icon className="h-4 w-4" /></span>
-            <span className="min-w-0 flex-1"><span className="block text-xs font-bold">{label}</span><span className="mt-0.5 block text-[10px] text-white/40">{actionHint}</span></span>
-            {busy === id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 text-white/20" />}
+              {message.role === 'assistant' && (message.reviewCount || 0) > 0 && (
+                <div className="mt-1.5 rounded-xl border border-amber-300/15 bg-amber-300/10 px-3 py-2 text-[10px] text-amber-100">
+                  {message.reviewCount} caption {message.reviewCount === 1 ? 'cue may' : 'cues may'} need a quick review because the speech-recognition confidence was lower.
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-white/10 bg-[#111]/95 p-2 shadow-xl">
+        <textarea
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void askAssistant();
+            }
+          }}
+          rows={3}
+          disabled={busy}
+          placeholder="Ask your editing comrade…  “Make this cinematic”, “Add accurate captions”, “Make this faster”"
+          className="w-full resize-none bg-transparent px-2 py-1.5 text-xs leading-5 text-white outline-none placeholder:text-white/25 disabled:opacity-50"
+        />
+        <div className="flex items-center justify-between gap-2 border-t border-white/10 px-1 pt-2">
+          <span className="text-[9px] text-white/25">Enter to send · Shift+Enter for a new line</span>
+          <button
+            type="button"
+            onClick={() => void askAssistant()}
+            disabled={busy || !prompt.trim()}
+            className="flex h-9 items-center gap-1.5 rounded-xl bg-[#E5798F] px-3 text-[10px] font-bold text-white transition hover:bg-[#d96d84] disabled:opacity-40"
+          >
+            {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronRight className="h-3.5 w-3.5" />}
+            {busy ? 'Working…' : 'Send'}
           </button>
-          );
-        })}
+        </div>
       </div>
 
-      {error && <div className="rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-[11px] text-red-200">{error}</div>}
-      {result != null && (
-        <pre className="max-h-64 overflow-auto rounded-xl bg-black/30 p-3 text-[10px] leading-4 text-white/70">
-          {JSON.stringify(result, null, 2)}
-        </pre>
+      {conversation.length === 0 && (
+        <div>
+          <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold text-white/35">
+            <Wand2 className="h-3 w-3" /> Try asking
+          </div>
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+            {SUGGESTIONS.map((suggestion) => (
+              <button
+                key={suggestion.label}
+                type="button"
+                disabled={busy}
+                onClick={() => void askAssistant(suggestion.prompt)}
+                className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2.5 text-left text-[10px] font-semibold text-white/65 transition hover:bg-white/[0.07] disabled:opacity-40"
+              >
+                {suggestion.label}
+                <ChevronRight className="h-3.5 w-3.5 text-white/25" />
+              </button>
+            ))}
+          </div>
+        </div>
       )}
+
+      {lastCaptions.length > 0 && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+          <div className="flex items-center gap-2">
+            <Captions className="h-4 w-4 text-[#FFB6C1]" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold">Caption track created</p>
+              <p className="text-[10px] text-white/40">
+                {lastCaptions.length} timed cues · word-level timing preserved
+              </p>
+            </div>
+            <span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[9px] font-semibold text-emerald-200">
+              Synced
+            </span>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-xl border border-red-400/20 bg-red-400/10 p-3 text-[11px] leading-4 text-red-200">
+          {error}
+        </div>
+      )}
+
+      <div className="rounded-xl border border-white/5 bg-white/[0.02] p-2.5 text-[9px] leading-4 text-white/30">
+        AI proposes only supported editor commands. The project state remains the source of truth, so edits can still be undone with the normal editor history.
+      </div>
     </div>
   );
 }
