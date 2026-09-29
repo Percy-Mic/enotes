@@ -4565,6 +4565,56 @@ function VideoEditor() {
 
         {tool === 'motion' && (
           <div className="space-y-3">
+            {selectedClip && (
+              <div className="rounded-2xl border border-white/10 bg-[#111]/90 p-2">
+                <div className="mb-2 flex gap-1 overflow-x-auto" role="tablist" aria-label="Frame tools">
+                  {([
+                    ['motion', 'Motion'],
+                    ['layer', 'Layer'],
+                    ['ai-drawing', 'AI Drawing'],
+                    ['ai-portrait', 'AI Portrait'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={frameMode === id}
+                      onClick={() => setFrameMode(id)}
+                      className={`shrink-0 rounded-xl px-3 py-2 text-[10px] font-bold ${frameMode === id ? 'bg-[#E5798F] text-white' : 'bg-white/[0.05] text-white/50'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {frameMode === 'motion' && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: Math.min(4, selectedClip.transform.scale * 1.08) } }, 'Frame zoom in')} className={EDITOR_ACTION_PILL}>Zoom in</button>
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: Math.max(0.05, selectedClip.transform.scale / 1.08) } }, 'Frame zoom out')} className={EDITOR_ACTION_PILL}>Zoom out</button>
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: 0 } }, 'Reset rotation')} className={EDITOR_ACTION_PILL}>Reset rotation</button>
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: 0, offset_y: 0 } }, 'Center frame')} className={EDITOR_ACTION_PILL}>Center frame</button>
+                  </div>
+                )}
+                {frameMode === 'layer' && (
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_h: !selectedClip.transform.flip_h } }, 'Flip layer horizontal')} className={EDITOR_ACTION_PILL}>Flip H</button>
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_v: !selectedClip.transform.flip_v } }, 'Flip layer vertical')} className={EDITOR_ACTION_PILL}>Flip V</button>
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: 0, offset_y: 0 } }, 'Center layer')} className={EDITOR_ACTION_PILL}>Center</button>
+                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale_x: 1, scale_y: 1 } }, 'Reset layer size')} className={EDITOR_ACTION_PILL}>Reset size</button>
+                  </div>
+                )}
+                {(frameMode === 'ai-drawing' || frameMode === 'ai-portrait') && (
+                  <div className="rounded-xl border border-[#E5798F]/20 bg-[#E5798F]/10 p-3">
+                    <p className="text-xs font-bold">{frameMode === 'ai-drawing' ? 'AI Drawing' : 'AI Portrait'}</p>
+                    <p className="mt-1 text-[10px] leading-4 text-white/50">
+                      This is an AI generation operation rather than a normal editor effect. Connect an AI video/image provider to generate the processed media, then add the result as a new editable layer.
+                    </p>
+                    <button type="button" onClick={() => openTool('ai')} className="mt-2 w-full rounded-xl bg-[#E5798F] py-2.5 text-[10px] font-bold">
+                      Open Editing Assistant
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             {selectedElement ? (
               <ElementInspector
                 el={selectedElement}
