@@ -402,7 +402,6 @@ async function loadAIMemoryContext(
     .select('id,memory_type,content,confidence,importance,use_count,last_used_at,project_id')
     .eq('user_id', userId)
     .eq('is_active', true)
-    .or('expires_at.is.null,expires_at.gt.now()')
     .order('importance', { ascending: false })
     .order('confidence', { ascending: false })
     .limit(16);
@@ -414,18 +413,22 @@ async function loadAIMemoryContext(
   }
 
   const { data } = await query;
-  const memories = Array.isArray(data) ? data : [];
+  const now = Date.now();
+  const memories = (Array.isArray(data) ? data : []).filter((memory) =>
+    !memory.expires_at || new Date(memory.expires_at).getTime() > now
+  );
 
   if (memories.length) {
-    await supabase
-      .from('video_ai_memories')
-      .update({
-        last_used_at: new Date().toISOString(),
-        use_count: memories.map((memory) => Number(memory.use_count || 0)).reduce((max, value) => Math.max(max, value), 0) + 1,
-      })
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .in('id', memories.map((memory) => memory.id));
+    await Promise.all(memories.map((memory) =>
+      supabase
+        .from('video_ai_memories')
+        .update({
+          last_used_at: new Date().toISOString(),
+          use_count: Number(memory.use_count || 0) + 1,
+        })
+        .eq('id', memory.id)
+        .eq('user_id', userId)
+    ));
   }
 
   return { enabled: true, memories };
