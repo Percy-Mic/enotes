@@ -2022,6 +2022,7 @@ export async function runVideoAI(
                   'add_library_audio',
                   'add_audio_clip',
                   'speak_narration',
+                  'cut_on_beats',
                 ],
               },
 
@@ -2197,7 +2198,7 @@ When the user asks you to finish, complete, professionally edit, or polish the p
 4. Finish the audio level: if speech matters, set_clip_volume explicitly (e.g. "0.9"); do not leave volume ambiguous when a clip competes with music.
 5. Reference clips by their id from the timeline manifest, or positionally with clipIndex (0-based, matching the manifest) when targeting "the second clip", "the last clip", etc.
 6. Order of emission matters: structural actions (reorder_clip, split_clip, delete_clip, duplicate_clip, trim_clip, set_clip_speed) are applied BEFORE text overlays, so compute text start/end in FINAL timeline time after trims and speed changes.
-7. add_text_element supports font_family (e.g. "Poppins, sans-serif"), font_weight (400-900), stroke_color, background (CSS color or "transparent"), shadow (boolean), and animation — use consistent typography for all text in one edit. The executor also honors align ("center").
+7. add_text_element supports font_family (e.g. "Poppins, sans-serif"), font_weight (400-900), stroke_color, background (CSS color or "transparent"), shadow (boolean), and animation — one of: none, fade, pop, slide-up, slide-down, slide-left, slide-right, zoom-in, zoom-out, bounce, typewriter (types on with blinking caret), shake, blur-in, rotate-in, elastic (underdamped spring), mask-wipe (progressive reveal). Kinetic pairing: headlines → pop or elastic; subtitles/captions → fade or mask-wipe; lyrics/voiceover sync → typewriter. The executor also honors align ("center").
 8. retime_element moves an existing text/overlay element to a new timeline window without recreating it: object = { elementId or implicit selection, start, end }. Prefer this over re-adding text when the user asks to "move the text later".
 9. Before answering, verify: does the action list alone, applied in order, produce the promised result? If a step is missing, emit it. Never end with "let me know if you want me to apply this" — the executor applies everything automatically.
 
@@ -2288,11 +2289,12 @@ set_clip_filter
 value = filter name
 
 set_clip_effect
-value = effect name
+value = effect name — one of: none, zoom (push-in), ken-burns (cinematic push + drift), dolly-out (tight→wide reveal), handheld (organic camera breathing), shake, pulse, vignette, flash, glitch, vhs, dream, film, chromatic, light-leak (warm analog wash), letterbox (cinema bars), film-grain. Optional intensity = value2 0..1.
+For portrait/social edits prefer ken-burns on still or slow shots; ads favor zoom + pulse; documentaries favor handheld + film-grain.
 
 set_clip_transition
-value = transition type
-value2 = duration
+value = transition type — one of: none, fade, crossfade, slide, push, zoom, zoom-blur (punch-in with motion blur), whip-pan (horizontal whip), spin, wipe, luma-wipe (soft gradient wipe), dip-black, blur, glitch-cut (digital tearing), film-burn (overexposure flash). value2 = duration seconds.
+Professional grammar: action/sports → whip-pan or zoom-blur (0.25-0.4s); docs/emotional → crossfade or film-burn (0.6-1s); brand/tech → glitch-cut or luma-wipe (0.3-0.5s); use at most ONE showy transition type per edit for coherence.
 
 trim_clip
 value = start
@@ -2426,6 +2428,17 @@ object = {
   voice,
   style
 }
+
+cut_on_beats
+object = {
+  bpm OR use detected beats,
+  trimPolicy: 'tight'|'moderate',
+  applyTransitions: boolean
+}
+Retimes the WHOLE timeline so every clip boundary lands on a musical beat:
+trimPolicy 'tight' keeps ~90% of each clip, 'moderate' ~75%. When beat
+markers exist they are used directly; otherwise bpm drives an even grid.
+Emit ONCE per project — it replaces per-clip trim_clip for rhythm edits.
 
 AUDIO LIBRARY RULES:
 
@@ -2864,7 +2877,8 @@ ${beatsForPlan}
             action.type === 'add_stock_video' ||
             action.type === 'add_library_audio' ||
             action.type === 'add_audio_clip' ||
-            action.type === 'speak_narration'
+            action.type === 'speak_narration' ||
+            action.type === 'cut_on_beats'
           ) return true;
           if (action.clipId === 'all') return true;
           if (clipActionTypes.has(action.type)) {

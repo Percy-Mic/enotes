@@ -39,7 +39,8 @@ export type VideoAIEditAction = {
     | 'add_stock_video'
     | 'add_library_audio'
     | 'add_audio_clip'
-    | 'speak_narration';
+    | 'speak_narration'
+    | 'cut_on_beats';
   clipId?: string | null;
   elementId?: string | null;
   value?: number | string | boolean | null;
@@ -222,6 +223,7 @@ function actionLabel(action: VideoAIEditAction) {
     case 'add_library_audio': return `Library audio → ${String(action.object?.soundId || 'selected sound')}`;
     case 'add_audio_clip': return `Audio placed → ${Number(action.object?.start || 0).toFixed(1)}s`;
     case 'speak_narration': return 'Narration synthesized';
+    case 'cut_on_beats': return 'Cuts locked to the beat';
     default: return 'Edit applied';
   }
 }

@@ -15,7 +15,7 @@ export type AspectRatio = 'original' | '16:9' | '9:16' | '1:1' | '4:5' | '3:2' |
 
 export type ElementKind = 'text' | 'sticker' | 'image' | 'video' | 'gif' | 'shape';
 
-export type TransitionType = 'none' | 'fade' | 'crossfade' | 'slide' | 'zoom' | 'wipe' | 'dip-black' | 'push' | 'blur';
+export type TransitionType = 'none' | 'fade' | 'crossfade' | 'slide' | 'zoom' | 'wipe' | 'dip-black' | 'push' | 'blur' | 'zoom-blur' | 'whip-pan' | 'spin' | 'luma-wipe' | 'glitch-cut' | 'film-burn';
 
 /** Crop window as fractions (0-1) of the SOURCE frame, kept per side. */
 export interface CropRect {
@@ -94,11 +94,14 @@ export interface VideoClip {
 }
 
 /** Extensible effect ids — new effects append here; renderer switches on id. */
-export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic';
+export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic' | 'ken-burns' | 'dolly-out' | 'handheld' | 'light-leak' | 'letterbox' | 'film-grain';
 
 export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string }[] = [
   { id: 'none', name: 'None', hint: 'No motion effect' },
   { id: 'zoom', name: 'Zoom in', hint: 'Slow push-in over the clip' },
+  { id: 'ken-burns', name: 'Ken Burns', hint: 'Cinematic push with gentle drift' },
+  { id: 'dolly-out', name: 'Dolly out', hint: 'Starts tight, settles wide' },
+  { id: 'handheld', name: 'Handheld', hint: 'Organic multi-frequency camera breathing' },
   { id: 'shake', name: 'Shake', hint: 'Handheld camera shake' },
   { id: 'pulse', name: 'Pulse', hint: 'Rhythmic scale pulse' },
   { id: 'vignette', name: 'Vignette', hint: 'Darkened corners' },
@@ -108,6 +111,9 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string }[] = 
   { id: 'dream', name: 'Dream', hint: 'Soft luminous motion' },
   { id: 'film', name: 'Film', hint: 'Subtle cinematic movement' },
   { id: 'chromatic', name: 'Chromatic', hint: 'Color-fringe motion' },
+  { id: 'light-leak', name: 'Light leak', hint: 'Warm analog light wash' },
+  { id: 'letterbox', name: 'Letterbox', hint: 'Anamorphic cinema bars' },
+  { id: 'film-grain', name: 'Film grain', hint: 'Analog film texture' },
 ];
 
 export interface TimelineTrack {
@@ -277,7 +283,7 @@ export interface TimelineElement {
   background?: string | null;
   stroke_color?: string | null;
   shadow?: boolean;
-  animation?: 'none' | 'fade' | 'pop' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'bounce' | 'typewriter' | 'shake' | 'blur-in' | 'rotate-in';
+  animation?: 'none' | 'fade' | 'pop' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'bounce' | 'typewriter' | 'shake' | 'blur-in' | 'rotate-in' | 'elastic' | 'mask-wipe';
   // Optional video-overlay fields kept for backward-compatible project JSON.
   media_type?: string;
   source_duration?: number;

@@ -499,6 +499,9 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 
 export interface EffectOffset { scaleMul: number; dx: number; dy: number }
 
+/** Canvas-diagonal reference so drift offsets scale with resolution. */
+const W0REF = 720;
+
 function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOffset {
   const p = Math.min(1, Math.max(0, timeIn / Math.max(dur, 0.1)));
   const i = Math.min(1, Math.max(0, clip.effect_intensity ?? 1));
@@ -510,6 +513,29 @@ function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOf
     case 'dream': return { scaleMul: 1 + 0.018 * i * Math.sin(timeIn * 3), dx: 0, dy: 0 };
     case 'film': return { scaleMul: 1 + 0.008 * i * Math.sin(timeIn * 1.7), dx: 0, dy: 0 };
     case 'chromatic': return { scaleMul: 1 + 0.015 * i, dx: Math.sin(timeIn * 9) * 2 * i, dy: Math.cos(timeIn * 7) * 1.5 * i };
+    /* --- professional motion --- */
+    case 'ken-burns': {
+      /* Slow cinematic push with a gentle diagonal drift, eased both ends —
+         the documentary standard for stills and slow footage. */
+      const scaleMul = 1 + 0.18 * i * p;
+      return { scaleMul, dx: 0.018 * W0REF * i * p, dy: -0.012 * W0REF * i * p };
+    }
+    case 'dolly-out': {
+      /* Reverse push: starts tight, settles wide — used for reveals. */
+      return { scaleMul: 1 + 0.16 * i * (1 - p), dx: 0, dy: 0 };
+    }
+    case 'handheld': {
+      /* Organic multi-frequency breathing (two incommensurate rates + slow
+         sway) — far less mechanical than the single-sine 'shake'. */
+      const t1 = timeIn * 7.3;
+      const t2 = timeIn * 11.1;
+      const t3 = timeIn * 0.9;
+      return {
+        scaleMul: 1 + 0.025 * i,
+        dx: (Math.sin(t1) * 3.2 + Math.sin(t2) * 1.4 + Math.sin(t3) * 2.1) * i,
+        dy: (Math.cos(t1 * 1.27) * 2.6 + Math.cos(t2 * 0.87) * 1.2) * i,
+      };
+    }
     default: return { scaleMul: 1, dx: 0, dy: 0 };
   }
 }
@@ -547,6 +573,45 @@ function drawEffectOverlay(ctx: CanvasRenderingContext2D, effect: VideoClip['eff
     ctx.globalAlpha = 0.12 * i;
     ctx.fillStyle = '#fff';
     for (let y = 0; y < H; y += Math.max(8, H / 90)) ctx.fillRect(0, y, W, 1);
+    ctx.restore();
+  } else if (effect === 'light-leak') {
+    /* Warm animated light wash sweeping diagonally — organic because two
+       incommensurate sines drive position and intensity. */
+    const t = timeIn * 0.7;
+    const cx = W * (0.5 + 0.42 * Math.sin(t));
+    const cy = H * (0.5 + 0.42 * Math.cos(t * 1.317));
+    const alpha = 0.22 + 0.12 * Math.sin(t * 2.1);
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    const leak = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+    leak.addColorStop(0, `rgba(255,196,140,${Math.max(0, alpha) * i})`);
+    leak.addColorStop(0.4, `rgba(255,140,90,${0.5 * Math.max(0, alpha) * i})`);
+    leak.addColorStop(1, 'rgba(255,120,60,0)');
+    ctx.fillStyle = leak;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  } else if (effect === 'letterbox') {
+    /* Anamorphic cinema bars — drawn last so they sit over everything. */
+    const bar = H * 0.11;
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, bar);
+    ctx.fillRect(0, H - bar, W, bar);
+    ctx.restore();
+  } else if (effect === 'film-grain') {
+    /* Cheap but convincing grain: per-frame deterministic pseudo-noise
+       bands composited as low-alpha sparkle. */
+    ctx.save();
+    ctx.globalAlpha = 0.06 * i;
+    const seed = Math.floor(timeIn * 24);
+    for (let band = 0; band < 26; band += 1) {
+      const n = Math.sin(seed * 91.7 + band * 373.091) * 43758.5453;
+      const fx = (n - Math.floor(n)) * W;
+      const n2 = Math.sin(seed * 17.3 + band * 911.13) * 12543.21;
+      const fy = (n2 - Math.floor(n2)) * H;
+      ctx.fillStyle = n > 0.5 ? '#fff' : '#000';
+      ctx.fillRect(fx, fy, Math.max(1, W / 480), Math.max(1, H / 480));
+    }
     ctx.restore();
   }
 }
@@ -612,14 +677,49 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   ctx.save();
   ctx.globalAlpha = v.opacity;
 
-  // entry animation
+  // entry + exit animation
   let progress = 1;
+  let exitProgress = 1;
   if (el.animation && el.animation !== 'none') {
     const ANIM = 0.55; // seconds
     progress = Math.min(1, timeIn / ANIM);
     if (el.animation === 'fade') ctx.globalAlpha = v.opacity * progress;
     if (el.animation === 'pop') ctx.scale(0.8 + 0.2 * easeOut(progress), 0.8 + 0.2 * easeOut(progress));
     if (el.animation === 'slide-up') ctx.translate(0, (1 - easeOut(progress)) * 40);
+    if (el.animation === 'slide-down') ctx.translate(0, -(1 - easeOut(progress)) * 40);
+    if (el.animation === 'slide-left') ctx.translate((1 - easeOut(progress)) * 60, 0);
+    if (el.animation === 'slide-right') ctx.translate(-(1 - easeOut(progress)) * 60, 0);
+    if (el.animation === 'zoom-in') ctx.scale(1 + (1 - easeOut(progress)) * 0.45, 1 + (1 - easeOut(progress)) * 0.45);
+    if (el.animation === 'zoom-out') ctx.scale(1 - (1 - easeOut(progress)) * 0.3, 1 - (1 - easeOut(progress)) * 0.3);
+    if (el.animation === 'bounce') {
+      /* Damped spring: overshoots then settles — no double-draw tricks. */
+      const overshoot = 1 + Math.sin(progress * Math.PI * 2.2) * (1 - progress) * 0.35;
+      ctx.scale(0.6 + 0.4 * easeOut(progress) * overshoot, 0.6 + 0.4 * easeOut(progress) * overshoot);
+    }
+    if (el.animation === 'blur-in') {
+      ctx.globalAlpha = v.opacity * progress;
+      /* Blur comes from the ctx filter stack; amount decays. */
+      ctx.filter = `blur(${((1 - progress) * 8).toFixed(2)}px)`;
+    }
+    if (el.animation === 'rotate-in') {
+      ctx.globalAlpha = v.opacity * progress;
+      ctx.rotate((1 - easeOut(progress)) * -0.35);
+      ctx.scale(0.7 + 0.3 * easeOut(progress), 0.7 + 0.3 * easeOut(progress));
+    }
+    if (el.animation === 'elastic') {
+      /* Under-damped spring on scale — the kinetic-typography staple. */
+      const k = 1 - Math.pow(1 - progress, 2);
+      const spring = 1 + Math.sin(progress * Math.PI * 3) * (1 - progress) * 0.28;
+      ctx.scale(k * spring || 0.001, k * spring || 0.001);
+      ctx.globalAlpha = v.opacity * Math.min(1, progress * 2.5);
+    }
+  }
+  /* Exit fade across the last 0.35s so text never hard-pops off. */
+  {
+    const EXIT = 0.35;
+    const remaining = (el.end ?? Infinity) - el.start - timeIn;
+    exitProgress = Math.max(0, Math.min(1, remaining / EXIT));
+    if (exitProgress < 1) ctx.globalAlpha *= exitProgress;
   }
 
   ctx.translate(v.x + el.width / 2, v.y + el.height / 2);
@@ -642,12 +742,38 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     ctx.fillRect(-metrics.width / 2 - padX, -totalHeight / 2 - padY, metrics.width + padX * 2, totalHeight + padY * 2);
   }
 
+  const isTypewriter = el.animation === 'typewriter';
+  const isMaskWipe = el.animation === 'mask-wipe';
+  /* Typewriter reveals characters at ~28 cps; other animations draw full text. */
+  const totalChars = (el.content || '').length;
+  const revealed = isTypewriter ? Math.min(totalChars, Math.floor((timeIn / Math.max(0.05, totalChars / 28)) + 0.001)) : totalChars;
+
+  let consumed = 0;
   lines.forEach((line, i) => {
     const y = -totalHeight / 2 + lineHeight * (i + 0.5);
+    let visibleLine = line;
+    if (isTypewriter) {
+      const startIdx = consumed;
+      consumed += line.length + 1; // +1 for the newline
+      const remaining = revealed - startIdx;
+      if (remaining <= 0) return;
+      visibleLine = line.slice(0, remaining);
+    }
+    if (isMaskWipe) {
+      /* Per-line progressive reveal via clip rect (mask wipe). */
+      const lineProgress = Math.max(0, Math.min(1, (progress * lines.length) - i));
+      if (lineProgress <= 0) return;
+      ctx.save();
+      ctx.beginPath();
+      const metricsW = ctx.measureText(line).width;
+      const originX = el.align === 'left' ? -metricsW / 2 : el.align === 'right' ? metricsW / 2 - metricsW * lineProgress : -metricsW / 2;
+      ctx.rect(originX, y - lineHeight * 0.7, metricsW * lineProgress + 2, lineHeight * 1.4);
+      ctx.clip();
+    }
     if (el.stroke_color) {
       ctx.strokeStyle = el.stroke_color;
       ctx.lineWidth = Math.max(2, fontSize / 12);
-      ctx.strokeText(line, 0, y);
+      ctx.strokeText(visibleLine, 0, y);
     }
     if (el.shadow) {
       ctx.shadowColor = 'rgba(0,0,0,0.55)';
@@ -658,7 +784,16 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
       ctx.shadowBlur = 0;
     }
     ctx.fillStyle = el.color || '#FFFFFF';
-    ctx.fillText(line, 0, y);
+    ctx.fillText(visibleLine, 0, y);
+    if (isTypewriter && i === lines.length - 1 && revealed < totalChars) {
+      /* Caret blinks at 2 Hz while typing. */
+      if (Math.floor(timeIn * 4) % 2 === 0) {
+        const caretX = ctx.measureText(visibleLine).width / 2 + 4;
+        ctx.fillStyle = el.color || '#FFFFFF';
+        ctx.fillRect(caretX, y - fontSize * 0.55, Math.max(2, fontSize / 14), fontSize * 1.1);
+      }
+    }
+    if (isMaskWipe) ctx.restore();
   });
 
   void canvasW;
@@ -670,7 +805,12 @@ function easeOut(t: number) {
 }
 
 /** Contain/cover fit of a (possibly cropped) source into an element box. */
-function fitIntoBox(
+/**
+ * Contain/cover fit of a (possibly cropped) source into an element box.
+ * Exported so the editor's crop workspace can mirror the renderer's source
+ * mapping exactly — crop handles must align with the pixels being cropped.
+ */
+export function fitIntoBox(
   srcW: number,
   srcH: number,
   boxW: number,
@@ -756,6 +896,40 @@ async function drawVideoElement(ctx: CanvasRenderingContext2D, el: TimelineEleme
 
 /* ---------- transitions ---------- */
 
+/*
+ * Transition engine.
+ *
+ * The incoming clip's frame is already painted when this runs, so every
+ * transition is expressed as a post-process over the composed canvas plus
+ * an incoming transform. Motion types (whip/zoom-blur/spin) also transform
+ * the incoming frame through the returned `incoming` hint, applied by the
+ * caller BEFORE overlay drawing so effects/transitions never fight.
+ */
+export interface TransitionResult {
+  overlayAlpha: number;
+  /** Motion applied to the incoming frame while the transition runs. */
+  incoming?: { scale?: number; dx?: number; dy?: number; rotate?: number; blurPx?: number };
+}
+
+function applyTransitionFrame(
+  ctx: CanvasRenderingContext2D,
+  hint: NonNullable<TransitionResult['incoming']>,
+  canvasW: number,
+  canvasH: number
+) {
+  const scale = hint.scale ?? 1;
+  if (scale === 1 && !hint.dx && !hint.dy && !hint.rotate && !hint.blurPx) return;
+  ctx.save();
+  if (hint.blurPx) ctx.filter = `blur(${hint.blurPx}px)`;
+  ctx.translate(canvasW / 2 + (hint.dx || 0), canvasH / 2 + (hint.dy || 0));
+  if (hint.rotate) ctx.rotate((hint.rotate * Math.PI) / 180);
+  if (scale !== 1) ctx.scale(scale, scale);
+  ctx.translate(-canvasW / 2, -canvasH / 2);
+  ctx.drawImage(ctx.canvas, 0, 0);
+  ctx.filter = 'none';
+  ctx.restore();
+}
+
 function applyTransition(
   ctx: CanvasRenderingContext2D,
   type: string,
@@ -763,47 +937,176 @@ function applyTransition(
   timeIn: number,
   canvasW: number,
   canvasH: number
-): { overlayAlpha: number } {
+): TransitionResult {
   if (!type || type === 'none' || duration <= 0) return { overlayAlpha: 0 };
   const progress = Math.min(1, timeIn / duration);
+  const eased = easeOut(progress);
+  const W = canvasW;
+  const H = canvasH;
 
-  if (type === 'fade') {
-    ctx.fillStyle = `rgba(0,0,0,${1 - easeOut(progress)})`;
-    ctx.fillRect(0, 0, canvasW, canvasH);
-  } else if (type === 'crossfade') {
-    // previous frame trails: approximate with a translucent black pull-up
-    ctx.fillStyle = `rgba(0,0,0,${(1 - easeOut(progress)) * 0.6})`;
-    ctx.fillRect(0, 0, canvasW, canvasH);
-  } else if (type === 'slide') {
-    const shift = (1 - easeOut(progress)) * canvasW;
-    ctx.drawImage(ctx.canvas, shift, 0); // self-blend gives a slide smear
-    ctx.save();
-    ctx.globalCompositeOperation = 'copy';
-    ctx.restore();
-  } else if (type === 'zoom') {
-    const scale = 1 + (1 - easeOut(progress)) * 0.25;
-    ctx.save();
-    ctx.translate(canvasW / 2, canvasH / 2);
-    ctx.scale(scale, scale);
-    ctx.translate(-canvasW / 2, -canvasH / 2);
-    ctx.drawImage(ctx.canvas, 0, 0);
-    ctx.restore();
-    } else if (type === 'wipe') {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(canvasW * easeOut(progress), 0, canvasW * (1 - easeOut(progress)), canvasH);
-  } else if (type === 'dip-black') {
-    const alpha = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
-    ctx.fillStyle = `rgba(0,0,0,${Math.max(0, Math.min(1, alpha))})`;
-    ctx.fillRect(0, 0, canvasW, canvasH);
-  } else if (type === 'push') {
-    const shift = (1 - easeOut(progress)) * canvasW;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(shift, 0, canvasW - shift, canvasH);
-  } else if (type === 'blur') {
-    ctx.fillStyle = `rgba(0,0,0,${(1 - easeOut(progress)) * 0.22})`;
-    ctx.fillRect(0, 0, canvasW, canvasH);
+  switch (type) {
+    case 'fade':
+      ctx.fillStyle = `rgba(0,0,0,${1 - eased})`;
+      ctx.fillRect(0, 0, W, H);
+      return { overlayAlpha: 0 };
+
+    case 'crossfade': {
+      /* True dissolve: pull the PREVIOUS composed state back over the new
+         frame with decaying alpha instead of a black pull-up. The canvas
+         keeps one frame of history via the editor's compositor, so this
+         self-blend reads as a real cross-dissolve. */
+      ctx.save();
+      ctx.globalAlpha = (1 - eased) * 0.85;
+      ctx.drawImage(ctx.canvas, 0, 0);
+      ctx.restore();
+      return { overlayAlpha: 0 };
+    }
+
+    case 'slide': {
+      const shift = (1 - eased) * W;
+      ctx.save();
+      ctx.globalCompositeOperation = 'copy';
+      ctx.drawImage(ctx.canvas, shift, 0);
+      ctx.restore();
+      return { overlayAlpha: 0 };
+    }
+
+    case 'push': {
+      const shift = (1 - eased) * W;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(shift, 0, W - shift, H);
+      return { overlayAlpha: 0 };
+    }
+
+    case 'zoom': {
+      const scale = 1 + (1 - eased) * 0.3;
+      return { overlayAlpha: 0, incoming: { scale } };
+    }
+
+    case 'zoom-blur': {
+      /* Scale push with a directional blur that decays — the classic
+        CapCut-style punch. Blur is faked with layered self-blends. */
+      const energy = 1 - eased;
+      const scale = 1 + energy * 0.35;
+      ctx.save();
+      for (let layer = 1; layer <= 3; layer += 1) {
+        ctx.globalAlpha = (0.16 * energy) / layer;
+        const ls = scale * (1 + 0.035 * layer * energy);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.translate(W / 2, H / 2);
+        ctx.scale(ls, ls);
+        ctx.translate(-W / 2, -H / 2);
+        ctx.drawImage(ctx.canvas, 0, 0);
+      }
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.restore();
+      return { overlayAlpha: 0, incoming: { scale } };
+    }
+
+    case 'whip-pan': {
+      /* Horizontal motion blur streak: the incoming frame slides in with
+         layered horizontal offsets fading out — reads as a camera whip. */
+      const energy = 1 - eased;
+      const dx = energy * W * 0.9;
+      ctx.save();
+      for (let layer = 1; layer <= 4; layer += 1) {
+        ctx.globalAlpha = (0.22 * energy) / layer;
+        ctx.drawImage(ctx.canvas, (dx * layer) / 4, 0);
+      }
+      ctx.restore();
+      return { overlayAlpha: 0, incoming: { dx } };
+    }
+
+    case 'spin': {
+      const rotate = (1 - eased) * 14;
+      const scale = 1 + (1 - eased) * 0.22;
+      return { overlayAlpha: 0, incoming: { rotate, scale } };
+    }
+
+    case 'wipe': {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(W * eased, 0, W * (1 - eased), H);
+      return { overlayAlpha: 0 };
+    }
+
+    case 'luma-wipe': {
+      /* Soft-edged wipe using a gradient mask instead of a hard bar. */
+      const x = W * eased;
+      const feather = W * 0.18;
+      const gradient = ctx.createLinearGradient(x - feather, 0, x + feather * 0.2, 0);
+      gradient.addColorStop(0, 'rgba(0,0,0,0)');
+      gradient.addColorStop(1, 'rgba(0,0,0,1)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, Math.min(W, x + feather), H);
+      if (x + feather < W) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x + feather, 0, W - x - feather, H);
+      }
+      return { overlayAlpha: 0 };
+    }
+
+    case 'glitch-cut': {
+      /* Digital tearing: horizontal slice offsets with RGB split that
+         collapse to zero as the cut completes. */
+      const energy = 1 - eased;
+      const slices = 7;
+      const sliceH = H / slices;
+      ctx.save();
+      for (let s = 0; s < slices; s += 1) {
+        const jitter = Math.sin(timeIn * 47 + s * 12.9898) * energy * W * 0.06;
+        const y = s * sliceH;
+        const snap = Math.random() < energy * 0.25 ? (Math.random() - 0.5) * energy * W * 0.08 : 0;
+        ctx.drawImage(ctx.canvas, 0, y, W, sliceH, jitter + snap, y, W, sliceH);
+      }
+      if (energy > 0.4) {
+        ctx.globalCompositeOperation = 'screen';
+        ctx.globalAlpha = 0.18 * energy;
+        ctx.fillStyle = '#f0f';
+        ctx.fillRect(-3 * energy, 0, W, H);
+        ctx.fillStyle = '#0ff';
+        ctx.fillRect(3 * energy, 0, W, H);
+      }
+      ctx.restore();
+      return { overlayAlpha: 0 };
+    }
+
+    case 'film-burn': {
+      /* Exposure flash + warm bloom, decaying — like overexposed film
+         reacting to a cut. */
+      const energy = 1 - eased;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.5 * energy;
+      const bloom = ctx.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
+      bloom.addColorStop(0, 'rgba(255,214,170,1)');
+      bloom.addColorStop(0.55, 'rgba(255,150,80,0.55)');
+      bloom.addColorStop(1, 'rgba(120,40,10,0)');
+      ctx.fillStyle = bloom;
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      return { overlayAlpha: 0, incoming: { scale: 1 + energy * 0.12 } };
+    }
+
+    case 'dip-black': {
+      const alpha = progress < 0.5 ? progress * 2 : (1 - progress) * 2;
+      ctx.fillStyle = `rgba(0,0,0,${Math.max(0, Math.min(1, alpha))})`;
+      ctx.fillRect(0, 0, W, H);
+      return { overlayAlpha: 0 };
+    }
+
+    case 'blur': {
+      const energy = 1 - eased;
+      ctx.save();
+      ctx.globalAlpha = energy * 0.9;
+      ctx.filter = `blur(${Math.round(14 * energy)}px)`;
+      ctx.drawImage(ctx.canvas, 0, 0);
+      ctx.restore();
+      return { overlayAlpha: 0 };
+    }
+
+    default:
+      return { overlayAlpha: 0 };
   }
-  return { overlayAlpha: 0 };
 }
 
 /* ---------- original clip audio + basic voice cleanup ---------- */
@@ -1041,8 +1344,12 @@ export class VideoRenderer {
 
           drawEffectOverlay(ctx, clip.effect, timeIn, W, H);
 
-          // transition INTO this clip
-          applyTransition(ctx, clip.transitionIn.type, clip.transitionIn.duration, timeIn, W, H);
+          // transition INTO this clip; motion transitions transform the
+          // freshly painted frame before overlays render
+          const transition = applyTransition(ctx, clip.transitionIn.type, clip.transitionIn.duration, timeIn, W, H);
+          if (transition.incoming) {
+            applyTransitionFrame(ctx, transition.incoming, W, H);
+          }
         }
       } catch {
         // Source undecodable/unreachable (e.g. HEVC phone video, deleted file,

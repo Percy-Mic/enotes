@@ -24,7 +24,7 @@ import {
   type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type VideoClip, type VideoProject,
 } from '@/lib/video/project';
 import {
-  EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache,
+  EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
   type ExportProgress, type ExportResult, type ExportSettings,
 } from '@/lib/video/renderer';
 
@@ -1205,7 +1205,7 @@ function VideoEditor() {
             background: obj.background == null ? 'transparent' : String(obj.background),
             stroke_color: String(obj.stroke_color || '#000000'),
             shadow: obj.shadow !== false,
-            animation: (['none','fade','pop','slide-up','slide-down','slide-left','slide-right','zoom-in','zoom-out','bounce','typewriter','shake','blur-in','rotate-in'].includes(String(obj.animation))
+            animation: (['none','fade','pop','slide-up','slide-down','slide-left','slide-right','zoom-in','zoom-out','bounce','typewriter','shake','blur-in','rotate-in','elastic','mask-wipe'].includes(String(obj.animation))
               ? String(obj.animation)
               : 'pop') as TimelineElement['animation'],
           };
@@ -1342,6 +1342,51 @@ function VideoEditor() {
             kind: 'voiceover',
           };
           nextProject = { ...nextProject, audio: [...nextProject.audio, track] };
+          continue;
+        }
+
+        if (action.type === 'cut_on_beats' && action.object) {
+          /* Rhythm-locked editing: retime every clip so its OUT point lands
+             on a beat. Measured beats win; an even bpm grid is the fallback.
+             Structural, so it runs before text/audio placement. */
+          const obj = action.object;
+          const policy = String(obj.trimPolicy || 'moderate') === 'tight' ? 0.9 : 0.75;
+          let beats = (nextProject.beatMarkers || []).filter((t) => Number.isFinite(t) && t > 0.2);
+          if (beats.length < 2) {
+            const bpm = Number(obj.bpm) || 120;
+            const total = nextProject.clips.reduce((sum, c) => sum + clipDuration(c), 0);
+            beats = [];
+            for (let t = 60 / bpm; t < total; t += 60 / bpm) beats.push(t);
+          }
+          if (beats.length >= 2) {
+            let beatIdx = 0;
+            const retimed = nextProject.clips.map((clip) => {
+              const target = Math.max(0.3, clipDuration(clip) * policy);
+              /* advance to the first beat that covers the requested span */
+              while (
+                beatIdx < beats.length - 1 &&
+                beats[beatIdx + 1] - (beatIdx > 0 ? beats[0] : 0) < target
+              ) beatIdx += 1;
+              const startBeat = beatIdx > 0 ? beats[beatIdx - 1] ?? 0 : 0;
+              const endBeat = beats[Math.min(beatIdx, beats.length - 1)];
+              const span = Math.max(0.3, endBeat - startBeat);
+              const speed = Math.max(0.25, Math.min(4, clip.speed || 1));
+              const wantedSource = span * speed;
+              const available = Math.max(0.2, clip.sourceDuration - clip.trimStart);
+              const nextTrimEnd = Math.min(clip.sourceDuration, clip.trimStart + Math.min(wantedSource, available));
+              const applied: VideoClip = {
+                ...clip,
+                trimEnd: nextTrimEnd,
+                transitionIn: obj.applyTransitions === false ? clip.transitionIn : {
+                  type: clip.transitionIn?.type && clip.transitionIn.type !== 'none' ? clip.transitionIn.type : 'crossfade',
+                  duration: Math.min(0.6, span * 0.22),
+                },
+              };
+              beatIdx += 1;
+              return applied;
+            });
+            nextProject = { ...nextProject, clips: retimed };
+          }
           continue;
         }
 
@@ -2909,9 +2954,25 @@ function VideoEditor() {
       const cover = coverFit(W, H, srcAspect);
       return { left: (W - cover.w) / 2, top: (H - cover.h) / 2, width: cover.w, height: cover.h };
     }
+    /*
+     * The crop surface for media overlays must mirror the RENDERER's source
+     * mapping: fractions are relative to the SOURCE FRAME and the drawn area
+     * is fitIntoBox(sw, sh, el.width, el.height, object_fit). Computing the
+     * base from the element box alone misaligned handles vs pixels whenever
+     * the source aspect differed from the box (the classic "crop selects the
+     * wrong region" bug for contain-fit overlays).
+     */
     const el = project.elements.find((x) => x.id === cropMode.id);
     if (!el) return null;
-    return { left: el.x, top: el.y, width: el.width, height: el.height };
+    if (el.kind === 'text' || el.kind === 'sticker' || el.kind === 'shape') {
+      return { left: el.x, top: el.y, width: el.width, height: el.height };
+    }
+    const mediaAspect = mediaAspectRef.current.get(el.src || '') ?? (el.width / Math.max(1, el.height));
+    const fit = el.object_fit === 'cover' ? 'cover' : 'contain';
+    const drawn = fit === 'cover'
+      ? fitIntoBox(1, mediaAspect, el.width, el.height, 'cover')
+      : fitIntoBox(mediaAspect, 1, el.width, el.height, 'contain');
+    return { left: el.x + (el.width - drawn.dw) / 2, top: el.y + (el.height - drawn.dh) / 2, width: Math.max(8, drawn.dw), height: Math.max(8, drawn.dh) };
   };
 
   /* ---------- audio ---------- */
@@ -3499,6 +3560,48 @@ function VideoEditor() {
     ? clipBoxRect(selectedClip, project.canvas.width, project.canvas.height)
     : null;
   const cropRect = cropMode ? cropBaseRect() : null;
+
+  /* Media aspect cache for the crop workspace: crop fractions are relative
+     to the SOURCE frame, so the overlay must know each overlay's media
+     aspect to place handles over the pixels actually being cropped. */
+  const mediaAspectRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const el of project.elements) {
+        if (!el.src || mediaAspectRef.current.has(el.src)) continue;
+        if (el.kind === 'image' || el.kind === 'gif' || el.kind === 'sticker') {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          try {
+            await new Promise<void>((resolve) => {
+              img.onload = () => resolve();
+              img.onerror = () => resolve();
+              img.src = el.src as string;
+            });
+            if (!cancelled && img.naturalWidth && img.naturalHeight) {
+              mediaAspectRef.current.set(el.src, img.naturalWidth / img.naturalHeight);
+            }
+          } catch { /* aspect stays unknown; box fallback applies */ }
+        } else if (el.kind === 'video') {
+          try {
+            const v = document.createElement('video');
+            v.preload = 'metadata';
+            v.crossOrigin = 'anonymous';
+            await new Promise<void>((resolve) => {
+              v.onloadedmetadata = () => resolve();
+              v.onerror = () => resolve();
+              v.src = el.src as string;
+            });
+            if (!cancelled && v.videoWidth && v.videoHeight) {
+              mediaAspectRef.current.set(el.src, v.videoWidth / v.videoHeight);
+            }
+          } catch { /* aspect stays unknown; box fallback applies */ }
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [project.elements]);
 
   /* ================================================================ */
 
@@ -5272,7 +5375,7 @@ function VideoEditor() {
                 <div>
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Transition in</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {(['none', 'fade', 'crossfade', 'slide', 'zoom', 'wipe', 'dip-black', 'push', 'blur'] as const).map((t) => (
+                    {(['none', 'fade', 'crossfade', 'slide', 'push', 'zoom', 'zoom-blur', 'whip-pan', 'spin', 'wipe', 'luma-wipe', 'dip-black', 'blur', 'glitch-cut', 'film-burn'] as const).map((t) => (
                       <button
                         key={t}
                         onClick={() => updateClip(selectedClip.id, { transitionIn: { type: t, duration: selectedClip.transitionIn.duration } }, 'Transition')}
@@ -6101,7 +6204,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
             <label className="space-y-1">
               <span className="text-white/60">Animation</span>
               <select value={el.animation || 'none'} onChange={(e) => onChange({ animation: e.target.value as TimelineElement['animation'] }, 'Text animation')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Text animation">
-                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'rotate-in'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
+                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'rotate-in', 'elastic', 'mask-wipe'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
               </select>
             </label>
           </div>
