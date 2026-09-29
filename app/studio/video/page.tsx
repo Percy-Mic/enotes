@@ -3873,9 +3873,7 @@ function VideoEditor() {
                   ? 'image'
                   : selectedElement?.kind === 'video'
                     ? 'video'
-                    : selectedElement?.kind === 'gif'
-                      ? 'image'
-                      : null
+                    : null
             }
             onAddMedia={({ url, name }) => {
               const maxW = project.canvas.width * 0.78;
