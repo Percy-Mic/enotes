@@ -3570,7 +3570,6 @@ function VideoEditor() {
   const clipFrame = selectedClip && !playing && !cropMode
     ? clipBoxRect(selectedClip, project.canvas.width, project.canvas.height)
     : null;
-  const cropRect = cropMode ? cropBaseRect() : null;
 
   /* Media aspect cache for the crop workspace: crop fractions are relative
      to the SOURCE frame, so the overlay must know each overlay's media
@@ -3613,6 +3612,12 @@ function VideoEditor() {
     })();
     return () => { cancelled = true; };
   }, [project.elements]);
+
+  /* cropBaseRect reads mediaAspectRef, so this must run AFTER the ref
+     declaration above — evaluating it earlier threw a TDZ ReferenceError
+     that white-screened the editor whenever crop mode opened on a media
+     overlay. */
+  const cropRect = cropMode ? cropBaseRect() : null;
 
   /* ================================================================ */
 
