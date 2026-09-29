@@ -3654,87 +3654,94 @@ function VideoEditor() {
             }}
           />
 
-          {/* contextual editor actions — direct, thumb-friendly, and selection-aware */}
-          {(selectedClip || selectedElement || selectedAudio) ? (
-            <div className="mt-1.5 -mx-1 border-t border-white/10 bg-[#101010]/96 px-1.5 pt-1.5 backdrop-blur-xl" aria-label="Contextual editor actions">
-              {selectedClip && (
-                <>
-                  <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
-                    {[
-                      { label: 'Edit', icon: <Scissors className="h-4 w-4" />, action: () => openTool('motion') },
-                      { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => { setClipSoundMenuOpen((v) => !v); setClipSpeedMenuOpen(false); } },
-                      { label: 'Text', icon: <Type className="h-4 w-4" />, action: () => { addTextElement(); } },
-                      { label: 'Effects', icon: <Sparkles className="h-4 w-4" />, action: () => openTool('look') },
-                      { label: 'Magic', icon: <Sparkles className="h-4 w-4" />, action: () => { openTool('motion'); notify('Magic tools are ready in Motion — keyframes, speed and transform stay on-canvas.'); } },
-                      { label: 'Captions', icon: <Type className="h-4 w-4" />, action: () => { addCaptionElement(); } },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        onClick={item.action}
-                        className="flex min-w-[64px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 text-[9px] font-semibold text-white/65 active:bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
-                        aria-label={item.label}
-                      >
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.07] text-white/90">{item.icon}</span>
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                  {clipSoundMenuOpen && (
-                    <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 py-1">
-                      <button onClick={() => replaceInputRef.current?.click()} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Replace</button>
-                      <button onClick={() => openTool('audio')} className={`${EDITOR_ACTION_PILL}`}><Sparkles className="h-4 w-4" />Sound effect</button>
-                      <button onClick={() => { void startVoiceover(); setClipSoundMenuOpen(false); }} className={`${EDITOR_ACTION_PILL}`}><Mic className="h-4 w-4" />Voiceover</button>
-                    </div>
-                  )}
+          {/* Contextual actions are hidden while a tool drawer is open so mobile never has two competing control layers. */}
+          {!toolDrawerOpen && (selectedClip || selectedElement || selectedAudio) ? (
+            <>
+              {/* Mobile: one compact selection toolbar. Major tools stay in the bottom navigation. */}
+              <div className="mt-1.5 flex items-center gap-1.5 overflow-x-auto border-t border-white/10 bg-[#101010]/96 px-1.5 py-1.5 backdrop-blur-xl md:hidden" aria-label="Selected item actions">
+                {selectedClip && (
+                  <>
+                    <button onClick={() => openTool('motion')} className={EDITOR_ACTION_PILL} aria-label="Edit clip"><Scissors className="h-4 w-4" />Edit</button>
+                    <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
+                    <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
+                    <button onClick={() => setClipSpeedMenuOpen((v) => !v)} className={EDITOR_ACTION_PILL} aria-label="Change clip speed"><SkipForward className="h-4 w-4" />Speed</button>
+                    <button onClick={() => deleteClip(selectedClip.id)} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Delete clip"><Trash2 className="h-4 w-4" />Delete</button>
+                  </>
+                )}
+                {selectedElement && (
+                  <>
+                    <button onClick={() => openTool(inspectorTool)} className={EDITOR_ACTION_PILL} aria-label="Edit selected overlay"><Type className="h-4 w-4" />Edit</button>
+                    {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button onClick={startElementCrop} className={EDITOR_ACTION_PILL} aria-label="Crop selected overlay"><Crop className="h-4 w-4" />Crop</button>}
+                    <button onClick={() => duplicateElement(selectedElement)} className={EDITOR_ACTION_PILL} aria-label="Duplicate selected overlay"><Copy className="h-4 w-4" />Duplicate</button>
+                    <button onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')} className={EDITOR_ACTION_PILL} aria-label="Rotate selected overlay"><RotateCcw className="h-4 w-4" />Rotate</button>
+                    <button onClick={() => deleteElement(selectedElement.id)} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Delete selected overlay"><Trash2 className="h-4 w-4" />Delete</button>
+                  </>
+                )}
+                {selectedAudio && (
+                  <>
+                    <button onClick={() => openTool('audio')} className={EDITOR_ACTION_PILL} aria-label="Edit audio"><Music className="h-4 w-4" />Edit</button>
+                    <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className={EDITOR_ACTION_PILL} aria-label="Start audio at playhead"><Play className="h-4 w-4" />Start here</button>
+                    <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Remove audio"><Trash2 className="h-4 w-4" />Remove</button>
+                  </>
+                )}
+              </div>
 
-                  <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 pt-1">
-                    <button onClick={splitAtPlayhead} className={`${EDITOR_ACTION_PILL}`}><Scissors className="h-4 w-4" />Split</button>
-                    <button onClick={() => openTool('media')} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Replace</button>
-                    <button onClick={() => deleteClip(selectedClip.id)} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Delete</button>
-                    <button onClick={() => { setClipSpeedMenuOpen((v) => !v); setClipSoundMenuOpen(false); }} className={`${EDITOR_ACTION_PILL}`}><SkipForward className="h-4 w-4" />Speed {selectedClip.speed}×</button>
-                    {clipSpeedMenuOpen && (
-                      <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-[#181818] p-1">
-                        {SPEED_OPTIONS.map((speed) => (
-                          <button
-                            key={speed}
-                            onClick={() => { updateClip(selectedClip.id, { speed }, 'Change speed', `speed-${selectedClip.id}`); setClipSpeedMenuOpen(false); }}
-                            className={`rounded-lg px-2.5 py-2 text-[10px] font-bold ${selectedClip.speed === speed ? 'bg-[#E5798F] text-white' : 'text-white/60 hover:bg-white/10'}`}
-                          >
-                            {speed}×
-                          </button>
-                        ))}
+              {/* Desktop: richer contextual controls remain available without constraining the mobile workspace. */}
+              <div className="hidden md:block mt-1.5 -mx-1 border-t border-white/10 bg-[#101010]/96 px-1.5 pt-1.5 backdrop-blur-xl" aria-label="Contextual editor actions">
+                {selectedClip && (
+                  <>
+                    <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
+                      {[
+                        { label: 'Edit', icon: <Scissors className="h-4 w-4" />, action: () => openTool('motion') },
+                        { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => { setClipSoundMenuOpen((v) => !v); setClipSpeedMenuOpen(false); } },
+                        { label: 'Text', icon: <Type className="h-4 w-4" />, action: () => { addTextElement(); } },
+                        { label: 'Effects', icon: <Sparkles className="h-4 w-4" />, action: () => openTool('look') },
+                        { label: 'Magic', icon: <Sparkles className="h-4 w-4" />, action: () => { openTool('motion'); notify('Magic tools are ready in Motion — keyframes, speed and transform stay on-canvas.'); } },
+                        { label: 'Captions', icon: <Type className="h-4 w-4" />, action: () => { addCaptionElement(); } },
+                      ].map((item) => (
+                        <button key={item.label} onClick={item.action} className="flex min-w-[64px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 text-[9px] font-semibold text-white/65 active:bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" aria-label={item.label}>
+                          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.07] text-white/90">{item.icon}</span>{item.label}
+                        </button>
+                      ))}
+                    </div>
+                    {clipSoundMenuOpen && (
+                      <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 py-1">
+                        <button onClick={() => replaceInputRef.current?.click()} className={EDITOR_ACTION_PILL}><Film className="h-4 w-4" />Replace</button>
+                        <button onClick={() => openTool('audio')} className={EDITOR_ACTION_PILL}><Sparkles className="h-4 w-4" />Sound effect</button>
+                        <button onClick={() => { void startVoiceover(); setClipSoundMenuOpen(false); }} className={EDITOR_ACTION_PILL}><Mic className="h-4 w-4" />Voiceover</button>
                       </div>
                     )}
-                    <button onClick={startClipCrop} className={`${EDITOR_ACTION_PILL}`}><Crop className="h-4 w-4" />Crop</button>
-                    <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={`${EDITOR_ACTION_PILL}`}>{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Mute'}</button>
-                    <button onClick={() => duplicateClip(selectedClip)} className={`${EDITOR_ACTION_PILL}`}><Copy className="h-4 w-4" />Duplicate</button>
-                    <button onClick={() => void reverseSelectedClip()} disabled={preparingReverse === selectedClip.id} className={`${EDITOR_ACTION_PILL} disabled:opacity-40`}>{preparingReverse === selectedClip.id ? 'Preparing…' : 'Reverse'}</button>
-                  </div>
-                </>
-              )}
-
-              {selectedElement && (
-                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
-                  <button onClick={() => openTool(inspectorTool)} className={`${EDITOR_ACTION_PILL}`}><Type className="h-4 w-4" />Edit</button>
-                  {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button onClick={startElementCrop} className={`${EDITOR_ACTION_PILL}`}><Crop className="h-4 w-4" />Crop</button>}
-                  <button onClick={() => duplicateElement(selectedElement)} className={`${EDITOR_ACTION_PILL}`}><Copy className="h-4 w-4" />Duplicate</button>
-                  <button onClick={() => updateElement(selectedElement.id, { z: Math.max(...project.elements.map((e) => e.z), 0) + 1 }, 'Bring to front')} className={`${EDITOR_ACTION_PILL}`}><ArrowRight className="h-4 w-4 rotate-[-90deg]" />Front</button>
-                  <button onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')} className={`${EDITOR_ACTION_PILL}`}><RotateCcw className="h-4 w-4" />Rotate</button>
-                  {selectedElement.kind === 'video' && <button onClick={() => moveVideoOverlayToMainTrack(selectedElement)} className={`${EDITOR_ACTION_PILL}`}><Film className="h-4 w-4" />Main track</button>}
-                  <button onClick={() => deleteElement(selectedElement.id)} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Delete</button>
-                </div>
-              )}
-
-              {selectedAudio && (
-                <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
-                  <button onClick={() => openTool('audio')} className={`${EDITOR_ACTION_PILL}`}><Music className="h-4 w-4" />Edit</button>
-                  <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className={`${EDITOR_ACTION_PILL}`}><Play className="h-4 w-4" />Start here</button>
-                  <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className={`${EDITOR_ACTION_PILL} text-red-300`}><Trash2 className="h-4 w-4" />Remove</button>
-                </div>
-              )}
-            </div>
+                    <div className="no-scrollbar flex items-center gap-1 overflow-x-auto border-t border-white/5 pt-1">
+                      <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL}><Scissors className="h-4 w-4" />Split</button>
+                      <button onClick={() => openTool('media')} className={EDITOR_ACTION_PILL}><Film className="h-4 w-4" />Replace</button>
+                      <button onClick={() => deleteClip(selectedClip.id)} className={EDITOR_ACTION_PILL + ' text-red-300'}><Trash2 className="h-4 w-4" />Delete</button>
+                      <button onClick={() => { setClipSpeedMenuOpen((v) => !v); setClipSoundMenuOpen(false); }} className={EDITOR_ACTION_PILL}><SkipForward className="h-4 w-4" />Speed {selectedClip.speed}×</button>
+                      {clipSpeedMenuOpen && <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-[#181818] p-1">{SPEED_OPTIONS.map((speed) => <button key={speed} onClick={() => { updateClip(selectedClip.id, { speed }, 'Change speed', `speed-${selectedClip.id}`); setClipSpeedMenuOpen(false); }} className={`rounded-lg px-2.5 py-2 text-[10px] font-bold ${selectedClip.speed === speed ? 'bg-[#E5798F] text-white' : 'text-white/60 hover:bg-white/10'}`}>{speed}×</button>)}</div>}
+                      <button onClick={startClipCrop} className={EDITOR_ACTION_PILL}><Crop className="h-4 w-4" />Crop</button>
+                      <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL}>{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Mute'}</button>
+                      <button onClick={() => duplicateClip(selectedClip)} className={EDITOR_ACTION_PILL}><Copy className="h-4 w-4" />Duplicate</button>
+                      <button onClick={() => void reverseSelectedClip()} disabled={preparingReverse === selectedClip.id} className={EDITOR_ACTION_PILL + ' disabled:opacity-40'}>{preparingReverse === selectedClip.id ? 'Preparing…' : 'Reverse'}</button>
+                    </div>
+                  </>
+                )}
+                {selectedElement && <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
+                  <button onClick={() => openTool(inspectorTool)} className={EDITOR_ACTION_PILL}><Type className="h-4 w-4" />Edit</button>
+                  {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button onClick={startElementCrop} className={EDITOR_ACTION_PILL}><Crop className="h-4 w-4" />Crop</button>}
+                  <button onClick={() => duplicateElement(selectedElement)} className={EDITOR_ACTION_PILL}><Copy className="h-4 w-4" />Duplicate</button>
+                  <button onClick={() => updateElement(selectedElement.id, { z: Math.max(...project.elements.map((e) => e.z), 0) + 1 }, 'Bring to front')} className={EDITOR_ACTION_PILL}><ArrowRight className="h-4 w-4 rotate-[-90deg]" />Front</button>
+                  <button onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')} className={EDITOR_ACTION_PILL}><RotateCcw className="h-4 w-4" />Rotate</button>
+                  {selectedElement.kind === 'video' && <button onClick={() => moveVideoOverlayToMainTrack(selectedElement)} className={EDITOR_ACTION_PILL}><Film className="h-4 w-4" />Main track</button>}
+                  <button onClick={() => deleteElement(selectedElement.id)} className={EDITOR_ACTION_PILL + ' text-red-300'}><Trash2 className="h-4 w-4" />Delete</button>
+                </div>}
+                {selectedAudio && <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
+                  <button onClick={() => openTool('audio')} className={EDITOR_ACTION_PILL}><Music className="h-4 w-4" />Edit</button>
+                  <button onClick={() => updateAudio(selectedAudio.id, { start: Math.max(0, playhead) }, 'Set audio start at playhead')} className={EDITOR_ACTION_PILL}><Play className="h-4 w-4" />Start here</button>
+                  <button onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className={EDITOR_ACTION_PILL + ' text-red-300'}><Trash2 className="h-4 w-4" />Remove</button>
+                </div>}
+              </div>
+            </>
           ) : (
-            <p className="mt-1.5 text-center text-[10px] text-white/25">Select a clip, overlay or audio to reveal contextual editing tools.</p>
+            <p className="mt-1.5 hidden text-center text-[10px] text-white/25 md:block">Select a clip, overlay or audio to reveal contextual editing tools.</p>
           )}
 
         </section>
