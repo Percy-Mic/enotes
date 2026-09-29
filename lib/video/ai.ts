@@ -2242,6 +2242,11 @@ ${JSON.stringify(
   compactProject,
 )}
 
+PERSISTENT CLIP VISUAL INDEX:
+${JSON.stringify(persistedVisionIndex.slice(0, 80))}
+
+Use the persistent visual index as the primary project-wide visual reference. It was generated from actual representative frames and persists between requests. If current frames are attached, use them to refine or verify the index. If the index and current frames disagree, prefer the current frames and treat the index as stale.
+
 VISUAL INSPECTION FRAMES:
 ${JSON.stringify((input.visionFrames || []).slice(0, 18).map((frame) => ({
   clipId: frame.clipId,
