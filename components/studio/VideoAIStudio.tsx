@@ -37,7 +37,9 @@ export type VideoAIEditAction = {
     | 'split_clip'
     | 'reorder_clip'
     | 'add_stock_video'
-    | 'add_library_audio';
+    | 'add_library_audio'
+    | 'add_audio_clip'
+    | 'speak_narration';
   clipId?: string | null;
   elementId?: string | null;
   value?: number | string | boolean | null;
@@ -179,7 +181,7 @@ type Props = {
   onAddMedia?: (media: { url: string; name: string }) => void;
   onAddStockVideo?: (media: { url: string; name: string; width: number; height: number; duration: number; photographer: string; provider: 'pexels' | 'pixabay' }) => void;
   onAddLibraryAudio?: (soundId: string) => Promise<void> | void;
-  onApplyActions?: (actions: VideoAIEditAction[]) => void;
+  onApplyActions?: (actions: VideoAIEditAction[]) => void | Promise<void>;
 };
 
 const SUGGESTIONS = [
@@ -218,6 +220,8 @@ function actionLabel(action: VideoAIEditAction) {
     case 'reorder_clip': return 'Clip reordered';
     case 'add_stock_video': return `Stock footage → ${String(action.object?.query || 'selected topic')}`;
     case 'add_library_audio': return `Library audio → ${String(action.object?.soundId || 'selected sound')}`;
+    case 'add_audio_clip': return `Audio placed → ${Number(action.object?.start || 0).toFixed(1)}s`;
+    case 'speak_narration': return 'Narration synthesized';
     default: return 'Edit applied';
   }
 }
@@ -292,6 +296,9 @@ export default function VideoAIStudio({
             elementId: selectedElementId,
           },
           visionFrames,
+          beatMarkers: Array.isArray((project as { beatMarkers?: number[] })?.beatMarkers)
+            ? (project as { beatMarkers?: number[] }).beatMarkers
+            : null,
           conversation: conversation.slice(-10).map((message) => ({
             role: message.role,
             text: message.text,
@@ -327,6 +334,36 @@ export default function VideoAIStudio({
         const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
         const text = typeof obj.text === 'string' ? obj.text.trim() : '';
         if (!text || /^your message$/i.test(text)) obj.text = 'YOUR STORY';
+      }
+
+      const narrationActions = actions.filter((action) => action.type === 'speak_narration');
+      for (const action of narrationActions) {
+        /* Synthesis runs server-side (real audio, real duration); the result
+           rides back as output.narrations and is applied here. */
+        try {
+          const synthResponse = await fetch('/api/video/ai', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              operation: 'speak_narration',
+              projectId,
+              project: { narrationRequest: { text: action.object?.text, start: action.object?.start, voice: action.object?.voice, style: action.object?.style } },
+            }),
+          });
+          const synth = await synthResponse.json().catch(() => ({}));
+          if (synthResponse.ok && synth?.output?.audioBase64Wav && onApplyActions) {
+            void Promise.resolve(onApplyActions([{
+              type: 'speak_narration',
+              object: {
+                text: synth.output.text,
+                start: synth.output.start,
+                audioBase64Wav: synth.output.audioBase64Wav,
+              },
+            }])).catch(() => undefined);
+          }
+        } catch {
+          /* A failed line must not block the rest of the plan. */
+        }
       }
 
       const libraryAudioActions = actions.filter((action) => action.type === 'add_library_audio');
@@ -370,12 +407,13 @@ export default function VideoAIStudio({
       }
 
       if (actions.length && onApplyActions) {
-        onApplyActions(actions.filter((action) =>
+        void Promise.resolve(onApplyActions(actions.filter((action) =>
           action.type !== 'generate_captions' &&
           action.type !== 'transcribe' &&
           action.type !== 'add_stock_video' &&
-          action.type !== 'add_library_audio'
-        ));
+          action.type !== 'add_library_audio' &&
+          action.type !== 'speak_narration'
+        ))).catch(() => undefined);
       }
 
       if (typeof output?.transcript?.text === 'string') setLastTranscript(output.transcript.text);

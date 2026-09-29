@@ -26,6 +26,10 @@ export interface AIJobInput {
     url: string;
     type?: 'image' | 'video' | 'audio' | null;
   }> | null;
+  /** Word-level transcript mapped to PROJECT time — the timing ground truth for speech-aware cues. */
+  transcriptWords?: Array<{ text: string; start: number; end: number }> | null;
+  /** Detected music downbeats in project seconds — cuts and cue starts snap to these. */
+  beatMarkers?: number[] | null;
   selection?: {
     clipId?: string | null;
     elementId?: string | null;
@@ -1439,6 +1443,17 @@ type VideoAIClipVisionIndex = {
   analyzedAt: string;
 };
 
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)) as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
 async function sha256Text(value: string) {
   const bytes = new TextEncoder().encode(value);
   const hash = await crypto.subtle.digest('SHA-256', bytes);
@@ -1524,6 +1539,103 @@ async function updateProjectVisionIndex(supabase: Awaited<ReturnType<typeof crea
     }, {onConflict:'project_id,clip_id'});
   }
   return loadProjectVisionIndex(supabase,userId,projectId);
+}
+
+/*
+ * Gemini TTS narration.
+ *
+ * The *-preview TTS models answer generateContent with
+ * responseModalities: ['AUDIO'] and return inlineData PCM (24kHz mono,
+ * 16-bit LE). We wrap the PCM bytes in a minimal 44-byte RIFF/WAV header
+ * so the browser decodes it as normal audio and the editor can upload it
+ * to storage like any other clip.
+ */
+function pcmToWavBlob(pcm: ArrayBuffer, sampleRate = 24000): Blob {
+  const buffer = new ArrayBuffer(44 + pcm.byteLength);
+  const view = new DataView(buffer);
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i += 1) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);            // PCM
+  view.setUint16(22, 1, true);            // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // byte rate (16-bit mono)
+  view.setUint16(32, 2, true);            // block align
+  view.setUint16(34, 16, true);           // bits per sample
+  writeString(36, 'data');
+  view.setUint32(40, pcm.byteLength, true);
+  new Uint8Array(buffer, 44).set(new Uint8Array(pcm));
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function geminiSpeech(text: string, voice: string, style?: string): Promise<Blob> {
+  const key = GEMINI_KEY();
+  if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.5-flash-preview-tts')}:generateContent`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: `Read this exactly as written, with a natural professional delivery${style ? ` (${style})` : ''}: ${text}` }],
+        }],
+        generationConfig: {
+          responseModalities: ['AUDIO'],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice || '_puck' } } },
+        },
+      }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Voice synthesis failed (${response.status}).`);
+  }
+  const data = await response.json();
+  const part = data?.candidates?.[0]?.content?.parts?.find?.((item: any) => item?.inlineData?.data || item?.inline_data?.data);
+  const base64 = part?.inlineData?.data || part?.inline_data?.data;
+  if (!base64) throw new Error('Voice synthesis returned no audio.');
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return pcmToWavBlob(bytes.buffer, 24000);
+}
+
+/*
+ * Map source-time transcript words (milliseconds) into PROJECT-time seconds
+ * through the timeline manifest: projectTime = timelineStart + (sourceTime −
+ * trimStart) × speed. This is what lets the planner place cues on the exact
+ * spoken words regardless of trims/speed/reordering.
+ */
+function mapTranscriptToProjectTime(
+  words: TranscriptWord[],
+  timeline: Array<Record<string, unknown>>,
+): Array<{ text: string; start: number; end: number }> {
+  const mapped: Array<{ text: string; start: number; end: number }> = [];
+  for (const word of words) {
+    const text = String(word.text || '').trim();
+    const sourceStart = Number(word.start) / 1000;
+    const sourceEnd = Number(word.end) / 1000;
+    if (!text || !Number.isFinite(sourceStart) || !Number.isFinite(sourceEnd)) continue;
+    const entry = timeline.find((item) => {
+      const s = Number(item.sourceStart);
+      const e = Number(item.sourceEnd);
+      return Number.isFinite(s) && Number.isFinite(e) && sourceStart >= s - 0.25 && sourceStart < e + 0.25;
+    });
+    if (!entry) continue;
+    const timelineStart = Number(entry.timelineStart) || 0;
+    const trimStart = Number(entry.sourceStart) || 0;
+    const speed = Math.max(0.05, Number(entry.speed) || 1);
+    const projectStart = timelineStart + Math.max(0, sourceStart - trimStart) * speed;
+    const projectEnd = timelineStart + Math.max(0.05, sourceEnd - trimStart) * speed;
+    mapped.push({ text, start: Number(projectStart.toFixed(3)), end: Number(projectEnd.toFixed(3)) });
+  }
+  return mapped.sort((a, b) => a.start - b.start).slice(0, 800);
 }
 
 export async function runVideoAI(
@@ -1658,6 +1770,32 @@ export async function runVideoAI(
       provider:
         'remove.bg',
       output,
+    };
+  }
+
+  if ((operation as string) === 'speak_narration') {
+    /* The planner proposes narration lines with a start time; synthesis
+       happens here so the response carries a REAL audio url and duration —
+       the executor places an AudioTrack whose length is measured, not guessed. */
+    const raw = (input.project || {}) as Record<string, unknown>;
+    const request = (raw.narrationRequest || {}) as {
+      text?: unknown;
+      start?: unknown;
+      voice?: unknown;
+      style?: unknown;
+    };
+    const text = String(request.text || '').trim().slice(0, 600);
+    if (!text) throw new Error('Narration text is empty.');
+    const blob = await geminiSpeech(text, String(request.voice || '_puck'), request.style ? String(request.style) : undefined);
+    return {
+      operation,
+      provider: 'gemini-tts',
+      output: {
+        text,
+        start: Number.isFinite(Number(request.start)) ? Number(request.start) : 0,
+        audioBase64Wav: await blobToBase64(blob),
+        mimeType: 'audio/wav',
+      },
     };
   }
 
@@ -1882,6 +2020,8 @@ export async function runVideoAI(
                   'reorder_clip',
                   'add_stock_video',
                   'add_library_audio',
+                  'add_audio_clip',
+                  'speak_narration',
                 ],
               },
 
@@ -1977,6 +2117,51 @@ export async function runVideoAI(
           )}${actions}`;
         })
         .join('\n');
+
+    /*
+     * Timing-signal preparation. Everything the prompt references below is
+     * computed BEFORE the template so declaration order is sound:
+     *   • transcript words mapped to PROJECT time (on demand when speech
+     *     matters and a provider is configured; best-effort),
+     *   • the timeline end for boundary-aware placement,
+     *   • beat markers formatted for the planner.
+     */
+    let mappedTranscriptWords: Array<{ text: string; start: number; end: number }> =
+      Array.isArray(input.transcriptWords) ? input.transcriptWords : [];
+    const speechMatters =
+      /\b(captions?|subtitles?|speech|voice|talk|said|words|narrat|dialogue)\b/i.test(String(input.prompt || '').toLowerCase());
+    if (!mappedTranscriptWords.length && speechMatters && input.mediaUrl && /^https?:\/\//i.test(input.mediaUrl) && (ASSEMBLY_KEY() || GROQ_KEY())) {
+      try {
+        const transcriptResult = ASSEMBLY_KEY()
+          ? await assemblyTranscript(input.mediaUrl, input.language)
+          : await groqTranscript(input.mediaUrl, input.language);
+        mappedTranscriptWords = mapTranscriptToProjectTime(
+          (transcriptResult.words || []) as TranscriptWord[],
+          (compactProject.timeline as Array<Record<string, unknown>>),
+        );
+      } catch {
+        /* Timing signal is best-effort. */
+      }
+    }
+
+    const timelineEnd = (() => {
+      const manifest = compactProject.timeline as Array<Record<string, unknown>>;
+      const last = manifest.length ? manifest[manifest.length - 1] : null;
+      return Number(last?.timelineEnd) || 0;
+    })();
+
+    const transcriptForPlan = (() => {
+      const words = mappedTranscriptWords;
+      if (!words.length) return 'not available';
+      return words
+        .slice(0, 500)
+        .map((word) => `[${Number(word.start).toFixed(2)}-${Number(word.end).toFixed(2)}s] ${String(word.text)}`)
+        .join(' ');
+    })();
+
+    const beatsForPlan = Array.isArray(input.beatMarkers) && input.beatMarkers.length
+      ? input.beatMarkers.slice(0, 200).map((t) => Number(t).toFixed(2)).join(', ') + ' (project seconds)'
+      : 'not available';
 
     const prompt = `
 You are the professional editing agent inside enotes Studio.
@@ -2222,6 +2407,26 @@ object = {
   reason
 }
 
+add_audio_clip
+object = {
+  url OR soundId,
+  kind,
+  start,
+  trimStart,
+  trimEnd,
+  volume,
+  fadeIn,
+  fadeOut
+}
+
+speak_narration
+object = {
+  text,
+  start,
+  voice,
+  style
+}
+
 AUDIO LIBRARY RULES:
 
 - The supplied audio library is the ONLY library you may use.
@@ -2245,9 +2450,6 @@ ADVERTISEMENT EXECUTION RULES:
 - If there are fewer than 2 usable clips, emit add_stock_video for one relevant B-roll shot. If there is only one very short clip, you may emit a second relevant B-roll shot.
 - Do not add stock footage when the user explicitly says to use only their footage.
 - Do not add library audio unless the audio rule above is satisfied.
-
-Available audio library:
-${JSON.stringify((input.audioLibrary || []).slice(0, 80))}
 
 VISUAL PROJECT INSPECTION:
 - Representative frames are supplied for the current clips. Use them to understand the actual footage.
@@ -2300,8 +2502,39 @@ TIMELINE RULES:
 - When suggesting a cut, trim, split, reorder, text cue, or keyframe, reason in project time and use the actual clip IDs.
 - Respect existing overlays, audio, muted tracks, and current transforms.
 - Do not describe a clip as a product/person/location unless the attached visual evidence supports that description.
+
+TIMING PRECISION CONTRACT (this is what separates professional timing from guesses):
+- The PROJECT TIMELINE MANIFEST is the map of when every clip actually plays: use its timelineStart/timelineEnd windows for placement decisions.
+- The TRANSCRIPT WITH WORD TIMINGS (below) tells you exactly WHEN each spoken word plays in project time. Caption/highlight cues MUST span the words they caption: start = first word start, end = last word end (+ 0.15s hold). Never invent caption timing when word timings exist.
+- The BEAT MARKERS (below) are musical downbeats in project seconds. When music exists, snap cut points, cue starts, and transition starts to the nearest beat within 0.3s. A cut on the beat reads as intentional.
+- Text cues: compute duration from CONTENT — 2.5-4s minimum for a readable phrase, longer for long copy; a cue captioning speech spans that speech; a CTA holds to the timeline end. Text must never overflow the timeline.
+- Narrative logic: an opener/title goes at 0; a CTA goes in the final 20%; emphasis captions land when the relevant words are SPOKEN or the relevant object is VISIBLE (vision frames tell you what/when approximately; transcripts tell you when precisely).
+
+AUDIO ACTIONS (new):
+- add_audio_clip: place EXISTING media on the timeline. object = { url, kind: 'music'|'voiceover', start, trimStart, trimEnd, volume, fadeIn, fadeOut }. Rules: url must be one of the supplied mediaUrls, the audio library (soundId form below), or an uploaded voiceover url; compute trimEnd from the requested play length (start + playSeconds ≤ timeline end + music tail); volume 0.5-0.9 for music under speech, 0.9-1 for standalone; fadeIn/fadeOut 0.5-1.5s unless the user says otherwise. When the user asks for 'background music', 'soundtrack', 'add the music', 'use that sound', or similar, emit this action — you may combine a library soundId with placement parameters.
+- speak_narration: synthesize a voice line and place it on the timeline. object = { text, start, voice: '_callowav'|'_puck'|'_charon'|'_kore'|'_fenrir'|'_aoede', style: optional delivery hint like 'excited, warm' }. Rules: text ≤ 600 chars, plain sentences, no markup. start must be a FREE window (not overlapping speech from the transcript); estimated speaking rate ≈ 2.6 words/second — leave ≥ 0.4s breathing room before the next scheduled sound; the system measures the REAL audio duration after synthesis and trims any overlap automatically.
+- Audio layering: music sits UNDER speech (lower music volume when narration exists), narration never overlaps transcript speech or another narration cue.
+
+TRANSCRIPT WITH WORD TIMINGS (project seconds — authoritative for when speech happens):
+${transcriptForPlan}
+
+BEAT MARKERS (project seconds — snap cuts and cue starts to these when present):
+${beatsForPlan}
 `;
 
+    /*
+     * Timing-signal contract. The planner reasons about WHEN things should
+     * appear using measured signals, not guesses:
+     *   • transcript words arrive with per-word timeline times (source time
+     *     mapped through trim/speed), so speech-aware text cues land on the
+     *     words they caption;
+     *   • beat markers arrive as project-time seconds from the music track,
+     *     so cuts and cue starts can snap to the rhythm;
+     *   • the timeline manifest gives each clip its exact window.
+     * Durations are COMPUTED from the content: a text cue spans the phrase
+     * it captions; narration cues are timed in FINAL timeline seconds;
+     * audio placements respect the timeline end.
+     */
     const visionInputs = Array.isArray(input.visionFrames)
       ? input.visionFrames
           .filter((frame) => frame && typeof frame.dataUrl === 'string' && frame.dataUrl.startsWith('data:image/'))
@@ -2523,11 +2756,6 @@ TIMELINE RULES:
      *    cues in the first part of the timeline, a closing CTA near the end
      *    — so the design slot survives with intentional-looking text. */
     const placeholderText = /^your message$/i;
-    const timelineEnd = (() => {
-      const manifest = compactProject.timeline as Array<Record<string, unknown>>;
-      const last = manifest.length ? manifest[manifest.length - 1] : null;
-      return Number(last?.timelineEnd) || 0;
-    })();
     for (const action of plannedActions) {
       if (action.type !== 'add_text_element') continue;
       const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
@@ -2634,7 +2862,9 @@ TIMELINE RULES:
             action.type === 'generate_captions' ||
             action.type === 'transcribe' ||
             action.type === 'add_stock_video' ||
-            action.type === 'add_library_audio'
+            action.type === 'add_library_audio' ||
+            action.type === 'add_audio_clip' ||
+            action.type === 'speak_narration'
           ) return true;
           if (action.clipId === 'all') return true;
           if (clipActionTypes.has(action.type)) {

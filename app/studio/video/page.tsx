@@ -1101,7 +1101,7 @@ function VideoEditor() {
     setSelectedClipId(copy.id);
   };
 
-  const applyAIActions = useCallback((actions: VideoAIEditAction[]) => {
+  const applyAIActions = useCallback(async (actions: VideoAIEditAction[]) => {
     if (!actions.length) return;
 
     /* 'all' targets mean one shared decision applied to every clip
@@ -1120,8 +1120,49 @@ function VideoEditor() {
 
     const safeActions = expanded.slice(0, 64);
 
+    /*
+     * Narration prep — ALL async work happens here, outside the sync
+     * state updater: decode the synthesized WAV, measure its REAL
+     * duration, upload to storage. The updater then only places tracks.
+     */
+    const preparedNarrations: Array<{ start: number; span: number; url: string } | null> = [];
+    for (const action of safeActions) {
+      if (action.type !== 'speak_narration' || !action.object) {
+        preparedNarrations.push(null);
+        continue;
+      }
+      const obj = action.object;
+      const wavBase64 = typeof obj.audioBase64Wav === 'string' ? obj.audioBase64Wav : '';
+      if (!wavBase64 || !meId) {
+        preparedNarrations.push(null);
+        continue;
+      }
+      try {
+        const binary = atob(wavBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        const file = new File([bytes], 'ai-narration.wav', { type: 'audio/wav' });
+        /* Duration is decoded from the actual audio, not estimated. */
+        const probe = document.createElement('audio');
+        probe.preload = 'metadata';
+        const realDuration = await new Promise<number>((resolve) => {
+          const done = () => resolve(Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0);
+          probe.onloadedmetadata = done;
+          probe.onerror = () => resolve(0);
+          probe.src = URL.createObjectURL(file);
+        });
+        const up = await uploadFile(file, 'studio-media', meId);
+        const span = realDuration > 0 ? realDuration : Math.max(2, String(obj.text || '').split(/\s+/).length / 2.6);
+        preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: up.url });
+      } catch {
+        preparedNarrations.push(null);
+      }
+    }
+
     updateProject((p) => {
       let nextProject = { ...p };
+
+      let narrationIndex = 0;
 
       for (const action of safeActions) {
         if (action.type === 'set_aspect' && typeof action.value === 'string' &&
@@ -1221,6 +1262,86 @@ function VideoEditor() {
             clips.splice(i + 1, 0, copy);
             nextProject = { ...nextProject, clips };
           }
+          continue;
+        }
+
+        if (action.type === 'add_audio_clip') {
+          const obj = action.object || {};
+          let src = typeof obj.url === 'string' && /^https?:\/\//i.test(obj.url) ? obj.url : '';
+          if (!src && typeof obj.soundId === 'string') {
+            /* The library url lives server-side; the AI supplies the id and
+               the panel's resolver (onAddLibraryAudio) already placed it.
+               Here we only resolve placement for an existing track when the
+               url is unavailable, otherwise skip — never invent a url. */
+            continue;
+          }
+          if (!src) continue;
+          const kind: 'music' | 'voiceover' = obj.kind === 'voiceover' ? 'voiceover' : 'music';
+          const duration = projectDuration(nextProject);
+          /* Snap the start to the nearest beat within 0.3s — cuts and cue
+             starts landing on the downbeat read as intentional. */
+          let start = Math.max(0, Number(obj.start) || 0);
+          if (nextProject.beatMarkers?.length) {
+            const nearest = nextProject.beatMarkers.reduce(
+              (best, beat) => (Math.abs(beat - start) < Math.abs(best - start) ? beat : best),
+              nextProject.beatMarkers[0]
+            );
+            if (Math.abs(nearest - start) <= 0.3) start = Math.max(0, nearest);
+          }
+          const trimStart = Math.max(0, Number(obj.trimStart) || 0);
+          const trimEnd = Math.max(trimStart + 0.5, Number(obj.trimEnd) || trimStart + Math.min(30, duration - start));
+          const track: AudioTrack = {
+            id: makeVideoId('ai-aud'),
+            name: kind === 'voiceover' ? 'AI voiceover' : 'AI music',
+            src,
+            provider: 'library',
+            track_id: nextProject.tracks.find((item) => item.kind === 'audio')?.id,
+            start,
+            sourceDuration: Math.max(trimEnd, trimStart + 0.5),
+            trimStart,
+            trimEnd: Math.min(trimEnd, trimStart + 600),
+            volume: Math.max(0.05, Math.min(1, Number(obj.volume) || (kind === 'music' ? 0.6 : 0.95))),
+            fadeIn: Math.max(0, Math.min(3, Number(obj.fadeIn) || 0.6)),
+            fadeOut: Math.max(0, Math.min(3, Number(obj.fadeOut) || 1)),
+            kind,
+          };
+          nextProject = { ...nextProject, audio: [...nextProject.audio, track] };
+          continue;
+        }
+
+        if (action.type === 'speak_narration') {
+          /* Audio was prepared before this updater ran (decoded, measured,
+             uploaded). Here we only place the track — measured duration,
+             snapped to beats, trimmed to the timeline. */
+          const prepared = preparedNarrations[narrationIndex];
+          narrationIndex += 1;
+          if (!prepared) continue;
+          let start = prepared.start;
+          if (nextProject.beatMarkers?.length) {
+            const nearest = nextProject.beatMarkers.reduce(
+              (best, beat) => (Math.abs(beat - start) < Math.abs(best - start) ? beat : best),
+              nextProject.beatMarkers[0]
+            );
+            if (Math.abs(nearest - start) <= 0.3) start = Math.max(0, nearest);
+          }
+          const timelineEnd = projectDuration(nextProject);
+          const trimmedSpan = Math.min(prepared.span, Math.max(0.5, timelineEnd - start));
+          const track: AudioTrack = {
+            id: makeVideoId('ai-tts'),
+            name: 'AI narration',
+            src: prepared.url,
+            provider: 'upload',
+            track_id: nextProject.tracks.find((item) => item.kind === 'audio')?.id,
+            start,
+            sourceDuration: prepared.span,
+            trimStart: 0,
+            trimEnd: trimmedSpan,
+            volume: 0.95,
+            fadeIn: 0.15,
+            fadeOut: 0.4,
+            kind: 'voiceover',
+          };
+          nextProject = { ...nextProject, audio: [...nextProject.audio, track] };
           continue;
         }
 
