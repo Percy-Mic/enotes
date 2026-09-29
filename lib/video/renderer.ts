@@ -515,6 +515,7 @@ function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOf
 }
 
 function effectFilterCss(clip: VideoClip, timeIn: number): string {
+  const i = Math.min(1, Math.max(0, clip.effect_intensity ?? 1));
   switch (clip.effect) {
     case 'vhs': return 'contrast(' + (1 + 0.08 * i) + ') saturate(' + (1 - 0.1 * i) + ') sepia(' + (0.12 * i) + ')';
     case 'dream': return 'brightness(' + (1 + 0.08 * i) + ') saturate(' + (1 + 0.08 * i) + ') blur(' + (0.7 * i) + 'px)';
