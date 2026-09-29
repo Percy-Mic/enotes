@@ -177,7 +177,7 @@ async function assemblyTranscript(mediaUrl: string, language?: string | null) {
     body: JSON.stringify({
       audio_url: mediaUrl,
       language_code: language || undefined,
-      speech_models: [process.env.ASSEMBLYAI_MODEL || 'universal-3-5-pro'],
+      speech_models: process.env.ASSEMBLYAI_MODEL ? [process.env.ASSEMBLYAI_MODEL] : ['universal-3-5-pro', 'universal-2'],
       punctuate: true,
       format_text: true,
       speaker_labels: true,
