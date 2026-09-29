@@ -54,6 +54,112 @@ export type VideoAICaption = {
   speaker?: string | null;
 };
 
+type VisionFrame = {
+  clipId: string;
+  time: number;
+  dataUrl: string;
+  label: string;
+};
+
+async function extractFrame(video: HTMLVideoElement, canvas: HTMLCanvasElement, time: number, label: string) {
+  await new Promise<void>((resolve, reject) => {
+    const onSeeked = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('Video frame could not be decoded.'));
+    };
+    const cleanup = () => {
+      video.removeEventListener('seeked', onSeeked);
+      video.removeEventListener('error', onError);
+    };
+    video.addEventListener('seeked', onSeeked, { once: true });
+    video.addEventListener('error', onError, { once: true });
+    try {
+      video.currentTime = Math.max(0, Math.min(Math.max(0, video.duration - 0.05), time));
+    } catch {
+      cleanup();
+      reject(new Error('Video frame seek failed.'));
+    }
+  });
+
+  const maxDimension = 512;
+  const scale = Math.min(1, maxDimension / Math.max(video.videoWidth || 1, video.videoHeight || 1));
+  canvas.width = Math.max(1, Math.round((video.videoWidth || 640) * scale));
+  canvas.height = Math.max(1, Math.round((video.videoHeight || 360) * scale));
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas is unavailable.');
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  return {
+    time,
+    dataUrl: canvas.toDataURL('image/jpeg', 0.68),
+    label,
+  };
+}
+
+async function extractProjectVisionFrames(project: unknown, selectedClipId?: string | null): Promise<VisionFrame[]> {
+  const raw = project && typeof project === 'object'
+    ? project as { clips?: Array<Record<string, unknown>> }
+    : {};
+  const clips = Array.isArray(raw.clips) ? raw.clips : [];
+  const frames: VisionFrame[] = [];
+
+  for (const clip of clips.slice(0, 8)) {
+    const clipId = typeof clip.id === 'string' ? clip.id : '';
+    const src = typeof clip.src === 'string' ? clip.src : '';
+    if (!clipId || !/^https?:\\/\\//i.test(src)) continue;
+
+    const sourceDuration = Math.max(0.1, Number(clip.sourceDuration) || 0.1);
+    const trimStart = Math.max(0, Math.min(sourceDuration - 0.05, Number(clip.trimStart) || 0));
+    const trimEnd = Math.max(trimStart + 0.05, Math.min(sourceDuration, Number(clip.trimEnd) || sourceDuration));
+    const midpoint = trimStart + (trimEnd - trimStart) * 0.5;
+    const times = selectedClipId === clipId
+      ? [trimStart, midpoint, trimEnd]
+      : [trimStart + (trimEnd - trimStart) * 0.18, midpoint];
+
+    const video = document.createElement('video');
+    video.crossOrigin = 'anonymous';
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    video.src = src;
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const onLoaded = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error('Video could not be loaded.')); };
+        const cleanup = () => {
+          video.removeEventListener('loadedmetadata', onLoaded);
+          video.removeEventListener('error', onError);
+        };
+        video.addEventListener('loadedmetadata', onLoaded, { once: true });
+        video.addEventListener('error', onError, { once: true });
+        video.load();
+      });
+
+      const canvas = document.createElement('canvas');
+      for (let index = 0; index < times.length; index += 1) {
+        try {
+          const frame = await extractFrame(video, canvas, times[index], index === 0 ? 'opening' : index === 1 ? 'middle' : 'ending');
+          frames.push({ clipId, ...frame });
+        } catch {
+          // One undecodable frame should not prevent the other clips from being inspected.
+        }
+      }
+    } catch {
+      // CORS/private media can prevent canvas inspection; metadata is still sent to the AI.
+    } finally {
+      video.removeAttribute('src');
+      video.load();
+    }
+  }
+
+  return frames.slice(0, 18);
+}
+
 type Props = {
   projectId?: string | null;
   project: unknown;
@@ -147,6 +253,10 @@ export default function VideoAIStudio({
     setConversation((items) => [...items, { role: 'user', text }]);
 
     try {
+      // Inspect the actual footage before asking the model to edit. The frames
+      // are extracted from the same project clips currently visible in Studio.
+      const visionFrames = await extractProjectVisionFrames(project, selectedClipId);
+
       const response = await fetch('/api/video/ai', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -171,6 +281,7 @@ export default function VideoAIStudio({
             clipId: selectedClipId,
             elementId: selectedElementId,
           },
+          visionFrames,
           conversation: conversation.slice(-10).map((message) => ({
             role: message.role,
             text: message.text,
