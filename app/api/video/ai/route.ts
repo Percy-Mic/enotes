@@ -51,9 +51,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ ...result, jobId });
   } catch (error) {
     if (jobId) await finishAIJob(jobId, { status: 'failed', error: error instanceof Error ? error.message : 'AI request failed.' });
+    const message = error instanceof Error ? error.message : 'AI request failed.';
+    const status = /required|not configured|signed in|operation is required|Select an imported/i.test(message) ? 400 : 502;
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'AI request failed.', jobId },
-      { status: 400 },
+      { error: message, jobId },
+      { status },
     );
   }
 }
