@@ -101,6 +101,7 @@ function actionLabel(action: VideoAIEditAction) {
     case 'split_clip': return 'Clip split';
     case 'reorder_clip': return 'Clip reordered';
     case 'add_stock_video': return `Stock footage → ${String(action.object?.query || 'selected topic')}`;
+    case 'add_library_audio': return `Library audio → ${String(action.object?.soundId || 'selected sound')}`;
     default: return 'Edit applied';
   }
 }
