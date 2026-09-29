@@ -3870,7 +3870,7 @@ function VideoEditor() {
             className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]"
           />
           <section
-            className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-50 max-h-[72dvh] overflow-hidden rounded-t-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:top-[57px] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
+            className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-50 flex h-[72dvh] max-h-[calc(100dvh-64px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:top-[57px] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
             aria-label={`${TOOL_LABELS[tool]} tools`}
           >
             <div className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-3">
@@ -3889,7 +3889,7 @@ function VideoEditor() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="h-[calc(72dvh-48px)] overflow-y-auto overscroll-contain px-3 py-3 pb-6 md:h-[calc(100dvh-57px)]">
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:h-auto">
 
         {tool === 'media' && (
           <div className="space-y-3">
