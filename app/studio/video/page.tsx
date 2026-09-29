@@ -1044,6 +1044,22 @@ function VideoEditor() {
                 Object.entries(action.object).filter(([, value]) => Number.isFinite(Number(value))).map(([key, value]) => [key, Number(value)])
               ) };
             }
+            if (action.type === 'fit_clip') {
+              const mode = String(action.value || 'contain') === 'cover' ? 'cover' : 'contain';
+              const sourceAspect = next.source_width && next.source_height
+                ? next.source_width / next.source_height
+                : project.canvas.width / Math.max(1, project.canvas.height);
+              const effectiveAspect = croppedAspect(sourceAspect, next.transform.crop);
+              const cover = coverFit(project.canvas.width, project.canvas.height, effectiveAspect);
+              const fitScale = mode === 'contain'
+                ? Math.min(project.canvas.width / Math.max(1, cover.w), project.canvas.height / Math.max(1, cover.h))
+                : 1;
+              next.transform = {
+                ...DEFAULT_TRANSFORM,
+                crop: next.transform.crop,
+                scale: Math.max(0.05, Math.min(4, fitScale)),
+              };
+            }
           }
           return next;
         }),
