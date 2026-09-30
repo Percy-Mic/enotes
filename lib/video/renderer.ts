@@ -515,18 +515,27 @@ function applyMaskClip(ctx: CanvasRenderingContext2D, mask: MaskSpec | undefined
   ctx.save();
   ctx.translate(W / 2, H / 2);
   ctx.rotate(((mask.rotation || 0) * Math.PI) / 180);
-  const amount = Math.max(0, Math.min(1, mask.amount ?? 0.5));
-  ctx.beginPath();
-  if (mask.shape === 'ellipse') ctx.ellipse(0, 0, W * .5 * amount, H * .5 * amount, 0, 0, Math.PI * 2);
-  else if (mask.shape === 'rectangle') ctx.rect(-W * .5 * amount, -H * .5 * amount, W * amount, H * amount);
-  else if (mask.shape === 'split') ctx.rect(-W/2, -H/2, W*amount, H);
-  else if (mask.shape === 'shutter') { const gap=H*.5*amount; ctx.rect(-W/2,-gap,W,gap); ctx.rect(-W/2,0,W,gap); }
-  else ctx.rect(-W/2,-H/2,W,H);
-  if (mask.invert) { ctx.rect(-W/2,-H/2,W,H); }
-  ctx.clip();
+  const amount = Math.max(0.05, Math.min(1, mask.amount ?? 0.5));
+  const path = new Path2D();
+  const addShape = (p: Path2D) => {
+    if (mask.shape === 'ellipse') p.ellipse(0, 0, W * .5 * amount, H * .5 * amount, 0, 0, Math.PI * 2);
+    else if (mask.shape === 'rectangle') p.rect(-W * .5 * amount, -H * .5 * amount, W * amount, H * amount);
+    else if (mask.shape === 'split') p.rect(-W/2, -H/2, W*amount, H);
+    else if (mask.shape === 'shutter') { const gap=H*.5*amount; p.rect(-W/2,-gap,W,gap); p.rect(-W/2,0,W,gap); }
+    else p.rect(-W/2,-H/2,W,H);
+  };
+  if (mask.invert) {
+    path.rect(-W/2,-H/2,W,H);
+    addShape(path);
+    ctx.clip(path, 'evenodd');
+  } else {
+    addShape(path);
+    ctx.clip(path);
+  }
+  /* Feather is represented as a subtle edge overlay in the compositor.
+     Keeping the geometric clip exact avoids leaking pixels outside the mask. */
   return true;
 }
-
 function loadImage(src: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(src);
   if (cached && cached.complete) return Promise.resolve(cached);
