@@ -499,10 +499,21 @@ function VideoEditor() {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'The AI operation failed.');
-      const findUrl = (value: unknown): string | null => {
-        if (typeof value === 'string' && /^https?:\/\//i.test(value)) return value;
-        if (Array.isArray(value)) { for (const item of value) { const found = findUrl(item); if (found) return found; } }
-        if (value && typeof value === 'object') { for (const item of Object.values(value as Record<string, unknown>)) { const found = findUrl(item); if (found) return found; } }
+      const findUrl = (root: unknown): string | null => {
+        const pending: unknown[] = [root];
+        while (pending.length > 0) {
+          const value = pending.pop();
+          if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
+            return value;
+          }
+          if (Array.isArray(value)) {
+            pending.push(...value);
+            continue;
+          }
+          if (value && typeof value === 'object') {
+            pending.push(...Object.values(value as Record<string, unknown>));
+          }
+        }
         return null;
       };
       let url = findUrl(data?.output);
