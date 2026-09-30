@@ -6764,13 +6764,13 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
             <label className="space-y-1">
               <span className="text-white/60">Font</span>
               <select value={el.font_family || 'Poppins, sans-serif'} onChange={(e) => onChange({ font_family: e.target.value }, 'Text font')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Font family">
-                {['Poppins, sans-serif', 'Inter, sans-serif', 'Georgia, serif', 'Courier New, monospace'].map((f) => <option key={f} value={f} className="text-black">{f.split(',')[0]}</option>)}
+                {['Poppins, sans-serif', 'Inter, sans-serif', 'Arial, sans-serif', 'Helvetica, sans-serif', 'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Impact, sans-serif'].map((f) => <option key={f} value={f} className="text-black">{f.split(',')[0]}</option>)}
               </select>
             </label>
             <label className="space-y-1">
               <span className="text-white/60">Weight</span>
               <select value={el.font_weight || 700} onChange={(e) => onChange({ font_weight: Number(e.target.value) }, 'Text weight')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Font weight">
-                {[400, 600, 700, 800].map((w) => <option key={w} value={w} className="text-black">{w}</option>)}
+                {[300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w} className="text-black">{w}</option>)}
               </select>
             </label>
             <div className="space-y-1">
@@ -6809,6 +6809,28 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                 aria-label="Text background color"
               />
             </label>
+            <div className="grid grid-cols-2 gap-2">
+              <Slider label="Stroke width" min={0} max={16} step={1} value={el.stroke_width || 2} onChange={(v) => onChange({ stroke_width: v }, 'Stroke width', `stw-${el.id}`)} />
+              <Slider label="Shadow blur" min={0} max={40} step={1} value={el.shadow_blur ?? 10} onChange={(v) => onChange({ shadow_blur: v }, 'Shadow blur', `shb-${el.id}`)} />
+              <Slider label="Shadow opacity" min={0} max={1} step={0.05} value={el.shadow_opacity ?? 0.55} onChange={(v) => onChange({ shadow_opacity: v }, 'Shadow opacity', `sho-${el.id}`)} />
+              <Slider label="Letter spacing" min={-4} max={16} step={0.5} value={el.letter_spacing ?? 0} onChange={(v) => onChange({ letter_spacing: v }, 'Letter spacing', `ls-${el.id}`)} />
+              <Slider label="Line height" min={0.8} max={2} step={0.05} value={el.line_height ?? 1.25} onChange={(v) => onChange({ line_height: v }, 'Line height', `lh-${el.id}`)} />
+              <Slider label="Background radius" min={0} max={80} step={2} value={el.background_radius ?? 8} onChange={(v) => onChange({ background_radius: v }, 'Background radius', `br-${el.id}`)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1">
+                <span className="text-white/60">Case</span>
+                <select value={el.text_case || 'none'} onChange={(e) => onChange({ text_case: e.target.value as TimelineElement['text_case'] }, 'Text case')} className="w-full rounded bg-white/10 px-2 py-1.5 text-xs">
+                  {['none','uppercase','lowercase','capitalize'].map((v) => <option key={v} value={v} className="text-black">{v}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-white/60">Text effect</span>
+                <select value={el.text_effect || 'none'} onChange={(e) => onChange({ text_effect: e.target.value as TimelineElement['text_effect'] }, 'Text effect')} className="w-full rounded bg-white/10 px-2 py-1.5 text-xs">
+                  {['none','neon','glow','3d','hollow','gradient','retro','glitch'].map((v) => <option key={v} value={v} className="text-black">{v}</option>)}
+                </select>
+              </label>
+            </div>
             <div className="space-y-1">
               <span className="text-white/60">Effects</span>
               <div className="flex gap-1">
@@ -6831,7 +6853,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
             <label className="space-y-1">
               <span className="text-white/60">Animation</span>
               <select value={el.animation || 'none'} onChange={(e) => onChange({ animation: e.target.value as TimelineElement['animation'] }, 'Text animation')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Text animation">
-                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'rotate-in', 'elastic', 'mask-wipe'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
+                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'blur-up', 'blur-down', 'fade-up', 'fade-down', 'rotate-in', 'elastic', 'elastic-in', 'elastic-out', 'flip-in', 'flip-out', 'glitch-in', 'glitch-out', 'wave', 'tracking', 'mask-wipe', 'split-reveal', 'typewriter-reveal'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
               </select>
             </label>
           </div>
