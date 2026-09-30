@@ -21,7 +21,7 @@ import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
   placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipAdjustments, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
-  type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type VideoClip, type VideoProject,
+  type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject,
 } from '@/lib/video/project';
 import {
   EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
@@ -2289,6 +2289,45 @@ function VideoEditor() {
   }, true);
   const [pointerDragId, setPointerDragId] = useState<string | null>(null);
 
+  const snapTimelineTime = useCallback((time: number, threshold = 0.12) => {
+    if (!snapEnabled) return Math.max(0, time);
+    const candidates: number[] = [0, duration];
+    let acc = 0;
+    for (const clip of project.clips) {
+      candidates.push(acc, acc + clipDuration(clip));
+      acc += clipDuration(clip);
+    }
+    for (const el of project.elements) candidates.push(el.start, el.end);
+    for (const audio of project.audio) {
+      const len = Math.max(0.1, audio.trimEnd - audio.trimStart);
+      candidates.push(audio.start, audio.start + len);
+    }
+    for (const marker of project.markers || []) candidates.push(marker.time);
+    for (const beat of project.beatMarkers || []) candidates.push(beat);
+    let closest = time;
+    let distance = threshold;
+    for (const candidate of candidates) {
+      const d = Math.abs(candidate - time);
+      if (d < distance) { closest = candidate; distance = d; }
+    }
+    return Math.max(0, closest);
+  }, [duration, project.audio, project.beatMarkers, project.clips, project.elements, project.markers, snapEnabled]);
+
+  const addTimelineMarker = useCallback(() => {
+    const time = snapTimelineTime(playheadRef.current, 0.2);
+    const marker: TimelineMarker = {
+      id: makeVideoId('marker'),
+      time,
+      label: `Marker ${(docRef.current.project.markers?.length || 0) + 1}`,
+    };
+    updateProject((p) => ({ ...p, markers: [...(p.markers || []), marker] }), 'Add timeline marker');
+    notify(`Marker added at ${fmt(time)}.`);
+  }, [notify, snapTimelineTime, updateProject]);
+
+  const removeTimelineMarker = useCallback((id: string) => {
+    updateProject((p) => ({ ...p, markers: (p.markers || []).filter((m) => m.id !== id) }), 'Delete timeline marker');
+  }, [updateProject]);
+
   /** Convert a clientX into timeline seconds (accounts for scroll + labels). */
   const timeAtClientX = useCallback(
     (clientX: number): number => {
@@ -2478,9 +2517,7 @@ function VideoEditor() {
       moved = true;
       const dx = (ev.clientX - startX) / Math.max(1, pxPerSec);
       let nextStart = Math.max(0, Math.min(maxStart, startStart + dx));
-      /* magnetic whole-second snap */
-      const r = Math.round(nextStart);
-      if (Math.abs(nextStart - r) < 0.08) nextStart = r;
+      nextStart = snapTimelineTime(nextStart);
       updateElement(el.id, { start: nextStart, end: nextStart + len }, 'Move overlay on timeline', `tlmove-${el.id}`);
 
       /* vertical: switch lane when the finger crosses one */
@@ -2573,7 +2610,7 @@ function VideoEditor() {
       moved = true;
 
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
-      const ns = Math.max(0, startStart + d);
+      const ns = snapTimelineTime(Math.max(0, startStart + d));
       const lanes = laneRects();
       const currentLane = lanes.find((l) => l.id === currentTrackId);
       const belowLastLane = lanes.length > 0 && ev.clientY > Math.max(...lanes.map((l) => l.bottom));
@@ -4622,6 +4659,23 @@ function VideoEditor() {
                 <span className="px-1 text-[10px] tabular-nums text-white/50">{Math.round(zoom * 100)}%</span>
                 <button onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))} disabled={zoom >= 3} aria-label="Zoom in" className="px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40">+</button>
               </div>
+              <button
+                onClick={() => setSnapEnabled((v) => !v)}
+                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${snapEnabled ? 'bg-[#E5798F]/20 text-[#FFB6C1]' : 'bg-white/10 text-white/55'}`}
+                aria-pressed={snapEnabled}
+                title="Snap clips and overlays to nearby clip edges, markers and beats"
+              >Snap</button>
+              <button
+                onClick={() => setRippleEnabled((v) => !v)}
+                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${rippleEnabled ? 'bg-[#E5798F]/20 text-[#FFB6C1]' : 'bg-white/10 text-white/55'}`}
+                aria-pressed={rippleEnabled}
+                title="Ripple delete selected clips"
+              >Ripple</button>
+              <button onClick={addTimelineMarker} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add marker at playhead">
+                <Plus className="h-3.5 w-3.5" /> Marker
+              </button>
+              <button onClick={() => history.undo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Undo"><Undo2 className="h-3.5 w-3.5" /></button>
+              <button onClick={() => history.redo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Redo"><Redo2 className="h-3.5 w-3.5" /></button>
               <button onClick={addEditorTrack} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
                 <Plus className="h-3.5 w-3.5" /> Track
               </button>
@@ -4883,6 +4937,65 @@ function VideoEditor() {
                   </div>
                 );
               })}
+
+              {/* User timeline markers — draggable/seekable editing landmarks. */}
+              {(project.markers || []).map((marker) => (
+                <button
+                  key={marker.id}
+                  type="button"
+                  className="absolute inset-y-0 z-35 w-4 -translate-x-1/2"
+                  style={{ left: LABEL_W + marker.time * pxPerSec }}
+                  onClick={() => seekTo(marker.time)}
+                  onDoubleClick={() => removeTimelineMarker(marker.id)}
+                  title={`${marker.label} · ${fmt(marker.time)} · double-click to remove`}
+                  aria-label={`${marker.label} at ${fmt(marker.time)}`}
+                >
+                  <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-amber-300/80" />
+                  <span className="absolute left-1/2 top-0 -translate-x-1/2 rounded-b bg-amber-300 px-1 py-0.5 text-[7px] font-bold text-black shadow">
+                    M
+                  </span>
+                </button>
+              ))}
+
+              {(() => {
+                const source = selectedClip
+                  ? { label: 'KEYFRAMES · MAIN', keyframes: selectedClip.keyframes || {}, length: Math.max(0.2, clipDuration(selectedClip)) }
+                  : selectedElement
+                    ? { label: 'KEYFRAMES · ' + (selectedElement.kind === 'text' ? 'TEXT' : selectedElement.kind.toUpperCase()), keyframes: selectedElement.keyframes || {}, length: Math.max(0.2, selectedElement.end - selectedElement.start) }
+                    : null;
+                if (!source || !Object.keys(source.keyframes).length) return null;
+                return (
+                  <div className="relative border-b border-white/10 bg-[#15120c]" data-lane-id="__keyframes">
+                    <div className="sticky left-0 z-30 flex min-h-10 w-16 shrink-0 items-center border-r border-amber-300/15 bg-[#111]/95 px-1.5 text-[7px] font-bold text-amber-200/70 backdrop-blur">
+                      KF
+                    </div>
+                    <div className="absolute inset-y-0 left-16 right-0">
+                      {Object.entries(source.keyframes).filter(([, list]) => Array.isArray(list) && list.length).map(([prop, list]) => (
+                        <div key={prop} className="relative h-5 border-b border-white/[0.04]">
+                          <span className="absolute left-1 top-0.5 z-10 rounded bg-black/60 px-1 text-[7px] text-white/45">
+                            {KEYFRAMABLE_PROPERTIES.find((p) => p.id === prop)?.label || prop}
+                          </span>
+                          {(list || []).map((kf) => (
+                            <button
+                              key={kf.id}
+                              type="button"
+                              className="absolute top-1/2 z-20 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] bg-amber-300 shadow-[0_0_5px_rgba(252,211,77,.6)]"
+                              style={{ left: `${(Math.max(0, Math.min(source.length, kf.t)) / source.length) * 100}%` }}
+                              onClick={() => seekTo(selectedClip ? (() => {
+                                let acc = 0;
+                                for (const clip of project.clips) { if (clip.id === selectedClip.id) break; acc += clipDuration(clip); }
+                                return acc + kf.t;
+                              })() : selectedElement!.start + kf.t)}
+                              title={`${KEYFRAMABLE_PROPERTIES.find((p) => p.id === prop)?.label || prop} · ${kf.t.toFixed(2)}s`}
+                              aria-label={`Keyframe ${prop} at ${kf.t.toFixed(2)} seconds`}
+                            />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* detected beat markers */}
               {(project.beatMarkers || []).filter((t) => t >= 0 && t <= duration).map((t) => (
