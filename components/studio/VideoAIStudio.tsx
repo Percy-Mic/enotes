@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import {
   Bot,
@@ -252,6 +252,32 @@ export default function VideoAIStudio({
   }>>([]);
   const [lastCaptions, setLastCaptions] = useState<VideoAICaption[]>([]);
   const [lastTranscript, setLastTranscript] = useState<string>('');
+  const [conversationId, setConversationId] = useState<string | null>(null);
+
+  /* Restore persisted chat history when the panel opens for a project. */
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/video/ai?projectId=${encodeURIComponent(projectId)}`);
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        if (typeof data.conversationId === 'string') setConversationId(data.conversationId);
+        const msgs = Array.isArray(data.messages) ? data.messages : [];
+        if (msgs.length) {
+          setConversation(msgs.map((m: { role: string; content: string; actions?: unknown[] }) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            text: String(m.content || ''),
+            actions: Array.isArray(m.actions) ? (m.actions as VideoAIEditAction[]) : undefined,
+          })));
+        }
+      } catch {
+        /* History restore is best-effort. */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   const selectedLabel = useMemo(() => {
     if (selectedClipId) return 'Selected video clip';
@@ -298,6 +324,7 @@ export default function VideoAIStudio({
             elementId: selectedElementId,
           },
           visionFrames,
+          conversationId,
           beatMarkers: Array.isArray((project as { beatMarkers?: number[] })?.beatMarkers)
             ? (project as { beatMarkers?: number[] }).beatMarkers
             : null,
@@ -324,6 +351,7 @@ export default function VideoAIStudio({
 
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'The editing assistant could not complete that request.');
+      if (typeof data?.conversationId === 'string') setConversationId(data.conversationId);
 
       const output = data?.output || {};
       const actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];

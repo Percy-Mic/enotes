@@ -3153,6 +3153,65 @@ Return {"add": [...], "fixes": [{"index": <0-based index into the plan>, "action
       /* QA is enhancement, never a hard dependency. */
     }
 
+    /*
+     * Copywriting pass — the planner tier (flash-lite) often emits blank or
+     * placeholder text cues even with full visual context, which used to
+     * render as generic "YOUR STORY". One dedicated call to the stronger
+     * text model writes the ACTUAL copy per cue, grounded in the request,
+     * the visual index, and each cue's timing/role.
+     */
+    const placeholderTextRe = /^(your story|watch more|your message)$/i;
+    const textCueIdxs: number[] = [];
+    sanitizedActions.forEach((action: any, idx: number) => {
+      if (action.type !== 'add_text_element') return;
+      const t = String(action.object?.text || '').trim();
+      if (!t || placeholderTextRe.test(t)) textCueIdxs.push(idx);
+    });
+    if (textCueIdxs.length) {
+      try {
+        const copySchema = {
+          type: 'object',
+          properties: {
+            copies: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { index: { type: 'integer' }, text: { type: 'string' } },
+                required: ['index', 'text'],
+              },
+            },
+          },
+          required: ['copies'],
+        };
+        const cueContext = textCueIdxs.map((idx) => {
+          const a: any = sanitizedActions[idx];
+          const start = Number(a.object?.start) || 0;
+          const role = timelineEnd > 0 && start >= timelineEnd * 0.6 ? 'closing CTA' : start <= 3 ? 'opening hook/title' : 'mid-video emphasis';
+          return { index: idx, start, end: Number(a.object?.end) || start + 3, role };
+        });
+        const copy = await geminiStructured(
+          `You are the copywriter for a video edit. Write the EXACT on-screen text for each cue below.\n\n` +
+          `User request: ${String(input.prompt || '').slice(0, 300)}\n\n` +
+          `What is visible in the footage (visual index): ${JSON.stringify(persistedVisionIndex.slice(0, 20).map((v) => ({ desc: v.description, tags: (v as { visualTags?: unknown }).visualTags })))}\n\n` +
+          `Spoken words and when (transcript): ${JSON.stringify(transcriptForPlan).slice(0, 1200)}\n\n` +
+          `Cues needing copy (index refers to the actions array): ${JSON.stringify(cueContext)}\n\n` +
+          `Rules: max 6 words per cue (8 for a CTA), UPPERCASE for openers/CTAs, sentence case for captions; copy must match what the footage actually shows and the user's request; no quotes, no emojis, no hashtags. Return one entry per cue index.`,
+          copySchema,
+          process.env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash',
+        );
+        const copies = Array.isArray((copy as any)?.copies) ? (copy as any).copies : [];
+        for (const c of copies) {
+          const idx = Number(c?.index);
+          const text = String(c?.text || '').trim().replace(/["“”]/g, '').slice(0, 80);
+          if (Number.isInteger(idx) && idx >= 0 && idx < sanitizedActions.length && text && !placeholderTextRe.test(text)) {
+            sanitizedActions[idx] = { ...sanitizedActions[idx], object: { ...sanitizedActions[idx].object, text } };
+          }
+        }
+      } catch {
+        /* Copy enhancement is optional; cues keep their neutral fallback. */
+      }
+    }
+
     await rememberUserInstruction(
       supabase,
       auth.user.id,
