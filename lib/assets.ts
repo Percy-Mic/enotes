@@ -467,6 +467,108 @@ export const EMOJI_CATEGORY_LABELS: Record<EmojiCategory, string> = {
 };
 
 /* ============================================================
+   EMOJI KEYWORD SEARCH — real names ('laugh' → 😂), not just
+   category labels. Mostly maps to members of EMOJI_GROUPS above;
+   a few standard glyphs beyond the browse grid render fine from
+   search results. The picker also falls back to category labels
+   and glyph matching, so every emoji stays reachable.
+   ============================================================ */
+
+export const EMOJI_KEYWORDS: Record<string, string[]> = {
+  /* faces & feelings */
+  laugh: ['😂', '🤣'], laughing: ['😂', '🤣'], lol: ['😂', '🤣'], haha: ['😂', '🤣'],
+  smile: ['😀', '😃', '😄', '😊', '🙂'], happy: ['😀', '😊', '🥰', '😍', '🥳'], grin: ['😁', '😄'],
+  wink: ['😉'], blush: ['😊', '☺️'], love: ['❤️', '😍', '🥰', '💕', '💖', '💘', '💌'], heart: ['❤️', '💗', '💖', '💕', '💚', '💙'],
+  kiss: ['😘', '😗', '😚', '💋'], cry: ['😢', '😭'], crying: ['😢', '😭'], sob: ['😭'], sad: ['😢', '😞', '😔', '☹️', '🙁'],
+  angry: ['😠', '😡', '🤬'], mad: ['😠', '😡'], rage: ['😡', '🤬'], tired: ['😴', '🥱'], sleepy: ['😴', '😪'], sleep: ['😴', '💤'],
+  sick: ['🤒', '🤕', '🤢'], thinking: ['🤔', '🧐'], confused: ['😕', '😟', '🤨'], surprised: ['😮', '😯', '😲'],
+  shocked: ['😱', '😲', '🤯'], scared: ['😨', '😰', '😱'], afraid: ['😨', '😰'], cool: ['😎', '🆒'], nerd: ['🤓'],
+  boring: ['🥱'], yawn: ['🥱'], hungry: ['😋', '🤤'], delicious: ['😋', '🤤'], dizzy: ['😵', '🥴'], drunk: ['🥴', '🍻'],
+  evil: ['😈', '👿'], ghost: ['👻'], skull: ['💀', '☠️'], dead: ['💀'], robot: ['🤖'], alien: ['👽'], clown: ['🤡'],
+  poop: ['💩'], party: ['🥳', '🎉', '🎊'], excited: ['🤩', '🥳'], star_struck: ['🤩'], shy: ['😊', '🥺'],
+  please: ['🥺'], worried: ['😟', '😔'], shy_smile: ['☺️'], medicine: ['💊', '🩺'], mask: ['😷'],
+  /* gestures */
+  thumbs_up: ['👍'], thumbsdown: ['👎'], thumb: ['👍', '👎'], ok: ['👌', '🆗'], okay: ['👌', '🆗'],
+  wave: ['👋'], hello: ['👋', '🤚'], hi: ['👋'], bye: ['👋'], clap: ['👏'], clapping: ['👏'],
+  pray: ['🙏'], thanks: ['🙏', '🤝'], thank_you: ['🙏'], highfive: ['🙌'], high_five: ['🙌'],
+  peace: ['✌️', '☮️'], victory: ['✌️'], flex: ['💪'], strong: ['💪'], muscle: ['💪'], point: ['👉', '👈', '👆', '👇'],
+  handshake: ['🤝'], eyes: ['👀'], eye: ['👀', '👁️'], tongue: ['👅', '😛'], mouth: ['👄'], wave_goodbye: ['👋'],
+  /* animals & nature */
+  dog: ['🐶', '🐕', '🐩'], puppy: ['🐶'], cat: ['🐱', '🐈'], kitten: ['🐱'], mouse: ['🐭'], rabbit: ['🐰'], bunny: ['🐰'],
+  fox: ['🦊'], bear: ['🐻'], panda: ['🐼'], koala: ['🐨'], tiger: ['🐯'], lion: ['🦁'], cow: ['🐮'], pig: ['🐷'],
+  frog: ['🐸'], monkey: ['🐵', '🐒'], chicken: ['🐓'], bird: ['🐦', '🦜'], owl: ['🦉'], bat: ['🦇'], wolf: ['🐺'],
+  horse: ['🐴'], unicorn: ['🦄'], bee: ['🐝'], butterfly: ['🦋'], snail: ['🐌'], turtle: ['🐢'], snake: ['🐍'],
+  fish: ['🐟', '🐠'], dolphin: ['🐬'], whale: ['🐳', '🐋'], shark: ['🦈'], octopus: ['🐙'], crab: ['🦀'],
+  elephant: ['🐘'], zebra: ['🦓'], giraffe: ['🦒'], kangaroo: ['🦘'], sheep: ['🐑'], goat: ['🐐'], deer: ['🦌'],
+  dragon: ['🐉', '🐲'], paw: ['🐾'], tree: ['🌳', '🌲', '🌴'], christmas_tree: ['🎄'], plant: ['🌱', '🪴'],
+  flower: ['🌺', '🌻', '🌹', '🌷', '🌸'], rose: ['🌹'], sunflower: ['🌻'], bouquet: ['💐'], leaf: ['🍃', '🍂'],
+  clover: ['☘️', '🍀'], moon: ['🌙'], star: ['⭐', '🌟', '✨'], sparkles: ['✨'], lightning: ['⚡'], fire: ['🔥'],
+  flame: ['🔥'], rainbow: ['🌈'], sun: ['☀️'], sunny: ['☀️'], cloud: ['☁️', '⛅'], rain: ['🌧️'], storm: ['⛈️'],
+  snow: ['❄️'], wave_ocean: ['🌊'], ocean: ['🌊'], sea: ['🌊'], water: ['💧', '🌊'], cactus: ['🌵'],
+  /* food & drink */
+  apple: ['🍎', '🍏'], banana: ['🍌'], grape: ['🍇', '🍇'], watermelon: ['🍉'], strawberry: ['🍓'],
+  cherry: ['🍒'], peach: ['🍑'], mango: ['🥭'], pineapple: ['🍍'], coconut: ['🥥'], lemon: ['🍋'], orange: ['🍊'],
+  avocado: ['🥑'], carrot: ['🥕'], corn: ['🌽'], bread: ['🍞', '🥖'], cheese: ['🧀'], egg: ['🥚', '🍳'],
+  burger: ['🍔'], hamburger: ['🍔'], fries: ['🍟'], pizza: ['🍕'], taco: ['🌮'], burrito: ['🌯'], salad: ['🥗'],
+  pasta: ['🍝'], spaghetti: ['🍝'], noodles: ['🍜', '🍝'], soup: ['🍲'], rice: ['🍚', '🍛'], sushi: ['🍣'],
+  shrimp: ['🍤'], icecream: ['🍦', '🍨'], ice_cream: ['🍦', '🍨'], cake: ['🍰', '🎂'], birthday: ['🎂', '🎉', '🎈'],
+  cupcake: ['🧁'], candy: ['🍬', '🍭'], chocolate: ['🍫'], cookie: ['🍪'], donut: ['🍩'], popcorn: ['🍿'],
+  coffee: ['☕'], tea: ['🍵', '🫖'], milk: ['🥛'], juice: ['🧃', '🥤'], soda: ['🥤'], beer: ['🍺', '🍻'],
+  wine: ['🍷'], champagne: ['🥂'], cocktail: ['🍸', '🍹'], drink: ['🥤', '🧃'], peanut: ['🥜'], honey: ['🍯'],
+  /* travel & places */
+  car: ['🚗', '🚕', '🚙'], taxi: ['🚕'], bus: ['🚌', '🚎'], truck: ['🚚', '🛻'], police: ['🚓', '👮'],
+  ambulance: ['🚑'], firetruck: ['🚒'], fire_engine: ['🚒'], bike: ['🚲'], bicycle: ['🚲'], motorcycle: ['🏍️'],
+  scooter: ['🛴', '🛵'], train: ['🚆', '🚄', '🚅'], subway: ['🚇'], plane: ['✈️'], airplane: ['✈️'], rocket: ['🚀'],
+  helicopter: ['🚁'], boat: ['⛵', '🚤'], ship: ['🚢'], anchor: ['⚓'], house: ['🏠', '🏡'], home: ['🏠'],
+  hospital: ['🏥'], school: ['🏫'], bank: ['🏦'], hotel: ['🏨'], church: ['⛪'], castle: ['🏰'],
+  beach: ['🏖️'], island: ['🏝️'], mountain: ['⛰️', '🏔️'], volcano: ['🌋'], camping: ['🏕️', '⛺'], tent: ['⛺'],
+  factory: ['🏭'], office: ['🏢'], store: ['🏪'], map: ['🗺️'], statue: ['🗿', '🗽'], tower: ['🗼'],
+  /* activities */
+  soccer: ['⚽'], football: ['⚽', '🏈'], basketball: ['🏀'], baseball: ['⚾'], tennis: ['🎾'], volleyball: ['🏐'],
+  golf: ['⛳'], pingpong: ['🏓'], tabletennis: ['🏓'], badminton: ['🏸'], boxing: ['🥊'], swimming: ['🏊'],
+  bike_riding: ['🚴'], running: ['🏃'], yoga: ['🧘'], surfing: ['🏄'], skiing: ['🎿'], skateboarding: ['🛹'],
+  trophy: ['🏆'], medal: ['🏅', '🎖️'], archery: ['🏹'], fishing: ['🎣'], darts: ['🎯'], chess: ['♟️'],
+  game: ['🎮', '🎲'], gaming: ['🎮'], dice: ['🎲'], puzzle: ['🧩'], bowling: ['🎳'], music: ['🎵', '🎶'],
+  concert: ['🎤', '🎧'], sing: ['🎤'], guitar: ['🎸'], piano: ['🎹'], drums: ['🥁'], trumpet: ['🎺'],
+  violin: ['🎻'], saxophone: ['🎷'], microphone: ['🎤'], headphones: ['🎧'], art: ['🎨'], theater: ['🎭', '🎬'],
+  movie: ['🎬', '🎥'], camera: ['📷', '📹'], photo: ['📷'], picture: ['📷', '🖼️'],
+  /* objects */
+  phone: ['📱', '☎️'], computer: ['💻', '🖥️'], laptop: ['💻'], keyboard: ['⌨️'], mouse_computer: ['🖱️'],
+  tv: ['📺'], television: ['📺'], watch: ['⌚'], clock: ['🕐', '⏰'], alarm: ['⏰'], time: ['🕐', '⏰'],
+  battery: ['🔋'], light: ['💡', '🔌'], bulb: ['💡'], idea: ['💡'], money: ['💰', '💵', '💸'], cash: ['💵'],
+  dollar: ['💵', '💲'], diamond: ['💎'], key: ['🔑'], lock: ['🔒', '🔓'], locked: ['🔒'], door: ['🚪'],
+  chair: ['🪑'], bed: ['🛏️'], shower: ['🚿'], soap: ['🧼'], book: ['📕', '📖'], books: ['📚'], notebook: ['📓'],
+  newspaper: ['📰'], mail: ['✉️', '📧', '💌'], email: ['📧'], letter: ['💌', '✉️'], package: ['📦'],
+  gift: ['🎁'], present: ['🎁'], balloon: ['🎈'], confetti: ['🎊', '🎉'], ribbon: ['🎀'], scissors: ['✂️'],
+  pencil: ['✏️', '🖊️'], pen: ['🖊️', '🖋️'], paint: ['🖌️', '🎨'], brush: ['🖌️'], note: ['📝', '🗒️'],
+  memo: ['📝'], folder: ['📁'], clipboard: ['📋'], calendar: ['📅', '📆'], date: ['📅'], trash: ['🗑️'],
+  search: ['🔍'], magnify: ['🔍'], link: ['🔗'], pin: ['📌', '📍'], paperclip: ['📎'], ruler: ['📏'],
+  hammer: ['🔨'], wrench: ['🔧'], tools: ['🛠️', '🔧'], gear: ['⚙️'], knife: ['🔪'], gun: ['🔫'], bomb: ['💣'],
+  pill: ['💊'], syringe: ['💉', '🩸'], dna: ['🧬'], microscope: ['🔬'], telescope: ['🔭'], magnet: ['🧲'],
+  candle: ['🕯️'], crystal: ['💎'], teddy: ['🧸'], teddybear: ['🧸'], shopping: ['🛒', '🛍️'], cart: ['🛒'],
+  /* symbols */
+  check: ['✅', '✔️'], checkmark: ['✅'], tick: ['✅'], cross: ['❌'], wrong: ['❌'], no: ['🚫', '❌', '⛔'],
+  yes: ['✅', '🆗'], stop: ['🛑', '⛔'], warning: ['⚠️'], question: ['❓'], exclamation: ['❗'],
+  hundred: ['💯'], points: ['💯'], plus: ['➕'], minus: ['➖'], multiply: ['✖️'], divide: ['➗'],
+  arrow: ['➡️', '⬅️', '⬆️', '⬇️'], right: ['➡️'], left: ['⬅️'], up: ['⬆️'], down: ['⬇️'],
+  play: ['▶️'], pause: ['⏸️'], repeat: ['🔁'], shuffle: ['🔀'], info: ['ℹ️'], recycle: ['♻️'],
+  infinite: ['♾️'], infinity: ['♾️'], ok_hand: ['👌'], banned: ['🚫'], forbidden: ['🚫'],
+  zzz: ['💤'], speech: ['💬'], thought: ['💭'], chat: ['💬'], comment: ['💬'], globe: ['🌐'], world: ['🌍', '🌐'],
+  number: ['#️⃣', '🔢'], one: ['1️⃣'], two: ['2️⃣'], three: ['3️⃣'], new: ['🆕'], free: ['🆓'], top: ['🆙'],
+  /* flags */
+  flag: ['🚩', '🏁'], rainbow_flag: ['🏳️‍🌈'], pirate: ['🏴‍☠️'], finish: ['🏁'], philippines: ['🇵🇭'],
+  usa: ['🇺🇸'], uk: ['🇬🇧'], japan: ['🇯🇵'], korea: ['🇰🇷'], china: ['🇨🇳'], india: ['🇮🇳'], germany: ['🇩🇪'],
+  france: ['🇫🇷'], spain: ['🇪🇸'], italy: ['🇮🇹'], brazil: ['🇧🇷'], mexico: ['🇲🇽'], canada: ['🇨🇦'],
+  australia: ['🇦🇺'], russia: ['🇷🇺'], ukraine: ['🇺🇦'], turkey: ['🇹🇷'], vietnam: ['🇻🇳'], thailand: ['🇹🇭'],
+  indonesia: ['🇮🇩'], malaysia: ['🇲🇾'], singapore: ['🇸🇬'], saudi: ['🇸🇦'], uae: ['🇦🇪'], egypt: ['🇪🇬'],
+  nigeria: ['🇳🇬'], kenya: ['🇰🇪'], argentina: ['🇦🇷'], netherlands: ['🇳🇱'], sweden: ['🇸🇪'], norway: ['🇳🇴'],
+  /* category words so searching still surfaces the whole section */
+  smileys: ['😀', '😊', '🙂'], faces: ['😀', '😎', '😢'], people: ['👋', '👍', '🙏'],
+  animals_nature: ['🐶', '🐱'], fruit: ['🍎', '🍌'], fruits: ['🍎', '🍌', '🍇'], veggies: ['🥕', '🥦'],
+  vegetables: ['🥕', '🥦', '🌽'], vehicles: ['🚗', '✈️'], sports: ['⚽', '🏀'], weather: ['☀️', '🌧️'],
+};
+
+/* ============================================================
    CHAT THEMES — predefined palette users can apply to
    conversations (persisted per user + conversation).
    ============================================================ */

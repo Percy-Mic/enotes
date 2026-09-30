@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Smile } from 'lucide-react';
-import { EMOJI_GROUPS, type EmojiCategory } from '@/lib/assets';
+import { EMOJI_GROUPS, EMOJI_KEYWORDS, type EmojiCategory } from '@/lib/assets';
 
 const RECENTS_KEY = 'enotes:recent-emojis';
 const MAX_RECENTS = 24;
@@ -55,20 +55,36 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
     if (!q) return null;
 
     /*
-     * The bundled emoji data intentionally contains the glyphs + category
-     * labels rather than a large keyword database. Search therefore matches
-     * category names and the emoji glyph itself instead of pretending every
-     * query matches everything.
+     * Real keyword search first ('laugh' → 😂), then word prefixes and
+     * substrings, then category labels and the glyph itself so every emoji
+     * stays reachable even without a keyword entry.
      */
+    const ranked: string[] = [];
+    const push = (emojis: string[] | undefined) => {
+      if (!emojis) return;
+      for (const e of emojis) if (!ranked.includes(e)) ranked.push(e);
+    };
+
+    push(EMOJI_KEYWORDS[q]);
+    for (const [word, emojis] of Object.entries(EMOJI_KEYWORDS)) {
+      if (word !== q && word.startsWith(q)) push(emojis);
+    }
+    if (q.length >= 3) {
+      for (const [word, emojis] of Object.entries(EMOJI_KEYWORDS)) {
+        if (word !== q && !word.startsWith(q) && word.includes(q)) push(emojis);
+      }
+    }
     const matches = EMOJI_GROUPS
       .filter((group) => group.label.toLowerCase().includes(q))
       .flatMap((group) => group.emojis);
+    push(matches);
 
     const glyphMatches = EMOJI_GROUPS
       .flatMap((group) => group.emojis)
       .filter((emoji) => emoji.toLowerCase().includes(q));
+    push(glyphMatches);
 
-    return Array.from(new Set([...matches, ...glyphMatches]));
+    return ranked.slice(0, 120);
   }, [query]);
 
   const pick = (emoji: string) => {
