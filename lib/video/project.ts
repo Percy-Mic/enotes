@@ -61,6 +61,11 @@ export interface AudioProcessing {
   compressor: boolean;
 }
 
+export interface VideoEffectLayer {
+  type: EffectType;
+  intensity: number;
+}
+
 export interface VideoClip {
   id: string;
   /** storage/CDN url of the source file (never duplicated per edit) */
@@ -87,6 +92,8 @@ export interface VideoClip {
   /** motion effect applied while this clip plays (renders into the export) */
   effect: EffectType;
   effect_intensity?: number;
+  /** Multiple composable effects. Legacy `effect` remains as the first layer when this is absent. */
+  effects?: VideoEffectLayer[];
   /** transition INTO this clip (plays over the previous clip's tail) */
   transitionIn: { type: TransitionType; duration: number };
   /** Optional transform/audio keyframes for professional motion control. */
@@ -94,7 +101,7 @@ export interface VideoClip {
 }
 
 /** Extensible effect ids — new effects append here; renderer switches on id. */
-export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic' | 'ken-burns' | 'dolly-out' | 'handheld' | 'light-leak' | 'letterbox' | 'film-grain';
+export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic' | 'ken-burns' | 'dolly-out' | 'handheld' | 'light-leak' | 'letterbox' | 'film-grain' | 'rgb-split' | 'glow' | 'bloom' | 'motion-blur' | 'scanlines' | 'noise' | 'negative' | 'posterize';
 
 export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string }[] = [
   { id: 'none', name: 'None', hint: 'No motion effect' },
@@ -114,6 +121,14 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string }[] = 
   { id: 'light-leak', name: 'Light leak', hint: 'Warm analog light wash' },
   { id: 'letterbox', name: 'Letterbox', hint: 'Anamorphic cinema bars' },
   { id: 'film-grain', name: 'Film grain', hint: 'Analog film texture' },
+  { id: 'rgb-split', name: 'RGB split', hint: 'Chromatic channel separation' },
+  { id: 'glow', name: 'Glow', hint: 'Soft luminous highlights' },
+  { id: 'bloom', name: 'Bloom', hint: 'Cinematic highlight bloom' },
+  { id: 'motion-blur', name: 'Motion blur', hint: 'Directional blur during movement' },
+  { id: 'scanlines', name: 'Scanlines', hint: 'CRT scanline texture' },
+  { id: 'noise', name: 'Noise', hint: 'Animated analog noise' },
+  { id: 'negative', name: 'Negative', hint: 'Inverted colors' },
+  { id: 'posterize', name: 'Posterize', hint: 'Graphic poster color reduction' },
 ];
 
 export interface TimelineTrack {
@@ -484,6 +499,15 @@ export function normalizeProject(input: unknown): VideoProject {
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
       effect: (clip.effect || 'none') as EffectType,
       effect_intensity: clamp(Number(clip.effect_intensity) || 1, 0, 1),
+      effects: Array.isArray(clip.effects)
+        ? clip.effects.map((layer) => {
+            const rawLayer = (layer && typeof layer === 'object' ? layer : {}) as Record<string, unknown>;
+            return {
+              type: String(rawLayer.type || 'none') as EffectType,
+              intensity: clamp(Number(rawLayer.intensity) || 1, 0, 1),
+            };
+          }).filter((layer) => layer.type !== 'none')
+        : undefined,
       transitionIn: { ...DEFAULT_TRANSITION, ...(clip.transitionIn && typeof clip.transitionIn === 'object' ? clip.transitionIn : {}) } as VideoClip['transitionIn'],
       ...(sanitizeKeyframes(clip.keyframes) ? { keyframes: sanitizeKeyframes(clip.keyframes) } : {}),
       ...(Number(clip.source_width) > 0 ? { source_width: Number(clip.source_width) } : {}),
