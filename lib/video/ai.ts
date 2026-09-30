@@ -83,21 +83,9 @@ async function uploadGeminiFileFromUrl(
     source.headers.get('content-length') || 0,
   );
 
-  const maxInlineBytes = 95 * 1024 * 1024;
-
-  if (contentLength > maxInlineBytes) {
-    throw new Error(
-      'This video is larger than the free inline AI limit. Use a shorter/proxy clip for AI analysis.',
-    );
-  }
 
   const bytes = await source.arrayBuffer();
 
-  if (bytes.byteLength > maxInlineBytes) {
-    throw new Error(
-      'This video is larger than the free inline AI limit. Use a shorter/proxy clip for AI analysis.',
-    );
-  }
 
   const start = await fetch(
     'https://generativelanguage.googleapis.com/upload/v1beta/files',
