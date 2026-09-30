@@ -430,6 +430,17 @@ export const FILTER_PRESETS: { id: string; name: string; css: string }[] = [
   { id: 'golden', name: 'Golden', css: 'sepia(0.2) saturate(1.45) brightness(1.06)' },
   { id: 'noir', name: 'Noir', css: 'grayscale(0.92) contrast(1.35) brightness(0.9)' },
   { id: 'retro', name: 'Retro', css: 'sepia(0.3) saturate(1.18) contrast(0.94)' },
+  { id: 'matte', name: 'Matte', css: 'contrast(0.9) brightness(1.04) saturate(0.78)' },
+  { id: 'sunset', name: 'Sunset', css: 'sepia(0.18) saturate(1.45) hue-rotate(-8deg) brightness(1.03)' },
+  { id: 'arctic', name: 'Arctic', css: 'saturate(0.82) contrast(1.08) brightness(1.05) hue-rotate(18deg)' },
+  { id: 'forest', name: 'Forest', css: 'saturate(0.9) contrast(1.12) hue-rotate(-18deg)' },
+  { id: 'rose', name: 'Rose', css: 'sepia(0.08) saturate(1.3) hue-rotate(-18deg) brightness(1.02)' },
+  { id: 'bleach', name: 'Bleach', css: 'saturate(0.35) contrast(1.22) brightness(1.08)' },
+  { id: 'teal', name: 'Teal', css: 'saturate(1.2) contrast(1.1) hue-rotate(22deg)' },
+  { id: 'violet', name: 'Violet', css: 'saturate(1.25) hue-rotate(40deg) contrast(1.05)' },
+  { id: 'amber', name: 'Amber', css: 'sepia(0.22) saturate(1.35) hue-rotate(-5deg) brightness(1.04)' },
+  { id: 'crush', name: 'Contrast Crush', css: 'contrast(1.7) saturate(1.1) brightness(0.95)' },
+  { id: 'soft', name: 'Soft', css: 'brightness(1.06) contrast(0.88) saturate(0.92)' },
 ];
 
 export const CANVAS_SIZES: Record<Exclude<AspectRatio, 'original'>, { width: number; height: number }> = {
