@@ -139,6 +139,7 @@ function ChatRoom() {
   const [inviteResults, setInviteResults] = useState<Pick<Profile, 'id' | 'full_text_name' | 'username' | 'avatar_url'>[]>([]);
   const [inviteSearching, setInviteSearching] = useState(false);
   const [inviteAddingId, setInviteAddingId] = useState<string | null>(null);
+  const [claimingOwnership, setClaimingOwnership] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -155,6 +156,54 @@ function ChatRoom() {
 
   /* creator + admins may rename / change icon / manage roles (DB enforces too) */
   const amGroupAdmin = conversation?.is_group === true && (conversation.created_by === me || myRole === 'admin' || myRole === 'moderator');
+
+  /* Ownership continuity: if the creator left the group, RLS blocks every
+     invite and role change — the group is stranded. Any remaining member
+     may claim ownership via claim_group_ownership(); admins can hand the
+     crown to a specific member via make_group_owner(). */
+  const creatorAbsent =
+    conversation?.is_group === true &&
+    !!conversation.created_by &&
+    groupMembers.length > 0 &&
+    !groupMembers.some((m) => m.user_id === conversation.created_by);
+
+  const refreshConversationRow = async () => {
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('id, is_group, title, avatar_url, created_by, updated_at')
+      .eq('id', conversationId)
+      .maybeSingle();
+    if (conv) setConversation((c) => (c ? { ...(c as any), ...(conv as any) } : c));
+  };
+
+  const claimOwnership = async () => {
+    if (!conversation?.is_group) return;
+    setClaimingOwnership(true);
+    setGroupError(null);
+    const { error } = await supabase.rpc('claim_group_ownership', { p_conversation: conversationId });
+    setClaimingOwnership(false);
+    if (error) {
+      setGroupError(`Could not claim ownership — ${error.message}`);
+      return;
+    }
+    setMyRole('creator');
+    setGroupNotice('You are now the group owner — you can add people and promote admins.');
+    void loadMembers();
+    void refreshConversationRow();
+  };
+
+  const makeOwner = async (userId: string) => {
+    if (!conversation?.is_group) return;
+    setGroupError(null);
+    const { error } = await supabase.rpc('make_group_owner', { p_conversation: conversationId, p_user: userId });
+    if (error) {
+      setGroupError(`Could not transfer ownership — ${error.message}`);
+      return;
+    }
+    setGroupNotice('Ownership transferred.');
+    void loadMembers();
+    void refreshConversationRow();
+  };
 
   /* ---------- initial load ---------- */
 
@@ -1104,6 +1153,24 @@ function ChatRoom() {
               </button>
             </div>
 
+            {/* Orphaned group: the creator left, so RLS blocks every invite
+                and role change. Offer the self-heal path. */}
+            {creatorAbsent && (
+              <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-semibold text-amber-800">
+                  The group owner left — nobody can add members until someone takes over.
+                </p>
+                <button
+                  onClick={() => void claimOwnership()}
+                  disabled={claimingOwnership}
+                  className="mt-2 flex min-h-[40px] w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {claimingOwnership ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
+                  Claim ownership
+                </button>
+              </div>
+            )}
+
             {/* invite: search + add, visible to everyone (RLS decides) */}
             <div className="mb-3 rounded-xl border border-[#E8E2E4] p-3">
               <button
@@ -1169,6 +1236,16 @@ function ChatRoom() {
                     </Link>
                     {canManage && (
                       <span className="flex shrink-0 gap-1">
+                        {!isCreator && (
+                          <button
+                            onClick={() => void makeOwner(member.user_id)}
+                            className="flex h-9 items-center gap-1 rounded-lg border border-amber-200 px-2 text-[11px] font-semibold text-amber-700 hover:bg-amber-50"
+                            aria-label={`Make ${member.profile?.username || 'member'} the group owner`}
+                          >
+                            <Crown className="h-3.5 w-3.5" />
+                            Make owner
+                          </button>
+                        )}
                         <button
                           onClick={() => changeMemberRole(member.user_id, member.role === 'admin' || member.role === 'moderator' ? 'member' : 'admin')}
                           className="flex h-9 items-center gap-1 rounded-lg border border-[#E8E2E4] px-2 text-[11px] font-semibold text-[#6B6B6B] hover:bg-gray-50"
