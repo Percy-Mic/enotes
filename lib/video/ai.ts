@@ -2014,6 +2014,7 @@ export async function runVideoAI(
                   'transcribe',
                   'transform_element',
                   'set_element_opacity',
+                  'delete_element',
                   'set_keyframe',
                   'add_text_element',
                   'split_clip',
@@ -2396,6 +2397,11 @@ object = {
 }
 (elementId = which overlay to move; timings in FINAL project-time seconds)
 
+delete_element
+elementId = which overlay to remove (text/sticker/image/video/shape)
+Use when the user asks to remove/clean up placeholder or unwanted text
+and overlays. Never delete elements the user did not mention.
+
 split_clip
 value = timeline seconds
 
@@ -2695,7 +2701,7 @@ ${beatsForPlan}
         'reorder_clip',
       ]);
 
-    const elementActionTypes = new Set(['transform_element', 'set_element_opacity', 'retime_element']);
+    const elementActionTypes = new Set(['transform_element', 'set_element_opacity', 'retime_element', 'delete_element']);
 
     const normalizeAction = (action: any) => {
       const normalized = { ...action };

@@ -1454,6 +1454,11 @@ function VideoEditor() {
           continue;
         }
 
+        if (action.type === 'delete_element' && action.elementId) {
+          nextProject = { ...nextProject, elements: nextProject.elements.filter((element) => element.id !== action.elementId) };
+          continue;
+        }
+
         if (action.type === 'retime_element') {
           const target = nextProject.elements.find((element) => action.elementId === element.id);
           if (target && action.object) {

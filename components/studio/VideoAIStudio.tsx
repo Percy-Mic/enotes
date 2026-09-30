@@ -31,6 +31,7 @@ export type VideoAIEditAction = {
     | 'transcribe'
     | 'transform_element'
     | 'set_element_opacity'
+    | 'delete_element'
     | 'retime_element'
     | 'set_keyframe'
     | 'add_text_element'
@@ -214,6 +215,7 @@ function actionLabel(action: VideoAIEditAction) {
     case 'transcribe': return 'Transcript generated';
     case 'transform_element': return 'Overlay transform adjusted';
     case 'retime_element': return 'Overlay retimed';
+    case 'delete_element': return 'Overlay removed';
     case 'set_element_opacity': return 'Overlay opacity adjusted';
     case 'set_keyframe': return 'Motion keyframe added';
     case 'add_text_element': return 'Text added';
