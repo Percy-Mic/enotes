@@ -24,6 +24,7 @@ export type VideoAIEditAction = {
     | 'set_clip_mute'
     | 'set_clip_filter'
     | 'set_clip_effect'
+    | 'set_clip_mask'
     | 'set_clip_transition'
     | 'trim_clip'
     | 'transform_clip'
