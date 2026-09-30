@@ -1140,6 +1140,17 @@ function applyTransition(
   const eased = easeOut(progress);
   const W = canvasW;
   const H = canvasH;
+  /* Effects below that reuse the composed frame must read from an immutable
+     snapshot, never from ctx.canvas itself. */
+  let source: HTMLCanvasElement | null = null;
+  const needsSource = type === 'crossfade' || type === 'slide' || type === 'zoom-blur' || type === 'whip-pan' || type === 'glitch-cut' || type === 'blur';
+  if (needsSource) {
+    source = document.createElement('canvas');
+    source.width = W; source.height = H;
+    const sourceCtx = source.getContext('2d');
+    if (!sourceCtx) return { overlayAlpha: 0 };
+    sourceCtx.drawImage(ctx.canvas, 0, 0, W, H);
+  }
 
   switch (type) {
     case 'fade':
@@ -1154,7 +1165,7 @@ function applyTransition(
          self-blend reads as a real cross-dissolve. */
       ctx.save();
       ctx.globalAlpha = (1 - eased) * 0.85;
-      ctx.drawImage(ctx.canvas, 0, 0);
+      ctx.drawImage(source!, 0, 0);
       ctx.restore();
       return { overlayAlpha: 0 };
     }
@@ -1163,7 +1174,7 @@ function applyTransition(
       const shift = (1 - eased) * W;
       ctx.save();
       ctx.globalCompositeOperation = 'copy';
-      ctx.drawImage(ctx.canvas, shift, 0);
+      ctx.drawImage(source!, shift, 0);
       ctx.restore();
       return { overlayAlpha: 0 };
     }
@@ -1193,7 +1204,7 @@ function applyTransition(
         ctx.translate(W / 2, H / 2);
         ctx.scale(ls, ls);
         ctx.translate(-W / 2, -H / 2);
-        ctx.drawImage(ctx.canvas, 0, 0);
+        ctx.drawImage(source!, 0, 0);
       }
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.restore();
@@ -1208,7 +1219,7 @@ function applyTransition(
       ctx.save();
       for (let layer = 1; layer <= 4; layer += 1) {
         ctx.globalAlpha = (0.22 * energy) / layer;
-        ctx.drawImage(ctx.canvas, (dx * layer) / 4, 0);
+        ctx.drawImage(source!, (dx * layer) / 4, 0);
       }
       ctx.restore();
       return { overlayAlpha: 0, incoming: { dx } };
@@ -1254,7 +1265,7 @@ function applyTransition(
         const y = s * sliceH;
         const noise = Math.sin(timeIn * 91.7 + s * 17.13);
         const snap = noise > 1 - energy * 0.5 ? noise * energy * W * 0.08 : 0;
-        ctx.drawImage(ctx.canvas, 0, y, W, sliceH, jitter + snap, y, W, sliceH);
+        ctx.drawImage(source!, 0, y, W, sliceH, jitter + snap, y, W, sliceH);
       }
       if (energy > 0.4) {
         ctx.globalCompositeOperation = 'screen';
