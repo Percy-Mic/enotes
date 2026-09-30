@@ -1,41 +1,60 @@
-# Video AI provider setup
+# Video AI + media provider setup
 
-The video editor works without these keys. Add them later in Vercel Project Settings -> Environment Variables.
+The video editor is designed to work without paid AI providers.
 
-## Optional providers
+## Recommended free-tier providers
+
+### Hugging Face Inference Providers
+
+Use Hugging Face for AI operations such as background removal and image enhancement.
 
 ```env
-# Existing AI editor
-GEMINI_API_KEY=
-
-# AI vision / background / enhancement
 HUGGINGFACE_API_KEY=
 # HF_TOKEN=  # alias accepted
-
-# Generative image / voice / music
-FAL_KEY=
-
-# Reserved for future provider adapters
-REPLICATE_API_TOKEN=
-
-# Media pipeline (Cloudinary is optional and is not required for local editing)
-CLOUDINARY_CLOUD_NAME=
-CLOUDINARY_API_KEY=
-CLOUDINARY_API_SECRET=
 
 # Optional model overrides
 HF_BACKGROUND_MODEL=briaai/RMBG-2.0
 HF_ENHANCE_MODEL=caidas/swin2SR-classical-sr-x2-64
-FAL_IMAGE_MODEL=fal-ai/flux/schnell
-FAL_VOICE_MODEL=fal-ai/elevenlabs/tts/turbo-v2.5
-FAL_MUSIC_MODEL=fal-ai/stable-audio
+HF_VIDEO_MODEL=facebook/detr-resnet-50
 ```
+
+Hugging Face's free allowance is limited and can change. It is not an unlimited free API.
+
+### Cloudinary
+
+Cloudinary is used as an optional media-processing/optimization layer for imported Studio media. Supabase remains the source of truth, so the editor still works if Cloudinary is not configured or its free quota is unavailable.
+
+```env
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+```
+
+The editor sends imported Studio media through:
+
+`POST /api/video/cloudinary`
+
+Supported processing modes:
+
+- `optimize` — automatic quality/format optimization
+- `vertical` — fit within 1080×1920
+- `square` — fit within 1080×1080
+- `landscape` — fit within 1920×1080
+
+The source is first uploaded to Supabase. When Cloudinary is configured, the optimized Cloudinary URL is used by the editor; otherwise it automatically keeps the Supabase URL.
+
+## Existing AI assistant
+
+```env
+GEMINI_API_KEY=
+```
+
+The existing enotes AI assistant remains separate from the media-processing providers.
 
 ## Important
 
-- Never use `NEXT_PUBLIC_` for secret API keys.
-- The browser calls `/api/video/ai`; provider keys stay server-side.
-- If a provider key is absent, the existing enotes AI/local implementation remains the fallback.
-- Adding keys does not require changing the video editor UI.
-- Some generative providers are usage-billed; the provider layer only activates when its key is configured.
-- Keep Supabase storage/RLS as the source of truth for user media.
+- Never use `NEXT_PUBLIC_` for secret provider keys.
+- Keep Cloudinary and Hugging Face secrets server-side.
+- You do **not** need `FAL_KEY` or `REPLICATE_API_TOKEN` for the free-tier implementation above.
+- Cloudinary's free plan and Hugging Face's free allowance have usage limits; this implementation does not assume unlimited usage.
+- Supabase storage/RLS remains the source of truth for user-owned Studio uploads.
