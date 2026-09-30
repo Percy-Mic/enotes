@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     const url = String(body.url || '').trim();
     const mediaType = String(body.mediaType || 'video') as CloudinaryMediaType;
     const mode = String(body.mode || 'optimize') as CloudinaryProcessMode;
-    if (!/^https?:\\/\\//i.test(url)) return NextResponse.json({ error: 'A valid source URL is required.' }, { status: 400 });
+    if (!/^https?:\/\//i.test(url)) return NextResponse.json({ error: 'A valid source URL is required.' }, { status: 400 });
     if (!['image', 'video', 'audio'].includes(mediaType)) return NextResponse.json({ error: 'Unsupported media type.' }, { status: 400 });
     if (!['optimize', 'vertical', 'square', 'landscape'].includes(mode)) return NextResponse.json({ error: 'Unsupported processing mode.' }, { status: 400 });
 
