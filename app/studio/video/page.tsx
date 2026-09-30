@@ -5504,7 +5504,7 @@ function VideoEditor() {
             type="button"
             aria-label="Close editor tools"
             onClick={() => setToolDrawerOpen(false)}
-            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px] md:hidden"
+            className="pointer-events-none fixed inset-0 z-40 bg-transparent md:hidden"
           />
           <section
             className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[40dvh] max-h-[calc(100dvh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:right-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
