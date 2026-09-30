@@ -355,7 +355,7 @@ function VideoEditor() {
   const [stockError, setStockError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [effectSearch, setEffectSearch] = useState('');
-  const [effectCategory, setEffectCategory] = useState<'Trending' | 'Motion' | 'Retro' | 'Cinematic' | 'All'>('Trending');
+  const [effectCategory, setEffectCategory] = useState<'Popular' | 'Motion' | 'Retro' | 'Cinematic' | 'Glitch' | 'Stylize' | 'AI Looks' | 'All'>('Popular');
 
   /** Active crop session: which entity is being cropped + its starting crop
       (so Cancel can restore). null = normal editing. */
@@ -5852,7 +5852,7 @@ function VideoEditor() {
                 {/* Effect library — audition the real clip before committing. */}
                 <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                   <div className="mb-3 flex items-center justify-between">
-                    <div><p className="text-xs font-semibold text-white">Effect Library</p><p className="text-[10px] text-white/40">Hover to preview. Click to apply. Preview and export use the same renderer.</p></div>
+                    <div><p className="text-xs font-semibold text-white">Effect Library</p><p className="text-[10px] text-white/40">Every card previews your footage. Hover to animate; click to apply. Preview and export use the same renderer.</p></div>
                     <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[9px] font-semibold text-[#ffb6c1]">AUDITION</span>
                   </div>
                   <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} effect={lookPreviewEffect ?? selectedClip.effect} filter={selectedClip.filter} />
@@ -5895,7 +5895,8 @@ function VideoEditor() {
                             />
                           ))}
                         </div>
-                      );}
+                      );
+                    })()}
                   </div>
                   {selectedClip.effect !== 'none' && (
                     <div className="mt-3 rounded-xl bg-black/20 p-2.5">
