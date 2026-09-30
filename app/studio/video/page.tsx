@@ -3928,54 +3928,6 @@ function VideoEditor() {
                 </span>
               )}
 
-              {/* floating quick actions for the selected overlay */}
-              {selectedElement && !cropMode && (
-                <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/15 bg-black/70 px-1.5 py-1 backdrop-blur">
-                  <button
-                    onClick={() => duplicateElement(selectedElement)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-white/90 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white"
-                    aria-label="Duplicate overlay"
-                    title="Duplicate"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => updateElement(selectedElement.id, { z: Math.max(...project.elements.map((e) => e.z), 0) + 1 }, 'Bring to front')}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-white/90 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white"
-                    aria-label="Bring to front"
-                    title="Bring to front"
-                  >
-                    <ArrowRight className="h-4 w-4 rotate-[-90deg]" />
-                  </button>
-                  <button
-                    onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-white/90 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white"
-                    aria-label="Rotate counterclockwise"
-                    title="Rotate counterclockwise"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </button>
-                  {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && (
-                    <button
-                      onClick={startElementCrop}
-                      className="flex h-9 w-9 items-center justify-center rounded-full text-white/90 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white"
-                      aria-label="Crop overlay media"
-                      title="Crop"
-                    >
-                      <Crop className="h-4 w-4" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => selectedElement.kind === 'video' ? moveVideoOverlayToMainTrack(selectedElement) : notify('Only video overlays can be moved to the main track.')}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-white/90 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white"
-                    aria-label="Move video to main track"
-                    title="Move video to main track"
-                  >
-                    <Film className="h-4 w-4" />
-                  </button>
-
-                </div>
-              )}
             </div>
           </div>
 
