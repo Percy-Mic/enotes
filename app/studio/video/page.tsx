@@ -6214,17 +6214,17 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
       const rect=ref.current?.getBoundingClientRect();
       if (!rect || rect.width<=0 || rect.height<=0) return;
       const start=multiRef.current;
-      const zoom=clampNum(start.distance/distance,0.25,4);
+      const zoom=clampNum(distance/start.distance,0.25,4);
       const sw=1-start.crop.left-start.crop.right;
       const sh=1-start.crop.top-start.crop.bottom;
-      const nw=clampNum(sw*zoom,0.06,1);
-      const nh=clampNum(sh*zoom,0.06,1);
+      /* Pinching outward should zoom INTO the source, so the visible crop
+         window becomes smaller. Pinching inward reveals more of the source. */
+      const nw=clampNum(sw/zoom,0.06,1);
+      const nh=clampNum(sh/zoom,0.06,1);
       const cx=clampNum((center.x-rect.left)/rect.width,0,1);
       const cy=clampNum((center.y-rect.top)/rect.height,0,1);
       let left=clampNum(cx-(cx-start.crop.left)*(nw/Math.max(.001,sw)),0,1-nw);
       let top=clampNum(cy-(cy-start.crop.top)*(nh/Math.max(.001,sh)),0,1-nh);
-      left=clampNum(left+(center.x-start.center.x)/rect.width,0,1-nw);
-      top=clampNum(top+(center.y-start.center.y)/rect.height,0,1-nh);
       emitCrop({left,right:1-left-nw,top,bottom:1-top-nh});
       if (onRotate) {
         const delta=normalizeCropAngle(angle-start.angle);
