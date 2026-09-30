@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Check, CheckCheck, Copy, CornerUpLeft, EyeOff, FileText, Loader2, MoreHorizontal, Pencil, Smile, Trash2, Video, X } from 'lucide-react';
+import { ArrowLeftRight, Check, CheckCheck, Copy, CornerUpLeft, Crown, EyeOff, FileText, Image, Loader2, LogOut, MoreHorizontal, Pencil, Shield, Smile, Trash2, UserPlus, UserMinus, Video, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import type { Message } from '@/types/social';
 import Avatar from '@/components/social/Avatar';
@@ -34,6 +34,87 @@ function Linkified({ text, textColor }: { text: string; textColor: string }) {
         ) : (
           <React.Fragment key={i}>{part}</React.Fragment>
         ),
+      )}
+    </>
+  );
+}
+
+/* Icon for a system message, chosen from its text (server-free so it
+   renders identically for every member and survives message edits). */
+function systemIcon(content: string) {
+  const t = content.toLowerCase();
+  if (/\b(added|joined)\b/.test(t)) return UserPlus;
+  if (/\bleft\b/.test(t)) return LogOut;
+  if (/\bremoved\b/.test(t)) return UserMinus;
+  if (/\b(ownership|owner)\b/.test(t)) return Crown;
+  if (/\b(promoted|demoted|admin)\b/.test(t)) return Shield;
+  if (/\b(group name|group photo|renamed)\b/.test(t)) return Image;
+  if (/\b(transferred|handed)\b/.test(t)) return ArrowLeftRight;
+  return Shield;
+}
+
+/* Username cache for resolving plain display names in system messages to
+   profile links. Shared across all rows for the page's lifetime. */
+const systemNameCache = new Map<string, string>();
+
+function SystemMessageText({ content }: { content: string }) {
+  const [resolved, setResolved] = React.useState(false);
+
+  useEffect(() => {
+    if (resolved) return;
+    let cancelled = false;
+    const names = (content.match(/\b([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z.]+){0,3})\b/g) || [])
+      .filter((n) => !/^(Yesterday|Today|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|The|You|Someone|An|A)$/i.test(n));
+    const wanted = names.filter((n) => n.length > 1 && !systemNameCache.has(n));
+    if (wanted.length === 0) { setResolved(true); return; }
+    (async () => {
+      for (const name of wanted.slice(0, 3)) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('username')
+          .ilike('full_text_name', name)
+          .limit(1);
+        if (cancelled) return;
+        systemNameCache.set(name, (data && data[0]?.username) || '');
+      }
+      if (!cancelled) setResolved(true);
+    })();
+    return () => { cancelled = true; };
+  }, [content, resolved]);
+
+  /* Split on @username tokens (exact, written by the app) plus display
+     names once their username is known. Everything else is plain text. */
+  const parts: Array<{ kind: 'text' | 'user'; value: string; username?: string }> = [];
+  const re = /@([A-Za-z0-9_]{3,24})|\b([A-Z][a-zA-Z]+(?: [A-Z][a-zA-Z.]+){0,3})\b/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > last) parts.push({ kind: 'text', value: content.slice(last, m.index) });
+    if (m[1]) {
+      parts.push({ kind: 'user', value: '@' + m[1], username: m[1] });
+    } else {
+      const uname = systemNameCache.get(m[2]);
+      if (uname) parts.push({ kind: 'user', value: m[2], username: uname });
+      else parts.push({ kind: 'text', value: m[2] });
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < content.length) parts.push({ kind: 'text', value: content.slice(last) });
+
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.kind === 'user' ? (
+          <Link
+            key={i}
+            href={`/u/${p.username}`}
+            className="font-semibold underline underline-offset-2 hover:opacity-80"
+          >
+            {p.value}
+          </Link>
+        ) : (
+          <React.Fragment key={i}>{p.value}</React.Fragment>
+        )
       )}
     </>
   );
@@ -169,16 +250,21 @@ export default function MessageRow({
     return <Check className="h-3 w-3" />;
   };
 
-  /* System messages (join announcements, etc.) render as a centered,
-     interaction-free line — no bubble, avatar, toolbar or receipts. */
+  /* System messages (joins, departures, removals, group edits, ownership
+     changes) render as a centered pill with a small icon indicating the
+     kind of event. Member names inside the text become tappable profile
+     links: real ones are rendered by the writers as @username, and plain
+     names are resolved to usernames via a cached profile lookup. */
   if (message.message_type === 'system' && !isDeleted) {
+    const Icon = systemIcon(message.content);
     return (
       <li className="flex justify-center py-1" data-system-message="true">
         <span
-          className="max-w-[85%] rounded-full bg-black/5 px-3 py-1 text-center text-[11px] font-medium text-[#6B6B6B]"
+          className="inline-flex max-w-[85%] items-center gap-1.5 rounded-full bg-black/5 px-3 py-1 text-center text-[11px] font-medium text-[#6B6B6B]"
           style={{ fontFamily: theme.fontFamily || undefined }}
         >
-          {message.content}
+          <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <SystemMessageText content={message.content} />
         </span>
       </li>
     );

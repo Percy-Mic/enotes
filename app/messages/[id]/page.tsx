@@ -925,7 +925,7 @@ function ChatRoom() {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
           sender_id: user.id,
-          content: `${adder?.full_text_name || adder?.username || 'Someone'} added ${profile.full_text_name || profile.username || 'a new member'}`,
+          content: `${adder?.full_text_name || adder?.username || 'Someone'} added ${profile.full_text_name || profile.username || 'a new member'} (@${profile.username})`,
           message_type: 'system',
         });
       }
@@ -965,7 +965,7 @@ function ChatRoom() {
         await supabase.from('messages').insert({
           conversation_id: conversationId,
           sender_id: user.id,
-          content: `${actor?.full_text_name || actor?.username || 'An admin'} removed ${removedName}`,
+          content: `${actor?.full_text_name || actor?.username || 'An admin'} removed ${removedName}${removedMember?.profile?.username ? ` (@${removedMember.profile.username})` : ''}`,
           message_type: 'system',
         });
       }

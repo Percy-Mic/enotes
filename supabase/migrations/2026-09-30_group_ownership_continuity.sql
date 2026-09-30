@@ -128,6 +128,7 @@ declare
   v_old_role   text;
   v_actor_name text;
   v_user_name  text;
+  v_user_handle text;
 begin
   if v_me is null then
     raise exception 'Not signed in';
@@ -181,16 +182,17 @@ begin
    where conversation_id = p_conversation
      and user_id = v_creator;
 
-  select coalesce(nullif(full_text_name, ''), username, 'Someone')
-    into v_actor_name from public.profiles where id = v_me;
-  select coalesce(nullif(full_text_name, ''), username, 'Someone')
-    into v_user_name from public.profiles where id = p_user;
+  select coalesce(nullif(full_text_name, ''), username, 'Someone'), username
+    into v_actor_name, v_user_handle from public.profiles where id = v_me;
+  select coalesce(nullif(full_text_name, ''), username, 'Someone'), username
+    into v_user_name, v_user_handle from public.profiles where id = p_user;
 
   insert into public.messages (conversation_id, sender_id, content, message_type)
   values (
     p_conversation,
     v_me,
-    format('%s made %s the owner of the group.', v_actor_name, v_user_name),
+    format('%s made %s the owner of the group.', v_actor_name, v_user_name) ||
+    case when v_user_handle is not null then format(' (@%s)', v_user_handle) else '' end,
     'system'
   );
 end;
