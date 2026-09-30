@@ -1834,6 +1834,41 @@ function VideoEditor() {
   const [zoom, setZoom] = useState(1); // 0.5× … 3× around the 46px base
   const pxPerSec = BASE_PX_PER_SEC * zoom;
 
+  /* Minimap: viewport rectangle synced from the scroller on animation
+     frames (scroll events fire far too often to setState directly). */
+  const [minimapView, setMinimapView] = useState({ left: 0, width: 1, trackWidth: 1 });
+  const minimapSyncRef = useRef<number | null>(null);
+  const minimapDragRef = useRef(false);
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+    const sync = () => {
+      const inner = el.firstElementChild as HTMLElement | null;
+      const trackWidth = inner ? inner.getBoundingClientRect().width : el.scrollWidth;
+      const viewport = el.clientWidth;
+      setMinimapView((prev) => {
+        const left = el.scrollLeft;
+        const width = Math.min(trackWidth, viewport);
+        if (Math.abs(prev.left - left) < 1 && Math.abs(prev.width - width) < 1 && Math.abs(prev.trackWidth - trackWidth) < 1) return prev;
+        return { left, width, trackWidth };
+      });
+      minimapSyncRef.current = null;
+    };
+    const schedule = () => {
+      if (minimapSyncRef.current == null) minimapSyncRef.current = requestAnimationFrame(sync);
+    };
+    sync();
+    el.addEventListener('scroll', schedule, { passive: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
+    if (ro) ro.observe(el);
+    if (ro && el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => {
+      el.removeEventListener('scroll', schedule);
+      if (ro) ro.disconnect();
+      if (minimapSyncRef.current != null) cancelAnimationFrame(minimapSyncRef.current);
+    };
+  }, [zoom, duration]);
+
   useMobileGestures(timelineRef, {
     onPinch: (scale, center) => {
       setZoom((value) => Math.max(0.5, Math.min(3, value * scale)));
@@ -4094,6 +4129,79 @@ function VideoEditor() {
               <Sparkles className="h-4 w-4" />
             </button>
           </div>
+
+          {/* Minimap — whole project at a glance with a draggable viewport
+              window. Content rows are proportional to real times, so long
+              edits stay navigable without scrubbing blind. Hidden while the
+              project is empty (duration 0). */}
+          {duration > 0 && (
+            <div
+              className="relative mt-1 h-10 select-none overflow-hidden rounded-lg border border-white/10 bg-[#0c0c0c]"
+              role="slider"
+              aria-label="Timeline minimap"
+              aria-valuemin={0}
+              aria-valuemax={Math.round(duration)}
+              aria-valuenow={Math.round(playhead)}
+              aria-valuetext={`Viewing ${fmt(minimapView.left / Math.max(1, minimapView.trackWidth) * duration)} of ${fmt(duration)}`}
+              style={{ touchAction: 'none' }}
+              onPointerDown={(e) => {
+                const el = timelineRef.current;
+                if (!el || minimapView.trackWidth <= 0) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = (e.clientX - rect.left) / rect.width;
+                const inner = el.firstElementChild as HTMLElement | null;
+                const trackWidth = inner ? inner.getBoundingClientRect().width : el.scrollWidth;
+                el.scrollLeft = Math.max(0, ratio * trackWidth - el.clientWidth / 2);
+                e.currentTarget.setPointerCapture(e.pointerId);
+                minimapDragRef.current = true;
+              }}
+              onPointerMove={(e) => {
+                if (!minimapDragRef.current) return;
+                const el = timelineRef.current;
+                if (!el) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                const inner = el.firstElementChild as HTMLElement | null;
+                const trackWidth = inner ? inner.getBoundingClientRect().width : el.scrollWidth;
+                el.scrollLeft = Math.max(0, ratio * trackWidth - el.clientWidth / 2);
+              }}
+              onPointerUp={() => { minimapDragRef.current = false; }}
+              onPointerCancel={() => { minimapDragRef.current = false; }}
+            >
+              {/* content bars: main clips / overlays / audio, proportional */}
+              <div className="absolute inset-0">
+                {project.clips.map((clip) => {
+                  let acc = 0;
+                  for (const c of project.clips) { if (c.id === clip.id) break; acc += clipDuration(c); }
+                  return (
+                    <div key={clip.id} className="absolute h-2 rounded-sm bg-[#E5798F]/55" style={{ left: `${(acc / Math.max(duration, 0.001)) * 100}%`, width: `${Math.max(0.4, (clipDuration(clip) / Math.max(duration, 0.001)) * 100)}%`, top: 4 }} />
+                  );
+                })}
+                {project.elements.map((el) => (
+                  <div key={el.id} className="absolute h-1.5 rounded-sm bg-[#7b5cff]/60" style={{ left: `${(el.start / Math.max(duration, 0.001)) * 100}%`, width: `${Math.max(0.3, ((el.end - el.start) / Math.max(duration, 0.001)) * 100)}%`, top: 18 }} />
+                ))}
+                {project.audio.map((a) => {
+                  
+                  
+                  const s = Number(a.start ?? 0);
+                  const e2 = Number(a.start ?? 0) + Math.max(0.1, (Number(a.trimEnd) || 0) - (Number(a.trimStart) || 0));
+                  return (
+                    <div key={a.id} className="absolute h-1.5 rounded-sm bg-emerald-400/50" style={{ left: `${(s / Math.max(duration, 0.001)) * 100}%`, width: `${Math.max(0.3, ((e2 - s) / Math.max(duration, 0.001)) * 100)}%`, top: 30 }} />
+                  );
+                })}
+              </div>
+              {/* viewport window */}
+              <div
+                className="pointer-events-none absolute inset-y-0 rounded-md border-2 border-white/70 bg-white/[0.08]"
+                style={{
+                  left: `${(minimapView.left / Math.max(1, minimapView.trackWidth)) * 100}%`,
+                  width: `${Math.min(100, (minimapView.width / Math.max(1, minimapView.trackWidth)) * 100)}%`,
+                }}
+              />
+              {/* playhead tick inside the minimap */}
+              <div className="pointer-events-none absolute inset-y-0 w-px bg-[#FFB6C1]" style={{ left: `${(playhead / Math.max(duration, 0.001)) * 100}%` }} />
+            </div>
+          )}
         </section>
 
         {/* ---------- multi-track timeline ---------- */}
