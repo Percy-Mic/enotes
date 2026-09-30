@@ -3219,6 +3219,72 @@ Return {"add": [...], "fixes": [{"index": <0-based index into the plan>, "action
     }
 
     /*
+     * Timing guard — deterministic duration/sequencing for text cues,
+     * independent of what the model guessed. Reading speed caps how long
+     * copy may stay up; role rules set minimums (hook leads, CTA closes);
+     * a 0.2s gap separates simultaneous-cue starts; and transcript/beat
+     * snapping (already emitted by the planner) is preserved when sane.
+     */
+    const timingCues: Array<{ idx: number; start: number; end: number }> = [];
+    sanitizedActions.forEach((action: any, idx: number) => {
+      if (action.type !== 'add_text_element') return;
+      const obj = action.object = action.object && typeof action.object === 'object' ? action.object : {};
+      const start = Math.max(0, Number(obj.start) || 0);
+      const endRaw = Number(obj.end);
+      const end = Number.isFinite(endRaw) && endRaw > start ? endRaw : start + 3;
+      timingCues.push({ idx, start, end });
+    });
+    const projEnd = timelineEnd > 0 ? timelineEnd : (() => {
+      let acc = 0;
+      const clips = Array.isArray(compactProject.clips) ? compactProject.clips as any[] : [];
+      for (const c of clips) {
+        const dur = (Number(c.trimEnd) || 0) - (Number(c.trimStart) || 0);
+        acc += Math.max(0, dur) / Math.max(0.05, Number(c.speed) || 1);
+      }
+      return Math.max(0.1, acc);
+    })();
+    for (const cue of timingCues) {
+      const obj: any = sanitizedActions[cue.idx].object;
+      const text = String(obj.text || '').trim();
+      const words = text.split(/\s+/).filter(Boolean).length;
+      const isCta = /follow|subscribe|like|share|comment|watch more|shop|link|sign up|swipe/i.test(text);
+      /* Reading time at ~3.3 words/s (≈180 wpm), floored by role minimums */
+      const minDur = isCta ? 2.5 : cue.start <= 3.5 ? 2.5 : words <= 2 ? 1.8 : 2.2;
+      const readDur = Math.max(minDur, words * 0.3 + 0.9);
+      const maxDur = Math.max(minDur, readDur * 2.2);
+      let dur = cue.end - cue.start;
+      if (dur < minDur) dur = minDur;
+      if (dur > maxDur) dur = maxDur;
+      let newStart = cue.start;
+      let newEnd = cue.start + dur;
+      /* CTA holds to the end; everything clamps inside the timeline */
+      if (isCta && projEnd > 0) { newEnd = projEnd; newStart = Math.max(0, projEnd - dur); }
+      if (newEnd > projEnd) { newEnd = Math.max(minDur, projEnd); newStart = Math.max(0, newEnd - dur); }
+      if (newStart + minDur > projEnd && projEnd >= minDur) { newStart = projEnd - minDur; newEnd = projEnd; }
+      obj.start = Math.round(newStart * 100) / 100;
+      obj.end = Math.round(newEnd * 100) / 100;
+      cue.start = obj.start; cue.end = obj.end;
+    }
+    /* Sequence cues that ended up starting together: 0.2s stagger so
+       intros/captions/CTAs don't all pop in the same instant. */
+    timingCues.sort((a, b) => a.start - b.start || a.idx - b.idx);
+    for (let i = 1; i < timingCues.length; i++) {
+      const prev = timingCues[i - 1];
+      const cur = timingCues[i];
+      const obj: any = sanitizedActions[cur.idx].object;
+      if (Math.abs(cur.start - prev.start) < 0.2) {
+        const dur = Math.max(1.2, cur.end - cur.start);
+        let ns = prev.end + 0.2;
+        if (ns + dur > projEnd) ns = Math.max(0, projEnd - dur);
+        if (ns > cur.start) {
+          obj.start = Math.round(ns * 100) / 100;
+          obj.end = Math.round((ns + dur) * 100) / 100;
+          cur.start = obj.start; cur.end = obj.end;
+        }
+      }
+    }
+
+    /*
      * Layout guard — deterministic placement for text cues, independent of
      * what coordinates the model guessed. Centers horizontally, assigns
      * distinct vertical bands per simultaneous cue, sizes type to the copy,

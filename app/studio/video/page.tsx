@@ -1215,8 +1215,22 @@ function VideoEditor() {
 
         if (action.type === 'add_text_element' && action.object) {
           const obj = action.object;
-          const start = Number(obj.start);
-          const end = Number(obj.end);
+          let start = Number(obj.start);
+          let end = Number(obj.end);
+          /* Snap cue starts to measured musical beats (within 0.25s) — a
+             title landing on the downbeat reads as intentional, same rule
+             audio placement already follows. */
+          if (Number.isFinite(start) && nextProject.beatMarkers?.length) {
+            const nearest = nextProject.beatMarkers.reduce(
+              (best, beat) => (Math.abs(beat - start) < Math.abs(best - start) ? beat : best),
+              nextProject.beatMarkers[0],
+            );
+            if (Math.abs(nearest - start) <= 0.25) {
+              const shift = nearest - start;
+              start = nearest;
+              if (Number.isFinite(end)) end = Math.max(nearest + 0.25, end + shift);
+            }
+          }
           const safeStart = Number.isFinite(start) ? Math.max(0, start) : playheadRef.current;
           const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(planCeiling, end)) : Math.min(planCeiling, safeStart + 3);
           const element: TimelineElement = {
