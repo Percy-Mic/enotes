@@ -100,14 +100,27 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
       if (event.key === 'Escape') closeTransient();
     };
 
+    /* Scrolling INSIDE the emoji/GIF grid must never close the picker (the
+       capture listener used to catch the grid's own scroll and slam it shut
+       mid-browse). Page scrolls only matter on ≥sm breakpoints, where the
+       drawer is anchor-positioned and would visually detach — on phones it
+       is viewport-fixed, and the keyboard-opening scroll when tapping the
+       GIF/emoji search box must NOT close it (that broke GIF search). */
+    const onScroll = (event: Event) => {
+      const target = event.target as Node | null;
+      if (pickerHostRef.current && target && pickerHostRef.current.contains(target)) return;
+      if (!window.matchMedia('(min-width: 640px)').matches) return;
+      closeTransient();
+    };
+
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('scroll', closeTransient, true);
+    window.addEventListener('scroll', onScroll, true);
 
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('scroll', closeTransient, true);
+      window.removeEventListener('scroll', onScroll, true);
     };
   }, [reactionFor, showEmoji, showGif]);
 
