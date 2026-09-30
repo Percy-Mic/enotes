@@ -1259,9 +1259,9 @@ function VideoEditor() {
           probe.onerror = () => resolve(0);
           probe.src = URL.createObjectURL(file);
         });
-        const up = await uploadFile(file, 'studio-media', meId);
+        const uploadedUrl = await uploadStudioMedia(file);
         const span = realDuration > 0 ? realDuration : Math.max(2, String(obj.text || '').split(/\s+/).length / 2.6);
-        preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: up.url });
+        preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: uploadedUrl });
       } catch {
         preparedNarrations.push(null);
       }
@@ -2443,6 +2443,31 @@ function VideoEditor() {
     openTool('text');
   };
 
+  /* Upload to studio-media and optionally mirror to Cloudinary (best-
+     effort). Returns the URL every consumer should use — the Supabase
+     URL when Cloudinary is not configured, the optimized URL when it
+     is. Shared so no upload site can forget the optimization step. */
+  const uploadStudioMedia = useCallback(async (file: File): Promise<string> => {
+    if (!meId) throw new Error('Sign in to upload media.');
+    const up = await uploadFile(file, 'studio-media', meId);
+    try {
+      const cloudinaryResponse = await fetch('/api/video/cloudinary', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          url: up.url,
+          mediaType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'video',
+          mode: project.aspect === '9:16' ? 'vertical' : project.aspect === '1:1' ? 'square' : 'optimize',
+        }),
+      });
+      const cloudinary = await cloudinaryResponse.json().catch(() => ({}));
+      if (cloudinaryResponse.ok && typeof cloudinary.url === 'string' && cloudinary.url) {
+        return cloudinary.url;
+      }
+    } catch { /* optional optimization layer — keep Supabase URL */ }
+    return up.url;
+  }, [meId, project.aspect]);
+
   const addTextElement = () => {
     const hasContent = project.clips.length + project.elements.length + project.audio.length > 0;
     const el: TimelineElement = {
@@ -2512,7 +2537,7 @@ function VideoEditor() {
       });
       URL.revokeObjectURL(probeUrl);
       setImporting({ name: file.name, percent: 45 });
-      const up = await uploadFile(file, 'studio-media', meId);
+      const mediaUrl = await uploadStudioMedia(file);
       const durationForLayer = Math.max(0.2, Math.min(meta.duration || 5, Math.max(0.2, duration - playheadRef.current)));
       const width = Math.min(project.canvas.width * 0.55, Math.max(180, meta.w || 640));
       const height = width * ((meta.h || 360) / Math.max(1, meta.w || 640));
@@ -3512,7 +3537,7 @@ function VideoEditor() {
         if (meId) {
           const file = new File([blob], `voiceover-${Date.now()}.webm`, { type: blob.type });
           try {
-            const up = await uploadFile(file, 'studio-media', meId);
+            const mediaUrl = await uploadStudioMedia(file);
             /* measure the real recording duration instead of guessing */
             const dur = await new Promise<number>((res) => {
               const a = document.createElement('audio');
@@ -3595,7 +3620,8 @@ function VideoEditor() {
       const ext = result.format === 'mp4' ? 'mp4' : 'webm';
       const bareType = (result.blob.type || 'video/webm').split(';')[0].trim().toLowerCase();
       const file = new File([result.blob], `export-${Date.now()}.${ext}`, { type: bareType });
-      const up = await uploadFile(file, 'studio-media', meId);
+      const mediaUrl = await uploadStudioMedia(file);
+      const up = { path: mediaUrl.split('/studio-media/').pop() || '' };
 
       const { error: libError } = await supabase.from('media_library').insert({
         user_id: meId,
@@ -3643,7 +3669,7 @@ function VideoEditor() {
     try {
       const ext = exportResult.format === 'mp4' ? 'mp4' : 'webm';
       const file = new File([exportResult.blob], `post-${Date.now()}.${ext}`, { type: exportResult.blob.type });
-      const up = await uploadFile(file, 'post-media', meId);
+      const mediaUrl = await uploadStudioMedia(file);
       const { data, error } = await supabase
         .from('posts')
         .insert({ author_id: meId, content: doc.title, media_url: mediaUrl, media_type: 'video', visibility: 'public' })
@@ -3765,8 +3791,7 @@ function VideoEditor() {
         await rendererRef.current.drawFrame(shot, docRef.current.project, Math.min(1, total / 2), { previewing: true, playing: false });
         const blob: Blob = await new Promise((res) => shot.toBlob((b) => res(b!), 'image/jpeg', 0.85));
         if (blob) {
-          const up = await uploadFile(new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' }), 'studio-media', meId);
-          thumbnailUrl = mediaUrl;
+          thumbnailUrl = await uploadStudioMedia(new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' }));
         }
 
         /* video preview: play the timeline once while recording the canvas */
