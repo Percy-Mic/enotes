@@ -1805,7 +1805,7 @@ export class VideoRenderer {
         let clipStart = 0;
         for (const clip of scaled.clips) {
           const clipDurationSec = clipDuration(clip);
-          if (!clip.muted && clip.volume > 0 && !isPlaceholder(clip.src)) {
+          if (clip.media_type !== 'image' && !clip.muted && clip.volume > 0 && !isPlaceholder(clip.src)) {
             try {
               const res = await fetch(clip.src);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
