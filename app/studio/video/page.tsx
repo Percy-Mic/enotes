@@ -496,7 +496,19 @@ function VideoEditor() {
         if (value && typeof value === 'object') { for (const item of Object.values(value as Record<string, unknown>)) { const found = findUrl(item); if (found) return found; } }
         return null;
       };
-      const url = findUrl(data?.output);
+      let url = findUrl(data?.output);
+      const binary = data?.output && typeof data.output === 'object'
+        ? data.output as { bytesBase64?: unknown; contentType?: unknown }
+        : null;
+      if (!url && typeof binary?.bytesBase64 === 'string' && meId) {
+        const raw = atob(binary.bytesBase64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        const blob = new Blob([bytes], { type: String(binary.contentType || 'image/png') });
+        const extension = String(binary.contentType || 'image/png').split('/')[1]?.split(';')[0] || 'png';
+        const uploaded = await uploadFile(new File([blob], 'ai-result.' + extension, { type: blob.type }), 'studio-media', meId);
+        url = uploaded.url;
+      }
       if (!url) {
         notify('AI finished, but the provider returned no directly importable media URL.');
         return;
