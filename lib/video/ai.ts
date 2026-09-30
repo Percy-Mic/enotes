@@ -1595,11 +1595,10 @@ async function updateProjectVisionIndex(supabase: Awaited<ReturnType<typeof crea
 /*
  * Gemini TTS narration.
  *
- * The *-preview TTS models answer generateContent with
- * responseModalities: ['AUDIO'] and return inlineData PCM (24kHz mono,
- * 16-bit LE). We wrap the PCM bytes in a minimal 44-byte RIFF/WAV header
- * so the browser decodes it as normal audio and the editor can upload it
- * to storage like any other clip.
+ * Current TTS models answer the interactions API with WAV bytes, while the
+ * legacy generateContent surface streams headerless PCM (24kHz mono,
+ * 16-bit LE). speechBlob keeps either form decodable in the browser and
+ * uploadable to storage like any other clip.
  */
 function pcmToWavBlob(pcm: ArrayBuffer, sampleRate = 24000): Blob {
   const buffer = new ArrayBuffer(44 + pcm.byteLength);
@@ -1649,37 +1648,97 @@ async function geminiEmbed(text: string): Promise<number[] | null> {
   }
 }
 
+const TTS_VOICES = [
+  'zephyr', 'puck', 'charon', 'kore', 'fenrir', 'leda', 'orus', 'aoede',
+  'callirrhoe', 'autonoe', 'enceladus', 'iapetus', 'umbriel', 'algieba',
+  'despina', 'erinome', 'algenib', 'rasalgethi', 'laomedeia', 'achernar',
+  'alnilam', 'schedar', 'gacrux', 'pulcherrima', 'achird', 'zubenelgenubi',
+  'vindemiatrix', 'sadachbia', 'sadaltager', 'sulafat',
+];
+
+/* Planner voices arrive as 'Puck', legacy '_puck', or the occasional
+   'callowav' typo; map everything onto the 30 prebuilt studio voices the
+   current TTS models expose. */
+function normalizeTtsVoice(raw: string): string {
+  const key = String(raw || '').trim().replace(/^_+/, '').toLowerCase();
+  if (key === 'callowav') return 'Callirrhoe';
+  if (TTS_VOICES.includes(key)) return key.charAt(0).toUpperCase() + key.slice(1);
+  return 'Puck';
+}
+
+/* Wrap inline audio in a browser-decodable blob. Current TTS models return
+   RIFF-wrapped WAV by default; older calls streamed headerless PCM. */
+function speechBlob(base64: string, mime: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  const isWav = /wav/i.test(mime) ||
+    (bytes.length > 44 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46);
+  if (isWav) return new Blob([bytes], { type: 'audio/wav' });
+  return pcmToWavBlob(bytes.buffer, 24000);
+}
+
 async function geminiSpeech(text: string, voice: string, style?: string): Promise<Blob> {
   const key = GEMINI_KEY();
   if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.5-flash-preview-tts')}:generateContent`,
+  const model = process.env.GEMINI_TTS_MODEL || 'gemini-3.8-flash-lite-tts';
+  const voiceName = normalizeTtsVoice(voice);
+  const prompt = String(text || '').trim().slice(0, 4000);
+  /* Current TTS models treat the prompt as a verbatim transcript, so the
+     delivery hint belongs in speech metadata, not prose. Try the legacy
+     generateContent surface first, then the native interactions API. */
+  const legacy = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: `Read this exactly as written, with a natural professional delivery${style ? ` (${style})` : ''}: ${text}` }],
-        }],
+        contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseModalities: ['AUDIO'],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice || '_puck' } } },
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
         },
       }),
       cache: 'no-store',
     },
   );
-  if (!response.ok) {
-    throw new Error(`Voice synthesis failed (${response.status}).`);
+  if (legacy.ok) {
+    const data = await legacy.json();
+    const part = data?.candidates?.[0]?.content?.parts?.find?.((item: any) => item?.inlineData?.data || item?.inline_data?.data);
+    const base64 = part?.inlineData?.data || part?.inline_data?.data;
+    const mime = String(part?.inlineData?.mimeType || part?.inline_data?.mime_type || '');
+    if (base64) return speechBlob(String(base64), mime);
   }
-  const data = await response.json();
-  const part = data?.candidates?.[0]?.content?.parts?.find?.((item: any) => item?.inlineData?.data || item?.inline_data?.data);
-  const base64 = part?.inlineData?.data || part?.inline_data?.data;
-  if (!base64) throw new Error('Voice synthesis returned no audio.');
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-  return pcmToWavBlob(bytes.buffer, 24000);
+  const interaction = await fetch(
+    'https://generativelanguage.googleapis.com/v1beta/interactions',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({
+        model,
+        input: [{
+          type: 'user_input',
+          content: [{
+            type: 'text',
+            text: prompt,
+            ...(style ? { annotations: [{ type: 'speech_metadata', style: String(style).slice(0, 200) }] } : {}),
+          }],
+        }],
+        response_format: { type: 'audio' },
+        generation_config: { speech_config: [{ voice: voiceName }] },
+      }),
+      cache: 'no-store',
+    },
+  );
+  if (!interaction.ok) {
+    throw new Error(`Voice synthesis failed (${interaction.status}).`);
+  }
+  const data = await interaction.json();
+  const audio = (Array.isArray(data?.steps) ? data.steps : [])
+    .flatMap((step: any) => (Array.isArray(step?.content) ? step.content : []))
+    .find((item: any) => item?.type === 'audio' && item?.data);
+  if (!audio?.data) throw new Error('Voice synthesis returned no audio.');
+  return speechBlob(String(audio.data), String(audio.mime_type || audio.mimeType || ''));
 }
 
 /*
@@ -2621,7 +2680,7 @@ TIMING PRECISION CONTRACT (this is what separates professional timing from guess
 
 AUDIO ACTIONS (new):
 - add_audio_clip: place EXISTING media on the timeline. object = { url, kind: 'music'|'voiceover', start, trimStart, trimEnd, volume, fadeIn, fadeOut }. Rules: url must be one of the supplied mediaUrls, the audio library (soundId form below), or an uploaded voiceover url; compute trimEnd from the requested play length (start + playSeconds ≤ timeline end + music tail); volume 0.5-0.9 for music under speech, 0.9-1 for standalone; fadeIn/fadeOut 0.5-1.5s unless the user says otherwise. When the user asks for 'background music', 'soundtrack', 'add the music', 'use that sound', or similar, emit this action — you may combine a library soundId with placement parameters.
-- speak_narration: synthesize a voice line and place it on the timeline. object = { text, start, voice: '_callowav'|'_puck'|'_charon'|'_kore'|'_fenrir'|'_aoede', style: optional delivery hint like 'excited, warm' }. Rules: text ≤ 600 chars, plain sentences, no markup. start must be a FREE window (not overlapping speech from the transcript); estimated speaking rate ≈ 2.6 words/second — leave ≥ 0.4s breathing room before the next scheduled sound; the system measures the REAL audio duration after synthesis and trims any overlap automatically.
+- speak_narration: synthesize a voice line and place it on the timeline. object = { text, start, voice: 'Puck'|'Charon'|'Kore'|'Fenrir'|'Aoede'|'Callirrhoe', style: optional delivery hint like 'excited, warm' }. Rules: text ≤ 600 chars, plain sentences, no markup. start must be a FREE window (not overlapping speech from the transcript); estimated speaking rate ≈ 2.6 words/second — leave ≥ 0.4s breathing room before the next scheduled sound; the system measures the REAL audio duration after synthesis and trims any overlap automatically.
 - Audio layering: music sits UNDER speech (lower music volume when narration exists), narration never overlaps transcript speech or another narration cue.
 
 TRANSCRIPT WITH WORD TIMINGS (project seconds — authoritative for when speech happens):
@@ -3309,7 +3368,7 @@ Return {"add": [...], "fixes": [{"index": <0-based index into the plan>, "action
           `Cues needing copy (index refers to the actions array): ${JSON.stringify(cueContext)}\n\n` +
           `Rules: max 6 words per cue (8 for a CTA), UPPERCASE for openers/CTAs, sentence case for captions; copy must match what the footage actually shows and the user's request; no quotes, no emojis, no hashtags. Return one entry per cue index.`,
           copySchema,
-          process.env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash',
+          process.env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash-lite',
         );
         const copies = Array.isArray((copy as any)?.copies) ? (copy as any).copies : [];
         for (const c of copies) {
