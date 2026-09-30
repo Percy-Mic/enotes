@@ -322,7 +322,7 @@ type Props = {
   onAddMedia?: (media: { url: string; name: string }) => void;
   onAddStockVideo?: (media: { url: string; name: string; width: number; height: number; duration: number; photographer: string; provider: 'pexels' | 'pixabay' }) => void;
   onAddLibraryAudio?: (soundId: string) => Promise<void> | void;
-  onApplyActions?: (actions: VideoAIEditAction[]) => void | Promise<void>;
+  onApplyActions?: (actions: VideoAIEditAction[]) => void | Promise<void | { applied: number; failed: string[] }>;
 };
 
 const SUGGESTIONS = [
@@ -649,6 +649,7 @@ export default function VideoAIStudio({
         }
       }
 
+      let applicationNote = '';
       if (actions.length && onApplyActions) {
         const applicable = actions.filter((action) =>
           action.type !== 'generate_captions' &&
@@ -665,13 +666,28 @@ export default function VideoAIStudio({
           }
           if (targets.length > 0) {
             setPendingDestructive({ actions: applicable, targets: Array.from(new Set(targets)) });
+            applicationNote = '\n\n⏳ Waiting for your confirmation before applying destructive changes.';
           } else {
             /* Destructive actions whose targets no longer exist are dropped;
                the rest of the plan applies without a pointless prompt. */
-            void Promise.resolve(onApplyActions(applicable.filter((action) => !DESTRUCTIVE_ACTIONS.has(action.type)))).catch(() => undefined);
+            try {
+              const result = await Promise.resolve(onApplyActions(applicable.filter((action) => !DESTRUCTIVE_ACTIONS.has(action.type))));
+              if (result && typeof result === 'object') {
+                applicationNote = `\n\n✓ Applied ${result.applied} change${result.applied === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+              }
+            } catch (e) {
+              applicationNote = `\n\n⚠️ The editor could not apply the requested changes: ${e instanceof Error ? e.message : 'unknown editor error'}`;
+            }
           }
         } else {
-          void Promise.resolve(onApplyActions(applicable)).catch(() => undefined);
+          try {
+            const result = await Promise.resolve(onApplyActions(applicable));
+            if (result && typeof result === 'object') {
+              applicationNote = `\n\n✓ Applied ${result.applied} of ${applicable.length} requested timeline change${applicable.length === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+            }
+          } catch (e) {
+            applicationNote = `\n\n⚠️ The editor could not apply the requested changes: ${e instanceof Error ? e.message : 'unknown editor error'}`;
+          }
         }
       }
 
@@ -686,7 +702,7 @@ export default function VideoAIStudio({
         ...items,
         {
           role: 'assistant',
-          text: String(output.message || 'I prepared the edit.') + (failedNotes.length ? `\n\n⚠️ Couldn't apply: ${Array.from(new Set(failedNotes)).join(' · ')}` : ''),
+          text: String(output.message || 'I prepared the edit.') + applicationNote + (failedNotes.length ? `\n\n⚠️ Couldn't apply: ${Array.from(new Set(failedNotes)).join(' · ')}` : ''),
           actions,
           reviewCount: Number(output.reviewCount) || 0,
         },
