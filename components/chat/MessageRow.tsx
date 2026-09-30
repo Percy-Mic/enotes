@@ -143,7 +143,22 @@ export default function MessageRow({
     }
   };
 
-  const time = new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  /* Date-aware: bare time only for today's messages; older ones carry the
+     day (Yesterday / weekday / date) so context survives scrolling back. */
+  const time = (() => {
+    const d = new Date(message.created_at);
+    const now = new Date();
+    const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+    const clock = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (sameDay) return clock;
+    const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+    const isYesterday = d.getFullYear() === yesterday.getFullYear() && d.getMonth() === yesterday.getMonth() && d.getDate() === yesterday.getDate();
+    if (isYesterday) return `Yesterday ${clock}`;
+    const days = Math.round((now.setHours(0, 0, 0, 0) - new Date(d).setHours(0, 0, 0, 0)) / 86400000);
+    if (days > 0 && days < 7) return `${d.toLocaleDateString([], { weekday: 'short' })} ${clock}`;
+    const sameYear = d.getFullYear() === now.getFullYear();
+    return `${d.toLocaleDateString([], sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' })} ${clock}`;
+  })();
 
   /* Read receipt icon for my messages */
   const receipt = () => {

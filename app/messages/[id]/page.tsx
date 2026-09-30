@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, Ban, BellOff, BellRing, Camera, Check, Crown, Flag, Images, Loader2, LogOut,
-  MoreVertical, Palette, Pencil, Phone, PhoneCall, Shield, Trash2, UserMinus, Users, Video, X,
+  MoreVertical, Palette, Pencil, Phone, PhoneCall, Shield, Trash2, UserMinus, UserPlus, Users, Video, X,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import type { ChatThemeRow, Conversation, Message, Profile } from '@/types/social';
@@ -134,6 +134,11 @@ function ChatRoom() {
   const [groupError, setGroupError] = useState<string | null>(null);
   const [groupNotice, setGroupNotice] = useState<string | null>(null);
   const iconInputRef = useRef<HTMLInputElement>(null);
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteQuery, setInviteQuery] = useState('');
+  const [inviteResults, setInviteResults] = useState<Pick<Profile, 'id' | 'full_text_name' | 'username' | 'avatar_url'>[]>([]);
+  const [inviteSearching, setInviteSearching] = useState(false);
+  const [inviteAddingId, setInviteAddingId] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -779,6 +784,62 @@ function ChatRoom() {
     setGroupNotice(role === 'admin' ? 'Promoted to admin.' : 'Changed to member.');
   };
 
+  /* ---------- invite to group ----------
+     Search everyone except existing members, then insert a
+     conversation_members row. RLS decides who may add (creator/admins per
+     the existing member-management rules); errors surface in the sheet. */
+  const memberIds = useMemo(() => new Set(groupMembers.map((m) => m.user_id)), [groupMembers]);
+
+  useEffect(() => {
+    if (!showInvite || !conversation?.is_group) return;
+    const q = inviteQuery.trim();
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      setInviteSearching(true);
+      try {
+        let req = supabase
+          .from('profiles')
+          .select('id, full_text_name, username, avatar_url')
+          .neq('id', me || '')
+          .limit(12);
+        if (q) {
+          req = req.or(`full_text_name.ilike.%${q.replace(/[%_,()]/g, '')}%,username.ilike.%${q.replace(/[%_,()]/g, '')}%`);
+        } else {
+          req = req.order('followers_count', { ascending: false });
+        }
+        const { data, error } = await req;
+        if (cancelled) return;
+        if (error) { setInviteResults([]); return; }
+        setInviteResults((data || []).filter((p) => !memberIds.has(p.id)));
+      } finally {
+        if (!cancelled) setInviteSearching(false);
+      }
+    }, 220);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [inviteQuery, showInvite, conversation?.is_group, me, memberIds]);
+
+  const inviteMember = async (profile: { id: string; full_text_name?: string | null; username?: string | null }) => {
+    if (!conversation?.is_group) return;
+    setInviteAddingId(profile.id);
+    setGroupError(null);
+    const { error } = await supabase
+      .from('conversation_members')
+      .insert({ conversation_id: conversationId, user_id: profile.id, role: 'member' });
+    setInviteAddingId(null);
+    if (error) {
+      setGroupError(
+        error.message.includes('row-level security')
+          ? 'Only the group creator or admins can add members.'
+          : error.message,
+      );
+      return;
+    }
+    setInviteQuery('');
+    setInviteResults((list) => list.filter((p) => p.id !== profile.id));
+    setGroupNotice(`${profile.full_text_name || profile.username || 'Member'} added to the group.`);
+    void loadMembers();
+  };
+
   const removeMember = async (userId: string) => {
     if (!amGroupAdmin || userId === conversation?.created_by) return;
     setGroupError(null);
@@ -1026,6 +1087,54 @@ function ChatRoom() {
               <button onClick={() => setShowMembers(false)} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Close">
                 <X className="h-5 w-5" />
               </button>
+            </div>
+
+            {/* invite: search + add, visible to everyone (RLS decides) */}
+            <div className="mb-3 rounded-xl border border-[#E8E2E4] p-3">
+              <button
+                onClick={() => { setShowInvite((v) => !v); setGroupError(null); setGroupNotice(null); }}
+                className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-[#FFB6C1] transition hover:opacity-90"
+                aria-expanded={showInvite}
+              >
+                <UserPlus className="h-4 w-4" /> {showInvite ? 'Hide invite' : 'Add people'}
+              </button>
+              {showInvite && (
+                <div className="mt-3">
+                  <input
+                    value={inviteQuery}
+                    onChange={(e) => setInviteQuery(e.target.value)}
+                    placeholder="Search people to invite…"
+                    className="w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm focus:border-[#1E90FF] focus:outline-none"
+                    aria-label="Search people to invite"
+                  />
+                  <ul className="mt-2 max-h-64 space-y-1 overflow-y-auto">
+                    {inviteSearching && inviteResults.length === 0 && (
+                      <li className="px-2 py-3 text-xs text-[#9B9B9B]">Searching…</li>
+                    )}
+                    {!inviteSearching && inviteResults.length === 0 && (
+                      <li className="px-2 py-3 text-xs text-[#9B9B9B]">No one found — they may already be in the group.</li>
+                    )}
+                    {inviteResults.map((p) => (
+                      <li key={p.id} className="flex items-center gap-2.5 rounded-lg p-1.5 hover:bg-gray-50">
+                        <Avatar src={p.avatar_url} name={p.full_text_name || p.username} size={36} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium">{p.full_text_name || p.username || 'User'}</span>
+                          {p.username && <span className="block truncate text-xs text-[#6B6B6B]">@{p.username}</span>}
+                        </span>
+                        <button
+                          onClick={() => void inviteMember(p)}
+                          disabled={inviteAddingId === p.id}
+                          className="flex min-h-[36px] shrink-0 items-center gap-1 rounded-lg bg-[#E5798F] px-3 text-xs font-bold text-white disabled:opacity-60"
+                          aria-label={`Add ${p.full_text_name || p.username || 'user'} to group`}
+                        >
+                          {inviteAddingId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
+                          Add
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <ul className="space-y-2">
               {groupMembers.map((member) => {

@@ -229,7 +229,17 @@ export default function MessagesPage() {
                         </p>
                         {conv.last_message_at && (
                           <span className="shrink-0 text-[10px] text-[#9B9B9B]">
-                            {new Date(conv.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {(() => {
+                              const d = new Date(conv.last_message_at);
+                              const now = new Date();
+                              const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+                              if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                              const yesterday = new Date(now); yesterday.setDate(now.getDate() - 1);
+                              const isYesterday = d.getFullYear() === yesterday.getFullYear() && d.getMonth() === yesterday.getMonth() && d.getDate() === yesterday.getDate();
+                              if (isYesterday) return 'Yesterday';
+                              const sameYear = d.getFullYear() === now.getFullYear();
+                              return d.toLocaleDateString([], sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+                            })()}
                           </span>
                         )}
                       </div>
