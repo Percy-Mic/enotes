@@ -26,7 +26,7 @@
 import {
   clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder,
   coverFit, croppedAspect, resolveElementValues,
-  type VideoProject, type TimelineElement, type VideoClip, type CropRect, type ClipAdjustments,
+  type VideoProject, type TimelineElement, type VideoClip, type CropRect, type ClipAdjustments, type EffectType,
 } from '@/lib/video/project';
 
 export interface ExportSettings {
@@ -502,117 +502,110 @@ export interface EffectOffset { scaleMul: number; dx: number; dy: number }
 /** Canvas-diagonal reference so drift offsets scale with resolution. */
 const W0REF = 720;
 
-function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOffset {
-  const p = Math.min(1, Math.max(0, timeIn / Math.max(dur, 0.1)));
-  const i = Math.min(1, Math.max(0, clip.effect_intensity ?? 1));
-  switch (clip.effect) {
-    case 'zoom': return { scaleMul: 1 + 0.12 * i * p, dx: 0, dy: 0 };
-    case 'shake': { const t = timeIn * 18; return { scaleMul: 1 + 0.04 * i, dx: Math.sin(t) * 6 * i, dy: Math.cos(t * 1.7) * 6 * i }; }
-    case 'pulse': return { scaleMul: 1 + 0.04 * i * Math.sin((timeIn * Math.PI * 2) / 0.8), dx: 0, dy: 0 };
-    case 'glitch': { const t = timeIn * 42; return { scaleMul: 1 + 0.01 * i, dx: Math.sin(t) * 3 * i, dy: Math.cos(t * 1.37) * 2 * i }; }
-    case 'dream': return { scaleMul: 1 + 0.018 * i * Math.sin(timeIn * 3), dx: 0, dy: 0 };
-    case 'film': return { scaleMul: 1 + 0.008 * i * Math.sin(timeIn * 1.7), dx: 0, dy: 0 };
-    case 'chromatic': return { scaleMul: 1 + 0.015 * i, dx: Math.sin(timeIn * 9) * 2 * i, dy: Math.cos(timeIn * 7) * 1.5 * i };
-    /* --- professional motion --- */
-    case 'ken-burns': {
-      /* Slow cinematic push with a gentle diagonal drift, eased both ends —
-         the documentary standard for stills and slow footage. */
-      const scaleMul = 1 + 0.18 * i * p;
-      return { scaleMul, dx: 0.018 * W0REF * i * p, dy: -0.012 * W0REF * i * p };
-    }
-    case 'dolly-out': {
-      /* Reverse push: starts tight, settles wide — used for reveals. */
-      return { scaleMul: 1 + 0.16 * i * (1 - p), dx: 0, dy: 0 };
-    }
-    case 'handheld': {
-      /* Organic multi-frequency breathing (two incommensurate rates + slow
-         sway) — far less mechanical than the single-sine 'shake'. */
-      const t1 = timeIn * 7.3;
-      const t2 = timeIn * 11.1;
-      const t3 = timeIn * 0.9;
-      return {
-        scaleMul: 1 + 0.025 * i,
-        dx: (Math.sin(t1) * 3.2 + Math.sin(t2) * 1.4 + Math.sin(t3) * 2.1) * i,
-        dy: (Math.cos(t1 * 1.27) * 2.6 + Math.cos(t2 * 0.87) * 1.2) * i,
-      };
-    }
-    default: return { scaleMul: 1, dx: 0, dy: 0 };
+function effectLayers(clip: VideoClip): Array<{ type: EffectType; intensity: number }> {
+  if (Array.isArray(clip.effects) && clip.effects.length) {
+    return clip.effects.filter((layer) => layer.type !== 'none');
   }
+  return clip.effect === 'none'
+    ? []
+    : [{ type: clip.effect, intensity: Math.min(1, Math.max(0, clip.effect_intensity ?? 1)) }];
+}
+
+function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOffset {
+  const layers = effectLayers(clip);
+  if (!layers.length) return { scaleMul: 1, dx: 0, dy: 0 };
+  const p = Math.min(1, Math.max(0, timeIn / Math.max(dur, 0.1)));
+  let scaleMul = 1, dx = 0, dy = 0;
+  for (const layer of layers) {
+    const i = Math.min(1, Math.max(0, layer.intensity));
+    switch (layer.type) {
+      case 'zoom': scaleMul *= 1 + 0.12 * i * p; break;
+      case 'shake': { const t = timeIn * 18; scaleMul *= 1 + 0.04 * i; dx += Math.sin(t) * 6 * i; dy += Math.cos(t * 1.7) * 6 * i; break; }
+      case 'pulse': scaleMul *= 1 + 0.04 * i * Math.sin((timeIn * Math.PI * 2) / 0.8); break;
+      case 'glitch': { const t = timeIn * 42; scaleMul *= 1 + 0.01 * i; dx += Math.sin(t) * 3 * i; dy += Math.cos(t * 1.37) * 2 * i; break; }
+      case 'dream': scaleMul *= 1 + 0.018 * i * Math.sin(timeIn * 3); break;
+      case 'film': scaleMul *= 1 + 0.008 * i * Math.sin(timeIn * 1.7); break;
+      case 'chromatic': scaleMul *= 1 + 0.015 * i; dx += Math.sin(timeIn * 9) * 2 * i; dy += Math.cos(timeIn * 7) * 1.5 * i; break;
+      case 'ken-burns': scaleMul *= 1 + 0.18 * i * p; dx += 0.018 * W0REF * i * p; dy -= 0.012 * W0REF * i * p; break;
+      case 'dolly-out': scaleMul *= 1 + 0.16 * i * (1 - p); break;
+      case 'handheld': {
+        const t1 = timeIn * 7.3, t2 = timeIn * 11.1, t3 = timeIn * 0.9;
+        scaleMul *= 1 + 0.025 * i;
+        dx += (Math.sin(t1) * 3.2 + Math.sin(t2) * 1.4 + Math.sin(t3) * 2.1) * i;
+        dy += (Math.cos(t1 * 1.27) * 2.6 + Math.cos(t2 * 0.87) * 1.2) * i;
+        break;
+      }
+      default: break;
+    }
+  }
+  return { scaleMul, dx, dy };
 }
 
 function effectFilterCss(clip: VideoClip, timeIn: number): string {
-  const i = Math.min(1, Math.max(0, clip.effect_intensity ?? 1));
-  switch (clip.effect) {
-    case 'vhs': return 'contrast(' + (1 + 0.08 * i) + ') saturate(' + (1 - 0.1 * i) + ') sepia(' + (0.12 * i) + ')';
-    case 'dream': return 'brightness(' + (1 + 0.08 * i) + ') saturate(' + (1 + 0.08 * i) + ') blur(' + (0.7 * i) + 'px)';
-    case 'film': return 'contrast(' + (1 + 0.06 * i) + ') saturate(' + (1 - 0.08 * i) + ') sepia(' + (0.05 * i) + ')';
-    case 'chromatic': return 'saturate(' + (1 + 0.18 * i) + ') hue-rotate(' + (Math.sin(timeIn * 8) * 3 * i) + 'deg)';
-    default: return '';
+  const parts: string[] = [];
+  for (const layer of effectLayers(clip)) {
+    const i = Math.min(1, Math.max(0, layer.intensity));
+    switch (layer.type) {
+      case 'vhs': parts.push('contrast(' + (1 + 0.08 * i) + ') saturate(' + (1 - 0.1 * i) + ') sepia(' + (0.12 * i) + ')'); break;
+      case 'dream': parts.push('brightness(' + (1 + 0.08 * i) + ') saturate(' + (1 + 0.08 * i) + ') blur(' + (0.7 * i) + 'px)'); break;
+      case 'film': parts.push('contrast(' + (1 + 0.06 * i) + ') saturate(' + (1 - 0.08 * i) + ') sepia(' + (0.05 * i) + ')'); break;
+      case 'chromatic': parts.push('saturate(' + (1 + 0.18 * i) + ') hue-rotate(' + (Math.sin(timeIn * 8) * 3 * i) + 'deg)'); break;
+      case 'glow': parts.push('brightness(' + (1 + 0.05 * i) + ') contrast(' + (1 - 0.04 * i) + ') blur(' + (0.35 * i) + 'px)'); break;
+      case 'bloom': parts.push('brightness(' + (1 + 0.08 * i) + ') blur(' + (0.45 * i) + 'px)'); break;
+      case 'motion-blur': parts.push('blur(' + (1.2 * i) + 'px)'); break;
+      case 'negative': parts.push('invert(' + (100 * i) + '%)'); break;
+      case 'posterize': parts.push('contrast(' + (1 + 1.4 * i) + ') saturate(' + (1 + 0.4 * i) + ')'); break;
+      default: break;
+    }
   }
+  return parts.join(' ');
 }
 
-function drawEffectOverlay(ctx: CanvasRenderingContext2D, effect: VideoClip['effect'], timeIn: number, W: number, H: number) {
-  const i = Math.min(1, Math.max(0, (ctx as CanvasRenderingContext2D & { __effectIntensity?: number }).__effectIntensity ?? 1));
-  if (effect === 'flash') {
-    const alpha = Math.max(0, Math.sin(timeIn * Math.PI * 5)) * 0.18 * i;
-    if (alpha > 0.01) {
-      ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')';
-      ctx.fillRect(0, 0, W, H);
+function drawEffectOverlay(ctx: CanvasRenderingContext2D, clip: VideoClip, timeIn: number, W: number, H: number) {
+  for (const layer of effectLayers(clip)) {
+    const effect = layer.type;
+    const i = Math.min(1, Math.max(0, layer.intensity));
+    if (effect === 'flash') {
+      const alpha = Math.max(0, Math.sin(timeIn * Math.PI * 5)) * 0.18 * i;
+      if (alpha > 0.01) { ctx.fillStyle = 'rgba(255,255,255,' + alpha + ')'; ctx.fillRect(0, 0, W, H); }
+    } else if (effect === 'glitch') {
+      ctx.save(); ctx.globalAlpha = 0.14 * i;
+      const y = (Math.sin(timeIn * 31) * 0.5 + 0.5) * H;
+      ctx.fillStyle = '#ff3355'; ctx.fillRect(0, y, W, Math.max(2, H * 0.012));
+      ctx.fillStyle = '#33ccff'; ctx.fillRect(0, Math.min(H - 2, y + H * 0.018), W, Math.max(2, H * 0.008)); ctx.restore();
+    } else if (effect === 'vhs' || effect === 'scanlines') {
+      ctx.save(); ctx.globalAlpha = (effect === 'vhs' ? 0.12 : 0.08) * i; ctx.fillStyle = '#fff';
+      const step = Math.max(4, H / (effect === 'vhs' ? 90 : 160));
+      for (let y = 0; y < H; y += step) ctx.fillRect(0, y, W, 1); ctx.restore();
+    } else if (effect === 'light-leak') {
+      const t = timeIn * 0.7; const cx = W * (0.5 + 0.42 * Math.sin(t)); const cy = H * (0.5 + 0.42 * Math.cos(t * 1.317));
+      const alpha = 0.22 + 0.12 * Math.sin(t * 2.1);
+      ctx.save(); ctx.globalCompositeOperation = 'screen';
+      const leak = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
+      leak.addColorStop(0, `rgba(255,196,140,${Math.max(0, alpha) * i})`);
+      leak.addColorStop(0.4, `rgba(255,140,90,${0.5 * Math.max(0, alpha) * i})`);
+      leak.addColorStop(1, 'rgba(255,120,60,0)');
+      ctx.fillStyle = leak; ctx.fillRect(0, 0, W, H); ctx.restore();
+    } else if (effect === 'letterbox') {
+      const bar = H * 0.11; ctx.save(); ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, bar); ctx.fillRect(0, H - bar, W, bar); ctx.restore();
+    } else if (effect === 'film-grain' || effect === 'noise') {
+      ctx.save(); ctx.globalAlpha = (effect === 'film-grain' ? 0.06 : 0.11) * i;
+      const seed = Math.floor(timeIn * 24);
+      for (let band = 0; band < (effect === 'film-grain' ? 26 : 70); band += 1) {
+        const n = Math.sin(seed * 91.7 + band * 373.091) * 43758.5453;
+        const fx = (n - Math.floor(n)) * W;
+        const n2 = Math.sin(seed * 17.3 + band * 911.13) * 12543.21;
+        const fy = (n2 - Math.floor(n2)) * H;
+        ctx.fillStyle = n > 0.5 ? '#fff' : '#000'; ctx.fillRect(fx, fy, Math.max(1, W / 480), Math.max(1, H / 480));
+      }
+      ctx.restore();
+    } else if (effect === 'rgb-split') {
+      ctx.save(); ctx.globalAlpha = 0.13 * i; ctx.globalCompositeOperation = 'screen';
+      const shift = Math.sin(timeIn * 10) * Math.max(2, W * 0.004) * i;
+      ctx.fillStyle = '#ff003c'; ctx.fillRect(Math.max(0, shift), 0, W, H);
+      ctx.globalCompositeOperation = 'multiply'; ctx.fillStyle = '#00e5ff'; ctx.fillRect(Math.min(W - 1, Math.max(0, -shift)), 0, W, H);
+      ctx.restore();
     }
-  } else if (effect === 'glitch') {
-    ctx.save();
-    ctx.globalAlpha = 0.14;
-    const y = (Math.sin(timeIn * 31) * 0.5 + 0.5) * H;
-    ctx.fillStyle = '#ff3355';
-    ctx.fillRect(0, y, W, Math.max(2, H * 0.012));
-    ctx.fillStyle = '#33ccff';
-    ctx.fillRect(0, Math.min(H - 2, y + H * 0.018), W, Math.max(2, H * 0.008));
-    ctx.restore();
-  } else if (effect === 'vhs') {
-    ctx.save();
-    ctx.globalAlpha = 0.12 * i;
-    ctx.fillStyle = '#fff';
-    for (let y = 0; y < H; y += Math.max(8, H / 90)) ctx.fillRect(0, y, W, 1);
-    ctx.restore();
-  } else if (effect === 'light-leak') {
-    /* Warm animated light wash sweeping diagonally — organic because two
-       incommensurate sines drive position and intensity. */
-    const t = timeIn * 0.7;
-    const cx = W * (0.5 + 0.42 * Math.sin(t));
-    const cy = H * (0.5 + 0.42 * Math.cos(t * 1.317));
-    const alpha = 0.22 + 0.12 * Math.sin(t * 2.1);
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    const leak = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(W, H) * 0.75);
-    leak.addColorStop(0, `rgba(255,196,140,${Math.max(0, alpha) * i})`);
-    leak.addColorStop(0.4, `rgba(255,140,90,${0.5 * Math.max(0, alpha) * i})`);
-    leak.addColorStop(1, 'rgba(255,120,60,0)');
-    ctx.fillStyle = leak;
-    ctx.fillRect(0, 0, W, H);
-    ctx.restore();
-  } else if (effect === 'letterbox') {
-    /* Anamorphic cinema bars — drawn last so they sit over everything. */
-    const bar = H * 0.11;
-    ctx.save();
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, bar);
-    ctx.fillRect(0, H - bar, W, bar);
-    ctx.restore();
-  } else if (effect === 'film-grain') {
-    /* Cheap but convincing grain: per-frame deterministic pseudo-noise
-       bands composited as low-alpha sparkle. */
-    ctx.save();
-    ctx.globalAlpha = 0.06 * i;
-    const seed = Math.floor(timeIn * 24);
-    for (let band = 0; band < 26; band += 1) {
-      const n = Math.sin(seed * 91.7 + band * 373.091) * 43758.5453;
-      const fx = (n - Math.floor(n)) * W;
-      const n2 = Math.sin(seed * 17.3 + band * 911.13) * 12543.21;
-      const fy = (n2 - Math.floor(n2)) * H;
-      ctx.fillStyle = n > 0.5 ? '#fff' : '#000';
-      ctx.fillRect(fx, fy, Math.max(1, W / 480), Math.max(1, H / 480));
-    }
-    ctx.restore();
   }
 }
 
@@ -1342,7 +1335,7 @@ export class VideoRenderer {
             ctx.restore();
           }
 
-          drawEffectOverlay(ctx, clip.effect, timeIn, W, H);
+          drawEffectOverlay(ctx, clip, timeIn, W, H);
 
           // transition INTO this clip; motion transitions transform the
           // freshly painted frame before overlays render
