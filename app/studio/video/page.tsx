@@ -6279,7 +6279,7 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
       const distance=Math.max(1,Math.hypot(dx,dy));
       const angle=Math.atan2(dy,dx)*180/Math.PI;
       const center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-      const rect=ref.current?.getBoundingClientRect();
+      const rect=ev.currentTarget.getBoundingClientRect();
       if (!rect || rect.width<=0 || rect.height<=0) return;
       const start=multiRef.current;
       const zoom=clampNum(distance/start.distance,0.25,4);
