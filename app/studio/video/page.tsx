@@ -5154,7 +5154,10 @@ function VideoEditor() {
                   : selectedElement
                     ? { owner: 'element' as const, ownerId: selectedElement.id, label: 'KEYFRAMES · ' + (selectedElement.kind === 'text' ? 'TEXT' : selectedElement.kind.toUpperCase()), keyframes: selectedElement.keyframes || {}, length: Math.max(0.2, selectedElement.end - selectedElement.start) }
                     : null;
-                if (!source || !Object.keys(source.keyframes).length) return null;
+                if (!source) return null;
+                const visibleProperties = source.owner === 'clip'
+                  ? KEYFRAMABLE_PROPERTIES
+                  : KEYFRAMABLE_PROPERTIES.filter((item) => ['pos_x_kf', 'pos_y_kf', 'scale_kf', 'rotation_kf', 'opacity_kf', 'volume_kf'].includes(item.id));
                 const selectedProp = selectedKeyframe?.owner === source.owner && selectedKeyframe.ownerId === source.ownerId ? selectedKeyframe.prop : null;
                 const selectedList = selectedProp ? (source.keyframes[selectedProp] || []) : [];
                 const selectedKf = selectedKeyframe ? selectedList.find((item) => item.id === selectedKeyframe.keyframeId) : null;
@@ -5190,8 +5193,9 @@ function VideoEditor() {
                     </div>
                     <div className="absolute inset-x-0 bottom-0 top-10">
                       <div className="absolute inset-y-0 left-16 right-0">
-                        {Object.entries(source.keyframes).filter(([, list]) => Array.isArray(list) && list.length).map(([prop, list]) => {
-                          const property = prop as KeyframeProperty;
+                        {visibleProperties.map((propertyConfig) => {
+                          const property = propertyConfig.id;
+                          const list = source.keyframes[property] || [];
                           return (
                             <div
                               key={property}
