@@ -513,6 +513,7 @@ export default function VideoAIStudio({
               ? raw.clips
                   .map((clip) => clip?.src)
                   .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+                  .filter((url) => url !== selectedMediaUrl)
                   .slice(0, 10)
               : [];
             if (aiMediaUrl && !urls.includes(aiMediaUrl)) urls.unshift(aiMediaUrl);
