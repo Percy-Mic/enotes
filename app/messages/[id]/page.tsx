@@ -24,6 +24,28 @@ const PAGE_SIZE = 30;
 const ICON_MAX_BYTES = 5 * 1024 * 1024;
 const ICON_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
+/* Day dividers: Today / Yesterday / weekday / short date. Pure function
+   of the timestamp so scrolling older pages in re-renders stable labels
+   regardless of when the user looks at them. */
+function dayKey(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (dayDiff === 0) return 'Today';
+  if (dayDiff === 1) return 'Yesterday';
+  if (dayDiff < 7 && dayDiff > 0) return d.toLocaleDateString([], { weekday: 'long' });
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString([], sameYear
+    ? { month: 'long', day: 'numeric' }
+    : { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
 const DEFAULT_THEME: ChatTheme = {
   id: 'default',
   name: 'Default',
@@ -1166,24 +1188,34 @@ function ChatRoom() {
             {messages.map((msg, i) => {
               const prev = messages[i - 1];
               const showAvatar = !prev || prev.sender_id !== msg.sender_id;
+              const newDay = !prev || dayKey(prev.created_at) !== dayKey(msg.created_at);
               return (
-                <MessageRow
+                <React.Fragment key={msg.id}>
+                  {newDay && (
+                    <li className="flex justify-center py-2" aria-hidden="true">
+                      <span className="rounded-full bg-black/5 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#9B9B9B]">
+                        {dayLabel(msg.created_at)}
+                      </span>
+                    </li>
+                  )}
+                  <MessageRow
                   key={msg.id}
-                  message={msg}
-                  previous={prev}
-                  isGroup={!!conversation?.is_group}
-                  myId={me || ''}
-                  theme={theme}
-                  readReceiptsEnabled={readReceipts}
-                  showAvatar={showAvatar}
-                  onJoinGroupCall={joinExistingGroupCall}
-                  onReply={setReplyingTo}
-                  onReact={handleReact}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onDeleteForMe={handleDeleteForMe}
-                  onForward={handleForward}
-                />
+                    message={msg}
+                    previous={prev}
+                    isGroup={!!conversation?.is_group}
+                    myId={me || ''}
+                    theme={theme}
+                    readReceiptsEnabled={readReceipts}
+                    showAvatar={showAvatar}
+                    onJoinGroupCall={joinExistingGroupCall}
+                    onReply={setReplyingTo}
+                    onReact={handleReact}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onDeleteForMe={handleDeleteForMe}
+                    onForward={handleForward}
+                  />
+                </React.Fragment>
               );
             })}
           </ul>
