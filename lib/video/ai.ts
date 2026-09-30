@@ -219,7 +219,7 @@ async function uploadGeminiFileFromUrl(
   };
 }
 
-async function geminiStructured(
+async function geminiStructuredOnce(
   prompt: string,
   schema: Record<string, unknown>,
   model =
@@ -458,6 +458,27 @@ async function geminiStructured(
   }
 
   return parseJson(text);
+}
+
+/* Flash-lite under load intermittently blanks or 5xxes; one same-prompt
+   retry keeps a transient hiccup from surfacing as a raw API error. */
+async function geminiStructured(
+  prompt: string,
+  schema: Record<string, unknown>,
+  model =
+    process.env.GEMINI_MODEL ||
+    'gemini-3.5-flash-lite',
+  media?: Array<{
+    url?: string | null;
+    type?: 'video' | 'image' | 'audio' | null;
+  }>,
+) {
+  try {
+    return await geminiStructuredOnce(prompt, schema, model, media);
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    return geminiStructuredOnce(prompt + '\n\nReturn ONLY the JSON object described by the schema.', schema, model, media);
+  }
 }
 
 async function geminiText(
@@ -2742,15 +2763,20 @@ ${beatsForPlan}
     if (!plan || typeof plan !== 'object' || !Array.isArray(plan.actions) || !plan.actions.length) {
       /* One structured retry: the first attempt may have returned an empty
          plan despite an actionable request. */
-      plan = await geminiStructured(
-        prompt +
-          '\n\nCRITICAL: Your previous response contained no usable actions. ' +
-          'Inspect the project timeline and emit concrete actions now. ' +
-          'An empty actions array is not an acceptable answer for an actionable request.',
-        schema,
-        plannerModel,
-        mediaInputs.length ? mediaInputs : undefined,
-      );
+      try {
+        plan = await geminiStructured(
+          prompt +
+            '\n\nCRITICAL: Your previous response contained no usable actions. ' +
+            'Inspect the project timeline and emit concrete actions now. ' +
+            'An empty actions array is not an acceptable answer for an actionable request.',
+          schema,
+          plannerModel,
+          mediaInputs.length ? mediaInputs : undefined,
+        );
+      } catch {
+        /* Both attempts came back unusable — fall through to the safe
+           empty plan with an honest message instead of a raw API error. */
+      }
     }
 
     if (
@@ -2759,7 +2785,7 @@ ${beatsForPlan}
     ) {
       plan = {
         message:
-          'I could not create a safe edit plan.',
+          'I could not build an edit plan for that request. Try rephrasing it or splitting it into a smaller ask.',
         summary: '',
         actions: [],
       };

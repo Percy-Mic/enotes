@@ -570,7 +570,7 @@ export default function VideoAIStudio({
       const narrationActions = actions.filter((action) => action.type === 'speak_narration');
       for (const action of narrationActions) {
         /* Synthesis runs server-side (real audio, real duration); the result
-           rides back as output.narrations and is applied here. */
+           rides back and is applied here. Failures surface honestly below. */
         try {
           const synthResponse = await fetch('/api/video/ai', {
             method: 'POST',
@@ -591,9 +591,15 @@ export default function VideoAIStudio({
                 audioBase64Wav: synth.output.audioBase64Wav,
               },
             }])).catch(() => undefined);
+          } else {
+            /* A failed line must not block the rest of the plan — but it
+               must never be reported as applied. */
+            action.object = { ...(action.object || {}), narrationFailed: true };
+            failedNotes.push("Voiceover couldn't be synthesized" + (synth?.error ? ` (${String(synth.error).slice(0, 120)})` : ''));
           }
-        } catch {
-          /* A failed line must not block the rest of the plan. */
+        } catch (synthError) {
+          action.object = { ...(action.object || {}), narrationFailed: true };
+          failedNotes.push("Voiceover couldn't be synthesized" + (synthError instanceof Error ? ` (${synthError.message.slice(0, 120)})` : ''));
         }
       }
 
@@ -736,9 +742,13 @@ export default function VideoAIStudio({
               {message.role === 'assistant' && message.actions?.length ? (
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {message.actions.map((action, actionIndex) => (
-                    <span key={actionIndex} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-semibold text-white/55">
-                      <Check className="h-2.5 w-2.5 text-emerald-300" />
-                      {actionLabel(action)}
+                    <span key={actionIndex} className={action.type === 'speak_narration' && action.object?.narrationFailed
+                      ? 'inline-flex items-center gap-1 rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[9px] font-semibold text-amber-200'
+                      : 'inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-semibold text-white/55'}>
+                      {action.type === 'speak_narration' && action.object?.narrationFailed
+                        ? <AlertTriangle className="h-2.5 w-2.5 text-amber-300" />
+                        : <Check className="h-2.5 w-2.5 text-emerald-300" />}
+                      {action.type === 'speak_narration' && action.object?.narrationFailed ? 'Voiceover failed' : actionLabel(action)}
                     </span>
                   ))}
                 </div>
