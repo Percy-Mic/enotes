@@ -1113,6 +1113,51 @@ function VideoEditor() {
     setSelectedClipId(copy.id);
   };
 
+  /* Narration timing guard — the placement window of an AI narration
+     must never sit on top of an on-screen caption cue (speech competes
+     with reading) and should land inside a music bed rather than across
+     a music drop. The placement pass in applyAIActions uses these two
+     helpers: the projector decides where narration can play, the
+     shifter nudges a start to the nearest clear slot (or returns null
+     when the whole timeline is spoken-through — then placement
+     keeps the requested start and ducks the music instead). */
+  const planCeilingRef = useRef(0);
+  const narrationClearWindow = useCallback((p: VideoProject, start: number, span: number): { start: number; end: number } => {
+    const captionWalls = p.elements
+      .filter((el) => el.kind === 'text')
+      .map((el) => ({ s: el.start, e: el.end }))
+      .sort((a, b) => a.s - b.s);
+    const musicWalls = p.audio
+      .filter((a) => a.kind === 'music')
+      .map((a) => ({
+        s: Number(a.start) || 0,
+        e: (Number(a.start) || 0) + Math.max(0.1, (Number(a.trimEnd) || 0) - (Number(a.trimStart) || 0)),
+      }))
+      .sort((a, b) => a.s - b.s);
+    const fits = (from: number, until: number) =>
+      !captionWalls.some((w) => from < w.e - 0.05 && until > w.s + 0.05) &&
+      !musicWalls.some((w) => from < w.e - 0.05 && until > w.s + 0.05);
+    if (fits(start, start + span)) return { start, end: start + span };
+    /* candidate edges: 0, every caption end/start, every music end/start,
+       plus the narration's own requested start as a lower bound. */
+    const edges = new Set<number>([0]);
+    for (const w of [...captionWalls, ...musicWalls]) { edges.add(w.s); edges.add(w.e); }
+    const candidates = Array.from(edges).sort((a, b) => a - b);
+    for (const candidate of candidates) {
+      const from = Math.max(0, candidate);
+      if (from + span <= Math.max(candidate, planCeilingRef.current) && fits(from, from + span)) {
+        return { start: from, end: from + span };
+      }
+    }
+    return { start: -1, end: -1 };
+  }, []);
+
+  const shiftNarrationClear = useCallback((p: VideoProject, start: number, span: number): { start: number; end: number } => {
+    const window2 = narrationClearWindow(p, start, span);
+    if (window2.start >= 0) return window2;
+    return { start, end: start + span };
+  }, [narrationClearWindow]);
+
   const applyAIActions = useCallback(async (actions: VideoAIEditAction[]) => {
     if (!actions.length) return;
 
@@ -1156,6 +1201,7 @@ function VideoEditor() {
       projectDuration(docRef.current.project),
       planHorizon,
     );
+    planCeilingRef.current = planCeiling;
 
     /*
      * Narration prep — ALL async work happens here, outside the sync
@@ -1387,6 +1433,30 @@ function VideoEditor() {
               nextProject.beatMarkers[0]
             );
             if (Math.abs(nearest - start) <= 0.3) start = Math.max(0, nearest);
+          }
+          /* Timing guard: move the narration off any caption window and
+             off music boundaries; when no clear slot exists anywhere,
+             keep the requested start and duck music under the speech. */
+          const guard = shiftNarrationClear(nextProject, start, prepared.span);
+          let duckMusic = false;
+          if (guard.start >= 0 && guard.start !== start) {
+            start = guard.start;
+          } else if (guard.start >= 0) {
+            /* already clear of captions; if it overlaps music, duck */
+            duckMusic = nextProject.audio.some((a) => {
+              if (a.kind !== 'music') return false;
+              const ms = Number(a.start) || 0;
+              const me = ms + Math.max(0.1, (Number(a.trimEnd) || 0) - (Number(a.trimStart) || 0));
+              return start < me && start + prepared.span > ms;
+            });
+          } else {
+            duckMusic = true;
+          }
+          if (duckMusic) {
+            nextProject = {
+              ...nextProject,
+              audio: nextProject.audio.map((a) => (a.kind === 'music' ? { ...a, volume: Math.min(Number(a.volume) || 1, 0.18) } : a)),
+            };
           }
           const timelineEnd = projectDuration(nextProject);
           const trimmedSpan = Math.min(prepared.span, Math.max(0.5, timelineEnd - start));
