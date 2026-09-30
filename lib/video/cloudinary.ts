@@ -39,7 +39,7 @@ export async function cloudinaryProcessUrl(input: {
   if (!/^https?:\\/\\//i.test(input.url)) throw new Error('Cloudinary needs an accessible source URL.');
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
-  const resourceType = input.mediaType === 'video' ? 'video' : input.mediaType === 'audio' ? 'raw' : 'image';
+  const resourceType = input.mediaType === 'image' ? 'image' : 'video';
   const folder = `enotes/studio/${input.userId}`;
   const transformation = transformationFor(input.mediaType, input.mode || 'optimize');
   const params: Record<string, string> = {
