@@ -103,7 +103,7 @@ export interface VideoClip {
 /** Extensible effect ids — new effects append here; renderer switches on id. */
 export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic' | 'ken-burns' | 'dolly-out' | 'handheld' | 'light-leak' | 'letterbox' | 'film-grain' | 'rgb-split' | 'glow' | 'bloom' | 'motion-blur' | 'scanlines' | 'noise' | 'negative' | 'posterize' | 'old-film' | 'crt' | 'halftone' | 'duotone' | 'solarize' | 'threshold' | 'pixelate' | 'thermal' | 'blueprint' | 'cyberpunk' | 'dreamy-glow' | 'flicker' | 'film-burn';
 
-export type EffectCategory = 'Popular' | 'Motion' | 'Retro' | 'Cinematic' | 'Glitch' | 'Stylize' | 'AI Looks';
+export type EffectCategory = 'Popular' | 'Motion' | 'Retro' | 'Cinematic' | 'Glitch' | 'Stylize' | 'Style Lab';
 
 export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string; category: EffectCategory }[] = [
   { id: 'none', name: 'Original', hint: 'No effect', category: 'Popular' },
@@ -118,7 +118,7 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string; categ
   { id: 'glow', name: 'Glow', hint: 'Soft luminous highlights', category: 'Cinematic' },
   { id: 'bloom', name: 'Bloom', hint: 'Bright highlight bloom', category: 'Cinematic' },
   { id: 'dream', name: 'Dream', hint: 'Soft dreamy diffusion', category: 'Cinematic' },
-  { id: 'dreamy-glow', name: 'Dreamy Glow', hint: 'Glow + soft diffusion', category: 'AI Looks' },
+  { id: 'dreamy-glow', name: 'Dreamy Glow', hint: 'Glow + soft diffusion', category: 'Style Lab' },
   { id: 'film', name: 'Film', hint: 'Subtle film movement', category: 'Cinematic' },
   { id: 'film-grain', name: 'Film Grain', hint: 'Animated film texture', category: 'Cinematic' },
   { id: 'light-leak', name: 'Light Leak', hint: 'Analog light wash', category: 'Retro' },
@@ -141,9 +141,9 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string; categ
   { id: 'halftone', name: 'Halftone', hint: 'Print-dot texture', category: 'Stylize' },
   { id: 'pixelate', name: 'Pixelate', hint: 'Retro low-resolution blocks', category: 'Stylize' },
   { id: 'duotone', name: 'Duotone', hint: 'Two-tone graphic grade', category: 'Stylize' },
-  { id: 'thermal', name: 'Thermal', hint: 'False-color heat-map look', category: 'AI Looks' },
-  { id: 'blueprint', name: 'Blueprint', hint: 'Technical blue monochrome', category: 'AI Looks' },
-  { id: 'cyberpunk', name: 'Cyberpunk', hint: 'Neon contrast and color split', category: 'AI Looks' },
+  { id: 'thermal', name: 'Thermal', hint: 'False-color heat-map look', category: 'Style Lab' },
+  { id: 'blueprint', name: 'Blueprint', hint: 'Technical blue monochrome', category: 'Style Lab' },
+  { id: 'cyberpunk', name: 'Cyberpunk', hint: 'Neon contrast and color split', category: 'Style Lab' },
 ];
 
 export interface TimelineTrack {
