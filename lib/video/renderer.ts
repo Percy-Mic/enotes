@@ -811,6 +811,27 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
       ctx.scale(k * spring || 0.001, k * spring || 0.001);
       ctx.globalAlpha = v.opacity * Math.min(1, progress * 2.5);
     }
+    if (el.animation === 'fade-up' || el.animation === 'blur-up') ctx.translate(0, (1 - easeOut(progress)) * 55);
+    if (el.animation === 'fade-down' || el.animation === 'blur-down') ctx.translate(0, -(1 - easeOut(progress)) * 55);
+    if (el.animation === 'elastic-in' || el.animation === 'elastic-out') {
+      const spring = 1 + Math.sin(progress * Math.PI * 2.6) * (1 - progress) * 0.3;
+      const s = (el.animation === 'elastic-in' ? easeOut(progress) : 1 - (1 - easeOut(progress)) * 0.15) * spring;
+      ctx.scale(Math.max(0.001, s), Math.max(0.001, s));
+    }
+    if (el.animation === 'glitch-in' || el.animation === 'glitch-out') {
+      const jitter = (1 - progress) * 18;
+      ctx.translate(Math.sin(timeIn * 60) * jitter, Math.cos(timeIn * 47) * jitter * 0.4);
+      ctx.globalAlpha = v.opacity * Math.min(1, progress * 2);
+    }
+    if (el.animation === 'flip-in' || el.animation === 'flip-out') {
+      const flip = el.animation === 'flip-in' ? (1 - progress) * Math.PI * 0.5 : progress * Math.PI * 0.15;
+      ctx.rotate(flip);
+      ctx.scale(Math.max(0.001, Math.cos(flip)), 1);
+    }
+    if (el.animation === 'wave') {
+      ctx.translate(0, Math.sin(timeIn * 8) * 7);
+      ctx.rotate(Math.sin(timeIn * 7) * 0.025);
+    }
   }
   /* Exit fade across the last 0.35s so text never hard-pops off. */
   {
@@ -827,10 +848,15 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   ctx.textAlign = (el.align || 'center') as CanvasTextAlign;
   ctx.textBaseline = 'middle';
+  const ctxWithSpacing = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+  if (typeof el.letter_spacing === 'number') ctxWithSpacing.letterSpacing = `${el.letter_spacing}px`;
 
-  const lines = (el.content || '').split('\n');
-  const lineHeight = fontSize * 1.25;
+  const rawContent = el.content || '';
+  const content = el.text_case === 'uppercase' ? rawContent.toUpperCase() : el.text_case === 'lowercase' ? rawContent.toLowerCase() : el.text_case === 'capitalize' ? rawContent.replace(/\b\w/g, (m) => m.toUpperCase()) : rawContent;
+  const lines = content.split('\n');
+  const lineHeight = fontSize * (el.line_height || 1.25);
   const totalHeight = lines.length * lineHeight;
+
 
   if (el.background) {
     const metrics = ctx.measureText(lines.reduce((a, b) => (a.length > b.length ? a : b), ''));
