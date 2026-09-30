@@ -549,7 +549,7 @@ function VideoEditor() {
     } finally {
       setAiQuickBusy(null);
     }
-  }, [projectId, project, selectedClip, selectedElement, notify, updateProject, updateClip]);
+  }, [projectId, project, selectedClip, selectedElement, meId, notify, updateProject, updateClip]);
 
   /* ---------- auth ---------- */
   useEffect(() => {
