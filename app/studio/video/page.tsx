@@ -328,6 +328,15 @@ function clipBoxRect(clip: VideoClip, canvasW: number, canvasH: number) {
   };
 }
 
+type TimelineKeyframeRef = {
+  owner: 'clip' | 'element';
+  ownerId: string;
+  prop: KeyframeProperty;
+  keyframeId: string;
+};
+
+type TimelineKeyframeDrag = TimelineKeyframeRef & { pointerId: number };
+
 type Gesture =
   | 'move'
   | 'rotate'
@@ -2288,6 +2297,8 @@ function VideoEditor() {
     },
   }, true);
   const [pointerDragId, setPointerDragId] = useState<string | null>(null);
+  const [selectedKeyframe, setSelectedKeyframe] = useState<TimelineKeyframeRef | null>(null);
+  const keyframeDragRef = useRef<TimelineKeyframeDrag | null>(null);
 
   const snapTimelineTime = useCallback((time: number, threshold = 0.12) => {
     if (!snapEnabled) return Math.max(0, time);
@@ -2339,6 +2350,186 @@ function VideoEditor() {
     },
     [pxPerSec]
   );
+
+  const getKeyframeValueAt = useCallback((owner: 'clip' | 'element', ownerId: string, prop: KeyframeProperty, localTime: number): number => {
+    const current = docRef.current.project;
+    if (owner === 'clip') {
+      const clip = current.clips.find((item) => item.id === ownerId);
+      if (!clip) return 0;
+      const values = resolveClipValues(clip, localTime);
+      const graded = resolveClipAdjustments(clip, localTime);
+      switch (prop) {
+        case 'pos_x_kf': return values.offset_x;
+        case 'pos_y_kf': return values.offset_y;
+        case 'scale_kf': return values.scale;
+        case 'rotation_kf': return values.rotation;
+        case 'opacity_kf': return values.opacity;
+        case 'volume_kf': return values.volume;
+        case 'brightness_kf': return graded.brightness;
+        case 'contrast_kf': return graded.contrast;
+        case 'saturate_kf': return graded.saturate;
+        case 'hue_kf': return graded.hue;
+        case 'temperature_kf': return graded.temperature;
+        case 'exposure_kf': return graded.exposure;
+        case 'vignette_kf': return graded.vignette;
+        case 'blur_kf': return graded.blur;
+      }
+    }
+    const element = current.elements.find((item) => item.id === ownerId);
+    if (!element) return 0;
+    const values = resolveElementValues(element, localTime);
+    switch (prop) {
+      case 'pos_x_kf': return values.x;
+      case 'pos_y_kf': return values.y;
+      case 'scale_kf': return values.scale;
+      case 'rotation_kf': return values.rotation;
+      case 'opacity_kf': return values.opacity;
+      case 'volume_kf': return values.volume;
+      default: return 0;
+    }
+  }, []);
+
+  const addTimelineKeyframeAt = useCallback((owner: 'clip' | 'element', ownerId: string, prop: KeyframeProperty, localTime: number) => {
+    const current = docRef.current.project;
+    if (owner === 'clip') {
+      const clip = current.clips.find((item) => item.id === ownerId);
+      if (!clip) return;
+      const t = Math.max(0, Math.min(clipDuration(clip), localTime));
+      const map = upsertClipKeyframe(clip, prop, t, getKeyframeValueAt(owner, ownerId, prop, t));
+      const created = (map[prop] || []).reduce((best, item) => Math.abs(item.t - t) < Math.abs(best.t - t) ? item : best);
+      updateClip(clip.id, { keyframes: map }, 'Add keyframe', `timeline-kf-${ownerId}-${prop}`);
+      setSelectedKeyframe({ owner, ownerId, prop, keyframeId: created.id });
+      return;
+    }
+    const element = current.elements.find((item) => item.id === ownerId);
+    if (!element) return;
+    const t = Math.max(0, Math.min(Math.max(0.2, element.end - element.start), localTime));
+    const map = upsertKeyframe(element, prop, t, getKeyframeValueAt(owner, ownerId, prop, t));
+    const created = (map[prop] || []).reduce((best, item) => Math.abs(item.t - t) < Math.abs(best.t - t) ? item : best);
+    updateProject((p) => ({
+      ...p,
+      elements: p.elements.map((item) => item.id === ownerId ? { ...item, keyframes: map } : item),
+    }), 'Add keyframe', `timeline-kf-${ownerId}-${prop}`);
+    setSelectedKeyframe({ owner, ownerId, prop, keyframeId: created.id });
+  }, [getKeyframeValueAt, updateClip, updateProject]);
+
+  const removeTimelineKeyframe = useCallback((selection: TimelineKeyframeRef) => {
+    if (selection.owner === 'clip') {
+      const clip = docRef.current.project.clips.find((item) => item.id === selection.ownerId);
+      if (!clip) return;
+      updateClip(
+        clip.id,
+        { keyframes: removeKeyframe({ id: clip.id, kind: 'video', content: '', src: clip.src, start: 0, end: clipDuration(clip), x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1, z: 1, keyframes: clip.keyframes }, selection.prop, selection.keyframeId) },
+        'Delete keyframe',
+        `timeline-kf-${selection.ownerId}-${selection.prop}`
+      );
+    } else {
+      const element = docRef.current.project.elements.find((item) => item.id === selection.ownerId);
+      if (!element) return;
+      updateProject((p) => ({
+        ...p,
+        elements: p.elements.map((item) => item.id === selection.ownerId
+          ? { ...item, keyframes: removeKeyframe(item, selection.prop, selection.keyframeId) }
+          : item),
+      }), 'Delete keyframe', `timeline-kf-${selection.ownerId}-${selection.prop}`);
+    }
+    setSelectedKeyframe(null);
+  }, [updateClip, updateProject]);
+
+  const moveTimelineKeyframe = useCallback((selection: TimelineKeyframeRef, nextLocalTime: number) => {
+    const current = docRef.current.project;
+    if (selection.owner === 'clip') {
+      const clip = current.clips.find((item) => item.id === selection.ownerId);
+      if (!clip) return;
+      const t = Math.max(0, Math.min(clipDuration(clip), nextLocalTime));
+      updateClip(clip.id, {
+        keyframes: (() => {
+          const map = { ...(clip.keyframes || {}) };
+          const list = [...(map[selection.prop] || [])];
+          const index = list.findIndex((item) => item.id === selection.keyframeId);
+          if (index < 0) return map;
+          const collision = list.find((item) => item.id !== selection.keyframeId && Math.abs(item.t - t) < 0.045);
+          if (collision) return map;
+          list[index] = { ...list[index], t };
+          list.sort((a, b) => a.t - b.t);
+          map[selection.prop] = list;
+          return map;
+        })(),
+      }, 'Move keyframe', `timeline-kf-drag-${selection.ownerId}-${selection.prop}-${selection.keyframeId}`);
+      return;
+    }
+    const element = current.elements.find((item) => item.id === selection.ownerId);
+    if (!element) return;
+    const t = Math.max(0, Math.min(Math.max(0.2, element.end - element.start), nextLocalTime));
+    updateProject((p) => ({
+      ...p,
+      elements: p.elements.map((item) => {
+        if (item.id !== selection.ownerId) return item;
+        const map = { ...(item.keyframes || {}) };
+        const list = [...(map[selection.prop] || [])];
+        const index = list.findIndex((keyframe) => keyframe.id === selection.keyframeId);
+        if (index < 0) return item;
+        const collision = list.find((keyframe) => keyframe.id !== selection.keyframeId && Math.abs(keyframe.t - t) < 0.045);
+        if (collision) return item;
+        list[index] = { ...list[index], t };
+        list.sort((a, b) => a.t - b.t);
+        map[selection.prop] = list;
+        return { ...item, keyframes: map };
+      }),
+    }), 'Move keyframe', `timeline-kf-drag-${selection.ownerId}-${selection.prop}-${selection.keyframeId}`);
+  }, [updateClip, updateProject]);
+
+  const beginTimelineKeyframeDrag = useCallback((e: React.PointerEvent, selection: TimelineKeyframeRef) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedKeyframe(selection);
+    keyframeDragRef.current = { ...selection, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }, []);
+
+  useEffect(() => {
+    const drag = keyframeDragRef.current;
+    if (!drag) return;
+    const onMove = (e: PointerEvent) => {
+      const active = keyframeDragRef.current;
+      if (!active || active.pointerId !== e.pointerId) return;
+      const global = timeAtClientX(e.clientX);
+      const current = docRef.current.project;
+      if (active.owner === 'clip') {
+        let clipStart = 0;
+        for (const clip of current.clips) {
+          if (clip.id === active.ownerId) break;
+          clipStart += clipDuration(clip);
+        }
+        moveTimelineKeyframe(active, global - clipStart);
+      } else {
+        const element = current.elements.find((item) => item.id === active.ownerId);
+        if (element) moveTimelineKeyframe(active, global - element.start);
+      }
+    };
+    const onUp = () => { keyframeDragRef.current = null; };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [moveTimelineKeyframe, timeAtClientX]);
+
+  useEffect(() => {
+    if (!selectedKeyframe) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const target = e.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      e.preventDefault();
+      removeTimelineKeyframe(selectedKeyframe);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [removeTimelineKeyframe, selectedKeyframe]);
 
   /** Continuous scrub from the ruler or the playhead handle. */
   const beginPlayheadDrag = (e: React.PointerEvent) => {
@@ -4959,39 +5150,81 @@ function VideoEditor() {
 
               {(() => {
                 const source = selectedClip
-                  ? { label: 'KEYFRAMES · MAIN', keyframes: selectedClip.keyframes || {}, length: Math.max(0.2, clipDuration(selectedClip)) }
+                  ? { owner: 'clip' as const, ownerId: selectedClip.id, label: 'KEYFRAMES · MAIN', keyframes: selectedClip.keyframes || {}, length: Math.max(0.2, clipDuration(selectedClip)) }
                   : selectedElement
-                    ? { label: 'KEYFRAMES · ' + (selectedElement.kind === 'text' ? 'TEXT' : selectedElement.kind.toUpperCase()), keyframes: selectedElement.keyframes || {}, length: Math.max(0.2, selectedElement.end - selectedElement.start) }
+                    ? { owner: 'element' as const, ownerId: selectedElement.id, label: 'KEYFRAMES · ' + (selectedElement.kind === 'text' ? 'TEXT' : selectedElement.kind.toUpperCase()), keyframes: selectedElement.keyframes || {}, length: Math.max(0.2, selectedElement.end - selectedElement.start) }
                     : null;
                 if (!source || !Object.keys(source.keyframes).length) return null;
+                const selectedProp = selectedKeyframe?.owner === source.owner && selectedKeyframe.ownerId === source.ownerId ? selectedKeyframe.prop : null;
+                const selectedList = selectedProp ? (source.keyframes[selectedProp] || []) : [];
+                const selectedKf = selectedKeyframe ? selectedList.find((item) => item.id === selectedKeyframe.keyframeId) : null;
+                const localPlayhead = source.owner === 'clip'
+                  ? selectedClipTimeIn
+                  : Math.max(0, Math.min(source.length, playhead - (selectedElement?.start || 0)));
+                const currentValue = selectedProp
+                  ? getKeyframeValueAt(source.owner, source.ownerId, selectedProp, localPlayhead)
+                  : null;
                 return (
                   <div className="relative border-b border-white/10 bg-[#15120c]" data-lane-id="__keyframes">
-                    <div className="sticky left-0 z-30 flex min-h-10 w-16 shrink-0 items-center border-r border-amber-300/15 bg-[#111]/95 px-1.5 text-[7px] font-bold text-amber-200/70 backdrop-blur">
-                      KF
-                    </div>
-                    <div className="absolute inset-y-0 left-16 right-0">
-                      {Object.entries(source.keyframes).filter(([, list]) => Array.isArray(list) && list.length).map(([prop, list]) => (
-                        <div key={prop} className="relative h-5 border-b border-white/[0.04]">
-                          <span className="absolute left-1 top-0.5 z-10 rounded bg-black/60 px-1 text-[7px] text-white/45">
-                            {KEYFRAMABLE_PROPERTIES.find((p) => p.id === prop)?.label || prop}
-                          </span>
-                          {(list || []).map((kf) => (
-                            <button
-                              key={kf.id}
-                              type="button"
-                              className="absolute top-1/2 z-20 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] bg-amber-300 shadow-[0_0_5px_rgba(252,211,77,.6)]"
-                              style={{ left: `${(Math.max(0, Math.min(source.length, kf.t)) / source.length) * 100}%` }}
-                              onClick={() => seekTo(selectedClip ? (() => {
-                                let acc = 0;
-                                for (const clip of project.clips) { if (clip.id === selectedClip.id) break; acc += clipDuration(clip); }
-                                return acc + kf.t;
-                              })() : selectedElement!.start + kf.t)}
-                              title={`${KEYFRAMABLE_PROPERTIES.find((p) => p.id === prop)?.label || prop} · ${kf.t.toFixed(2)}s`}
-                              aria-label={`Keyframe ${prop} at ${kf.t.toFixed(2)} seconds`}
-                            />
-                          ))}
+                    <div className="flex min-h-10 border-b border-amber-300/10 bg-[#111]/95">
+                      <div className="sticky left-0 z-30 flex w-16 shrink-0 items-center border-r border-amber-300/15 bg-[#111]/95 px-1.5 text-[7px] font-bold text-amber-200/70 backdrop-blur">
+                        KF
+                      </div>
+                      <div className="min-w-0 flex-1 px-2 py-1">
+                        <div className="flex items-center gap-2 text-[8px]">
+                          <span className="font-bold text-amber-200/80">{source.label}</span>
+                          <span className="text-white/25">•</span>
+                          <span className="text-white/35">Double-click a lane to add · drag diamonds · Delete removes selected</span>
+                          {selectedProp && (
+                            <>
+                              <span className="text-white/25">•</span>
+                              <span className="font-semibold text-white/60">
+                                {KEYFRAMABLE_PROPERTIES.find((p) => p.id === selectedProp)?.label || selectedProp}
+                                {selectedKf ? ` @ ${selectedKf.t.toFixed(2)}s` : ''}
+                                {currentValue != null ? ` · ${currentValue.toFixed(2)}` : ''}
+                              </span>
+                            </>
+                          )}
                         </div>
-                      ))}
+                      </div>
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 top-10">
+                      <div className="absolute inset-y-0 left-16 right-0">
+                        {Object.entries(source.keyframes).filter(([, list]) => Array.isArray(list) && list.length).map(([prop, list]) => {
+                          const property = prop as KeyframeProperty;
+                          return (
+                            <div
+                              key={property}
+                              className="relative h-7 border-b border-white/[0.04]"
+                              onDoubleClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+                                const t = Math.max(0, Math.min(source.length, ratio * source.length));
+                                addTimelineKeyframeAt(source.owner, source.ownerId, property, t);
+                              }}
+                            >
+                              <span className="absolute left-1 top-1 z-10 rounded bg-black/60 px-1 text-[7px] text-white/45">
+                                {KEYFRAMABLE_PROPERTIES.find((p) => p.id === property)?.label || property}
+                              </span>
+                              {(list || []).map((kf) => {
+                                const selected = selectedKeyframe?.owner === source.owner && selectedKeyframe.ownerId === source.ownerId && selectedKeyframe.prop === property && selectedKeyframe.keyframeId === kf.id;
+                                return (
+                                  <button
+                                    key={kf.id}
+                                    type="button"
+                                    className={`absolute top-1/2 z-20 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] border transition ${selected ? 'border-white bg-white shadow-[0_0_0_2px_rgba(252,211,77,.45),0_0_9px_rgba(252,211,77,.8)]' : 'border-amber-100/40 bg-amber-300 shadow-[0_0_5px_rgba(252,211,77,.6)]'}`}
+                                    style={{ left: `${(Math.max(0, Math.min(source.length, kf.t)) / source.length) * 100}%` }}
+                                    onPointerDown={(e) => beginTimelineKeyframeDrag(e, { owner: source.owner, ownerId: source.ownerId, prop: property, keyframeId: kf.id })}
+                                    onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    title={`${KEYFRAMABLE_PROPERTIES.find((p) => p.id === property)?.label || property} · ${kf.t.toFixed(2)}s · drag to move · Delete to remove`}
+                                    aria-label={`Keyframe ${property} at ${kf.t.toFixed(2)} seconds`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 );
