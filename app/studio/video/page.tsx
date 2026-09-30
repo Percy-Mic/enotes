@@ -1048,16 +1048,25 @@ function VideoEditor() {
               setSelectedClipId(replacement.id);
               notify('Clip replaced — your edit position and timeline slot were preserved.');
             } else {
+              const firstMainMedia = !docRef.current.project.clips.length && !docRef.current.project.elements.length;
               const clip: VideoClip = {
                 id: makeVideoId('clip'), src: mediaUrl, name: file.name,
                 sourceDuration: meta.duration, trimStart: 0,
                 trimEnd: meta.duration, speed: 1, volume: 1, muted: false,
+                media_type: 'video',
                 source_width: meta.w || undefined, source_height: meta.h || undefined,
                 transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
                 filter: 'none', effect: 'none', reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
               };
-              updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add clip');
+              updateProject((p) => ({
+                ...p,
+                aspect: firstMainMedia ? 'original' : p.aspect,
+                canvas: firstMainMedia && meta.w && meta.h ? { width: meta.w, height: meta.h } : p.canvas,
+                clips: [...p.clips, clip],
+              }), 'Add clip');
               setSelectedClipId(clip.id);
+              setSelectedElementId(null);
+              if (firstMainMedia) notify('Video added — canvas matched the source orientation.');
             }
           }
         } catch (e) {
