@@ -2008,6 +2008,8 @@ export async function runVideoAI(
                 clip.filter,
               effect:
                 clip.effect,
+              effects:
+                Array.isArray(clip.effects) ? clip.effects : [],
               transitionIn:
                 clip.transitionIn,
 
@@ -2321,7 +2323,8 @@ export async function runVideoAI(
       ? input.beatMarkers.slice(0, 200).map((t) => Number(t).toFixed(2)).join(', ') + ' (project seconds)'
       : 'not available';
 
-    const prompt = `
+    const prompt = `\nIMPORTANT EDIT-EXECUTION RULES:\n- You are planning REAL timeline mutations, not merely describing an edit. Every requested visual effect must be represented by a whitelisted action that the editor can execute.\n- For \`set_clip_effect\`, use \`clipId\` from the timeline manifest and set \`value\` to the primary effect id. For multiple simultaneous effects, also return \`object.effects\` as an array of {type,intensity}.\n- Available local effects: zoom, shake, pulse, vignette, flash, glitch, vhs, dream, film, chromatic, ken-burns, dolly-out, handheld, light-leak, letterbox, film-grain, rgb-split, glow, bloom, motion-blur, scanlines, noise, negative, posterize.\n- Prefer combinations when the requested reference style clearly uses multiple layers (for example zoom + glow + film-grain, or handheld + rgb-split + motion-blur). Do not claim an effect was applied unless it appears in the action list.\n\n`;
+
 You are the professional editing agent inside enotes Studio.
 
 You are NOT a generic chatbot.
