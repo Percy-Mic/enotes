@@ -1105,13 +1105,24 @@ function applyTransitionFrame(
 ) {
   const scale = hint.scale ?? 1;
   if (scale === 1 && !hint.dx && !hint.dy && !hint.rotate && !hint.blurPx) return;
+  /* Snapshot first. Drawing ctx.canvas onto itself can yield undefined
+     feedback on some GPU/browser combinations and is a common source of
+     transition flashes and black preview frames. */
+  const source = document.createElement('canvas');
+  source.width = canvasW; source.height = canvasH;
+  const sourceCtx = source.getContext('2d');
+  if (!sourceCtx) return;
+  sourceCtx.drawImage(ctx.canvas, 0, 0, canvasW, canvasH);
+
   ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvasW, canvasH);
   if (hint.blurPx) ctx.filter = `blur(${hint.blurPx}px)`;
   ctx.translate(canvasW / 2 + (hint.dx || 0), canvasH / 2 + (hint.dy || 0));
   if (hint.rotate) ctx.rotate((hint.rotate * Math.PI) / 180);
   if (scale !== 1) ctx.scale(scale, scale);
   ctx.translate(-canvasW / 2, -canvasH / 2);
-  ctx.drawImage(ctx.canvas, 0, 0);
+  ctx.drawImage(source, 0, 0);
   ctx.filter = 'none';
   ctx.restore();
 }
