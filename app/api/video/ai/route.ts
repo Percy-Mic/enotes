@@ -22,6 +22,7 @@ export async function POST(request: Request) {
       typeof (body as { conversationId?: unknown }).conversationId === 'string'
         ? (body as { conversationId: string }).conversationId
         : null;
+    let historyError: string | null = null;
     if (body.operation === 'assistant' && body.projectId) {
       try {
         const { createClient } = await import('@/lib/supabase/server');
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
             conversationId = error ? null : data.id;
           }
           if (conversationId) {
-            await db.from('video_ai_messages').insert([
+            const { error: msgError } = await db.from('video_ai_messages').insert([
               { conversation_id: conversationId, user_id: userId, role: 'user', content: String(body.prompt || '').slice(0, 4000), context: {} },
               {
                 conversation_id: conversationId,
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
                 context: { provider: result.provider || null },
               },
             ]);
+            if (msgError) historyError = msgError.message;
             await db.from('video_ai_conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
           }
         }
@@ -104,7 +106,7 @@ export async function POST(request: Request) {
     }
 
     await finishAIJob(jobId, { status: 'completed', output: result.output });
-    return NextResponse.json({ ...result, jobId, conversationId });
+    return NextResponse.json({ ...result, jobId, conversationId, historyError });
   } catch (error) {
     if (jobId) await finishAIJob(jobId, { status: 'failed', error: error instanceof Error ? error.message : 'AI request failed.' });
     const message = error instanceof Error ? error.message : 'AI request failed.';
