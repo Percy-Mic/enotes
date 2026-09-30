@@ -678,6 +678,9 @@ function VideoEditor() {
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const saveTimer = useRef<number | null>(null);
+  /* Set while an INSERT is in flight so a second concurrent saveNow() can't
+     create a duplicate project row (autosave racing a manual save / 2 tabs). */
+  const savingRef = useRef(false);
 
   /** Persist now. Returns false (and tells the user why) on failure —
       callers that MUST have a save (export) check the result. */
@@ -700,11 +703,20 @@ function VideoEditor() {
         const { error } = await supabase.from('video_projects').update(body).eq('id', savedProjectId);
         if (error) throw new Error(error.message);
       } else {
-        const { data, error } = await supabase.from('video_projects').insert(body).select('id').single();
-        if (error) throw new Error(error.message);
-        if (data) {
-          setSavedProjectId(data.id);
-          window.history.replaceState(null, '', `/studio/video?project=${data.id}`);
+        /* Guard against duplicate rows: autosave and a manual save (or two
+           tabs) can race past the savedProjectId check. Re-read the id inside
+           the save path, then claim the insert with a coordinated flag. */
+        if (savingRef.current) return true;
+        savingRef.current = true;
+        try {
+          const { data, error } = await supabase.from('video_projects').insert(body).select('id').single();
+          if (error) throw new Error(error.message);
+          if (data) {
+            setSavedProjectId(data.id);
+            window.history.replaceState(null, '', `/studio/video?project=${data.id}`);
+          }
+        } finally {
+          savingRef.current = false;
         }
       }
       history.markClean();
@@ -3683,9 +3695,10 @@ function VideoEditor() {
         </Link>
         <input
           value={doc.title}
-          onChange={(e) => setDoc({ ...doc, title: e.target.value }, 'Rename project', `title-${Date.now()}`)}
+          onChange={(e) => setDoc({ ...doc, title: e.target.value }, 'Rename project', 'project-title')}
           aria-label="Project title"
-          className="min-w-0 flex-1 rounded-lg bg-transparent px-2 py-1.5 text-sm font-semibold outline-none focus:bg-white/10"
+          placeholder="Name your project…"
+          className="min-w-0 flex-1 rounded-lg bg-transparent px-2 py-1.5 text-sm font-semibold outline-none placeholder:font-normal placeholder:text-white/30 focus:bg-white/10"
         />
         <button onClick={history.undo} disabled={!history.canUndo} aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-30">
           <Undo2 className="h-4 w-4" />
@@ -5986,8 +5999,8 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
           </span>
         ))}
         {([
-          ['n','-top-5 inset-x-5 h-10 cursor-ns-resize'],['s','-bottom-5 inset-x-5 h-10 cursor-ns-resize'],
-          ['w','-left-5 inset-y-5 w-10 cursor-ew-resize'],['e','-right-5 inset-y-5 w-10 cursor-ew-resize']
+          ['n','left-1/2 top-0 h-10 w-14 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],['s','left-1/2 bottom-0 h-10 w-14 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],
+          ['w','top-1/2 left-0 h-14 w-10 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],['e','top-1/2 right-0 h-14 w-10 translate-x-1/2 -translate-y-1/2 cursor-ew-resize']
         ] as const).map(([mode,cls]) => (
           <span key={mode} data-crop-handle={mode} className={"absolute z-20 touch-none "+cls} role="slider" aria-label={"Resize crop "+mode}>
             <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
