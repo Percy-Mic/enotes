@@ -500,7 +500,7 @@ function VideoEditor() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data?.error || 'The AI operation failed.');
       const findUrl = (value: unknown): string | null => {
-        if (typeof value === 'string' && /^https?:\\/\\//i.test(value)) return value;
+        if (typeof value === 'string' && /^https?:\/\//i.test(value)) return value;
         if (Array.isArray(value)) { for (const item of value) { const found = findUrl(item); if (found) return found; } }
         if (value && typeof value === 'object') { for (const item of Object.values(value as Record<string, unknown>)) { const found = findUrl(item); if (found) return found; } }
         return null;
