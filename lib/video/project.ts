@@ -61,9 +61,26 @@ export interface AudioProcessing {
   compressor: boolean;
 }
 
+export type EffectBlendMode = 'normal' | 'screen' | 'overlay' | 'multiply' | 'soft-light' | 'difference' | 'lighter';
+
+export interface VideoEffectParams {
+  speed?: number;
+  amount?: number;
+  size?: number;
+  softness?: number;
+  angle?: number;
+  colorA?: string;
+  colorB?: string;
+  seed?: number;
+}
+
 export interface VideoEffectLayer {
   type: EffectType;
   intensity: number;
+  /** How this layer composites with the clip. */
+  blendMode?: EffectBlendMode;
+  /** Optional artist-facing parameters. Unknown params are safely ignored. */
+  params?: VideoEffectParams;
 }
 
 export interface VideoClip {
@@ -103,7 +120,7 @@ export interface VideoClip {
 }
 
 /** Extensible effect ids — new effects append here; renderer switches on id. */
-export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic' | 'ken-burns' | 'dolly-out' | 'handheld' | 'light-leak' | 'letterbox' | 'film-grain' | 'rgb-split' | 'glow' | 'bloom' | 'motion-blur' | 'scanlines' | 'noise' | 'negative' | 'posterize' | 'old-film' | 'crt' | 'halftone' | 'duotone' | 'solarize' | 'threshold' | 'pixelate' | 'thermal' | 'blueprint' | 'cyberpunk' | 'dreamy-glow' | 'flicker' | 'film-burn';
+export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic' | 'ken-burns' | 'dolly-out' | 'handheld' | 'light-leak' | 'letterbox' | 'film-grain' | 'rgb-split' | 'glow' | 'bloom' | 'motion-blur' | 'scanlines' | 'noise' | 'negative' | 'posterize' | 'old-film' | 'crt' | 'halftone' | 'duotone' | 'solarize' | 'threshold' | 'pixelate' | 'thermal' | 'blueprint' | 'cyberpunk' | 'dreamy-glow' | 'flicker' | 'film-burn' | 'prism' | 'lens-flare' | 'light-rays' | 'bokeh' | 'dust' | 'scratches' | 'tape-warp' | 'chromatic-aberration' | 'displacement' | 'glitch-blocks' | 'edge-glow' | 'radial-blur' | 'tilt-shift' | 'film-gate' | 'colorize' | 'kaleidoscope';
 
 export type EffectCategory = 'Popular' | 'Motion' | 'Retro' | 'Cinematic' | 'Glitch' | 'Stylize' | 'Style Lab';
 
@@ -146,6 +163,22 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string; categ
   { id: 'thermal', name: 'Thermal', hint: 'False-color heat-map look', category: 'Style Lab' },
   { id: 'blueprint', name: 'Blueprint', hint: 'Technical blue monochrome', category: 'Style Lab' },
   { id: 'cyberpunk', name: 'Cyberpunk', hint: 'Neon contrast and color split', category: 'Style Lab' },
+  { id: 'prism', name: 'Prism', hint: 'Glass refraction and spectral light', category: 'Style Lab' },
+  { id: 'lens-flare', name: 'Lens Flare', hint: 'Animated anamorphic light streak', category: 'Cinematic' },
+  { id: 'light-rays', name: 'Light Rays', hint: 'Volumetric-looking directional rays', category: 'Cinematic' },
+  { id: 'bokeh', name: 'Bokeh', hint: 'Animated defocused light particles', category: 'Cinematic' },
+  { id: 'dust', name: 'Dust', hint: 'Floating analog dust motes', category: 'Retro' },
+  { id: 'scratches', name: 'Scratches', hint: 'Aged film scratches and gate marks', category: 'Retro' },
+  { id: 'tape-warp', name: 'Tape Warp', hint: 'Horizontal tape tracking distortion', category: 'Retro' },
+  { id: 'chromatic-aberration', name: 'Chromatic Aberration', hint: 'Lens-edge RGB separation', category: 'Glitch' },
+  { id: 'displacement', name: 'Displacement', hint: 'Animated liquid-like distortion', category: 'Glitch' },
+  { id: 'glitch-blocks', name: 'Glitch Blocks', hint: 'Digital macroblock tearing', category: 'Glitch' },
+  { id: 'edge-glow', name: 'Edge Glow', hint: 'Luminous high-frequency edges', category: 'Cinematic' },
+  { id: 'radial-blur', name: 'Radial Blur', hint: 'Speed-line focus blur', category: 'Motion' },
+  { id: 'tilt-shift', name: 'Tilt Shift', hint: 'Selective miniature-style focus', category: 'Cinematic' },
+  { id: 'film-gate', name: 'Film Gate', hint: 'Gate weave, jitter and exposure', category: 'Retro' },
+  { id: 'colorize', name: 'Colorize', hint: 'Custom two-color cinematic grade', category: 'Stylize' },
+  { id: 'kaleidoscope', name: 'Kaleidoscope', hint: 'Mirrored psychedelic geometry', category: 'Style Lab' },
 ];
 
 export interface TimelineMarker {
@@ -551,6 +584,10 @@ export function normalizeProject(input: unknown): VideoProject {
             return {
               type: String(rawLayer.type || 'none') as EffectType,
               intensity: clamp(Number(rawLayer.intensity) || 1, 0, 1),
+              blendMode: (['normal', 'screen', 'overlay', 'multiply', 'soft-light', 'difference', 'lighter'] as EffectBlendMode[]).includes(rawLayer.blendMode as EffectBlendMode)
+                ? rawLayer.blendMode as EffectBlendMode
+                : 'normal',
+              params: rawLayer.params && typeof rawLayer.params === 'object' ? rawLayer.params as VideoEffectParams : undefined,
             };
           }).filter((layer) => layer.type !== 'none')
         : undefined,
