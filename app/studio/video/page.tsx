@@ -1261,7 +1261,7 @@ function VideoEditor() {
         });
         const up = await uploadFile(file, 'studio-media', meId);
         const span = realDuration > 0 ? realDuration : Math.max(2, String(obj.text || '').split(/\s+/).length / 2.6);
-        preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: mediaUrl });
+        preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: up.url });
       } catch {
         preparedNarrations.push(null);
       }
