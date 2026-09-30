@@ -1675,7 +1675,21 @@ function VideoEditor() {
         if (action.type === 'set_clip_volume' && Number.isFinite(numberValue)) next.volume = Math.max(0, Math.min(1, numberValue));
         if (action.type === 'set_clip_mute') next.muted = Boolean(action.value);
         if (action.type === 'set_clip_filter') next.filter = String(action.value || 'none');
-        if (action.type === 'set_clip_effect') next.effect = String(action.value || 'none') as VideoClip['effect'];
+        if (action.type === 'set_clip_effect') {
+          next.effect = String(action.value || 'none') as VideoClip['effect'];
+          const rawEffects = action.object?.effects;
+          if (Array.isArray(rawEffects)) {
+            next.effects = rawEffects
+              .filter((layer): layer is Record<string, unknown> => !!layer && typeof layer === 'object')
+              .map((layer) => ({
+                type: String(layer.type || 'none') as VideoClip['effect'],
+                intensity: Math.max(0, Math.min(1, Number(layer.intensity) || 1)),
+              }))
+              .filter((layer) => layer.type !== 'none');
+          } else {
+            next.effects = undefined;
+          }
+        }
 
         if (action.type === 'set_clip_transition') {
           next.transitionIn = {
