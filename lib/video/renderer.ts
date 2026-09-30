@@ -1,3 +1,4 @@
+import { drawAdvancedEffectStack } from '@/lib/video/advanced-effects';
 /* ============================================================
    Video export renderer — the part that makes the editor REAL.
 
@@ -1484,6 +1485,9 @@ export class VideoRenderer {
           }
 
           drawEffectOverlay(ctx, clip, timeIn, W, H);
+          if (clip.effects?.length) {
+            drawAdvancedEffectStack(ctx, clip.effects, timeIn, W, H);
+          }
 
           // transition INTO this clip; motion transitions transform the
           // freshly painted frame before overlays render
