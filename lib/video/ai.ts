@@ -2331,7 +2331,8 @@ export async function runVideoAI(
       '- For set_clip_effect, use clipId from the timeline manifest and set value to the primary effect id. For multiple simultaneous effects, also return object.effects as an array of {type,intensity}.',
       '- Available local effects: zoom, shake, pulse, vignette, flash, glitch, vhs, dream, film, chromatic, ken-burns, dolly-out, handheld, light-leak, letterbox, film-grain, rgb-split, glow, bloom, motion-blur, scanlines, noise, negative, posterize, old-film, crt, halftone, duotone, solarize, threshold, pixelate, thermal, blueprint, cyberpunk, dreamy-glow, flicker, film-burn, prism, lens-flare, light-rays, bokeh, dust, scratches, tape-warp, chromatic-aberration, displacement, glitch-blocks, edge-glow, radial-blur, tilt-shift, film-gate, colorize, kaleidoscope. Effects are composable layers.',
       '- Prefer combinations when the requested reference style clearly uses multiple layers (for example zoom + glow + film-grain, or handheld + rgb-split + motion-blur). For retro looks, combine old-film/vhs/crt/film-grain/light-leak/flicker/film-burn only when visually appropriate. These are local deterministic effects, not generative AI. Do not claim an effect was applied unless it appears in the action list.',
-      '',
+      '- For masks, use set_clip_mask with object {shape:"split"|"shutter"|"ellipse"|"rectangle"|"none",amount,feather,invert,rotation}. Use masks for split-screen, wipe/reveal, iris and geometric compositions; masks are editable manually after AI applies them.',
+            '',
     ].join('\\n') + `
 You are the professional editing agent inside enotes Studio.
 
