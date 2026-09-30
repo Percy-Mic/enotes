@@ -21,7 +21,7 @@ import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
   placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipAdjustments, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
-  type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject,
+  type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type MaskShape, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject,
 } from '@/lib/video/project';
 import {
   EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
@@ -1432,7 +1432,7 @@ function VideoEditor() {
     const requestedActions = expanded.slice(0, 64);
     const clipTargetActions = new Set<VideoAIEditAction['type']>([
       'set_clip_speed', 'set_clip_volume', 'set_clip_mute', 'set_clip_filter',
-      'set_clip_effect', 'set_clip_transition', 'trim_clip', 'transform_clip',
+      'set_clip_effect', 'set_clip_mask', 'set_clip_transition', 'trim_clip', 'transform_clip',
       'set_clip_adjustments', 'fit_clip', 'delete_clip', 'duplicate_clip',
       'set_keyframe',
     ]);
@@ -1918,6 +1918,24 @@ function VideoEditor() {
           } else {
             next.effects = undefined;
           }
+        }
+
+        if (action.type === 'set_clip_mask' && action.object) {
+          const obj = action.object;
+          const shape = String(obj.shape || 'none') as MaskShape;
+          const allowed: MaskShape[] = ['none', 'split', 'shutter', 'ellipse', 'rectangle'];
+          next.transform = {
+            ...next.transform,
+            mask: allowed.includes(shape)
+              ? {
+                  shape,
+                  amount: Math.max(0.05, Math.min(1, Number(obj.amount) || 0.5)),
+                  feather: Math.max(0, Math.min(1, Number(obj.feather) || 0)),
+                  invert: Boolean(obj.invert),
+                  rotation: Number.isFinite(Number(obj.rotation)) ? Number(obj.rotation) : 0,
+                }
+              : undefined,
+          };
         }
 
         if (action.type === 'set_clip_transition') {
@@ -6327,6 +6345,62 @@ function VideoEditor() {
                   <p className="mt-1 text-[10px] text-white/40">
                     Clip plays {fmt(clipDuration(selectedClip))} on the timeline · speed applies to preview, audio and the exported file.
                   </p>
+                </div>
+
+                {/* MASKS — non-destructive compositing masks, also controllable by AI. */}
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div>
+                      <p className="text-xs font-semibold text-white">Masks</p>
+                      <p className="text-[10px] text-white/40">Animateable-ready masks for split screens, shutters and geometric reveals.</p>
+                    </div>
+                    <span className="rounded-full bg-cyan-400/10 px-2 py-1 text-[9px] font-semibold text-cyan-200">
+                      {selectedClip.transform.mask?.shape || 'none'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {([
+                      ['none','None'],['split','Split'],['shutter','Shutter'],['ellipse','Ellipse'],['rectangle','Rectangle'],
+                    ] as const).map(([shape,label]) => (
+                      <button
+                        key={shape}
+                        type="button"
+                        onClick={() => updateClip(selectedClip.id, {
+                          transform: {
+                            ...selectedClip.transform,
+                            mask: shape === 'none' ? undefined : {
+                              shape,
+                              amount: selectedClip.transform.mask?.amount ?? 0.72,
+                              feather: selectedClip.transform.mask?.feather ?? 0,
+                              invert: selectedClip.transform.mask?.invert ?? false,
+                              rotation: selectedClip.transform.mask?.rotation ?? 0,
+                            },
+                          },
+                        }, 'Set mask')}
+                        className={`rounded-lg bg-white/10 px-2 py-2 text-[9px] font-semibold ${selectedClip.transform.mask?.shape === shape || (shape === 'none' && !selectedClip.transform.mask) ? 'bg-[#E5798F] text-white' : 'text-white/65'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {selectedClip.transform.mask && (
+                    <div className="mt-2 space-y-1.5">
+                      <Slider label={`Mask amount ${Math.round((selectedClip.transform.mask.amount ?? .5) * 100)}%`} min={5} max={100} value={(selectedClip.transform.mask.amount ?? .5) * 100}
+                        onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, mask: { ...selectedClip.transform.mask!, amount: v / 100 } } }, 'Mask amount', `mask-a-${selectedClip.id}`)} />
+                      <Slider label={`Feather ${Math.round((selectedClip.transform.mask.feather ?? 0) * 100)}%`} min={0} max={100} value={(selectedClip.transform.mask.feather ?? 0) * 100}
+                        onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, mask: { ...selectedClip.transform.mask!, feather: v / 100 } } }, 'Mask feather', `mask-f-${selectedClip.id}`)} />
+                      <Slider label={`Rotation ${Math.round(selectedClip.transform.mask.rotation ?? 0)}°`} min={-180} max={180} value={selectedClip.transform.mask.rotation ?? 0}
+                        onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, mask: { ...selectedClip.transform.mask!, rotation: v } } }, 'Mask rotation', `mask-r-${selectedClip.id}`)} />
+                      <button
+                        type="button"
+                        aria-pressed={selectedClip.transform.mask.invert}
+                        onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, mask: { ...selectedClip.transform.mask!, invert: !selectedClip.transform.mask!.invert } } }, 'Invert mask')}
+                        className={`w-full rounded-lg px-3 py-2 text-[10px] font-semibold ${selectedClip.transform.mask.invert ? 'bg-cyan-400/20 text-cyan-100' : 'bg-white/10 text-white/60'}`}
+                      >
+                        {selectedClip.transform.mask.invert ? 'Invert mask · On' : 'Invert mask'}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* CROP */}
