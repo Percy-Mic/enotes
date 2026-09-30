@@ -1372,17 +1372,21 @@ export class VideoRenderer {
       const dur = clipDuration(clip);
       const eff = effectTransform(clip, timeIn, dur);
       try {
-        const video = await loadVideo(clip.src);
+        const image = clip.media_type === 'image' ? await loadImage(clip.src) : null;
+        const video = image ? null : await loadVideo(clip.src);
         const target = clip.reverse
           ? Math.max(clip.trimStart, sourceTime)
           : Math.min(sourceTime, Math.max(0, (clip.sourceDuration || 0) - 0.05));
-        if (video.readyState >= 2) {
+        const mediaReady = image ? image.complete : !!video && video.readyState >= 2;
+        if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
           const animatedClip = animated.scale === clip.transform.scale && animated.rotation === clip.transform.rotation && animated.offset_x === clip.transform.offset_x && animated.offset_y === clip.transform.offset_y
             ? clip
             : { ...clip, volume: animated.volume, transform: { ...clip.transform, scale: animated.scale, offset_x: animated.offset_x, offset_y: animated.offset_y, rotation: animated.rotation } };
-          const t = clipDrawRect(animatedClip, W, H, video.videoWidth, video.videoHeight, eff);
+          const mediaW = image ? image.naturalWidth : video!.videoWidth;
+          const mediaH = image ? image.naturalHeight : video!.videoHeight;
+          const t = clipDrawRect(animatedClip, W, H, mediaW, mediaH, eff);
 
           /* REVERSE, fast path: paint from the pre-built frame cache instead
              of seek-per-frame (~2.5 fps measured → unusable). Cache is built
@@ -1429,13 +1433,19 @@ export class VideoRenderer {
           }
 
           if (!paintedFromCache) {
-            await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+            if (video) {
+              await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+            }
             ctx.save();
             ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
             ctx.rotate((animated.rotation * Math.PI) / 180);
             ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
             ctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
-            ctx.drawImage(video, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
+            if (image) {
+              ctx.drawImage(image, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
+            } else {
+              ctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
+            }
             ctx.filter = 'none';
             ctx.restore();
           }
