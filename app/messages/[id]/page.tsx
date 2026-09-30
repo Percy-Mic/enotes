@@ -864,6 +864,56 @@ function ChatRoom() {
     }
   };
 
+  /* One row renderer shared by the Group admins and Members sections of
+     the sheet — the only difference between them is which list feeds it. */
+  const renderMemberRow = (member: MemberRow) => {
+    const isCreator = conversation ? member.user_id === conversation.created_by : false;
+    const canManage = amGroupAdmin && !isCreator && member.user_id !== me;
+    return (
+      <li key={member.user_id} className="flex items-center gap-3 rounded-xl p-2 hover:bg-gray-50">
+        <Avatar src={member.profile?.avatar_url} name={member.profile?.full_text_name || member.profile?.username} size={40} />
+        <Link href={member.profile?.username ? `/u/${member.profile.username}` : '#'} className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
+            {member.profile?.full_text_name || member.profile?.username || 'Member'}
+            {isCreator && <Crown className="h-3.5 w-3.5 text-amber-500" aria-label="Group creator" />}
+            {!isCreator && (member.role === 'admin' || member.role === 'moderator') && <Shield className="h-3.5 w-3.5 text-[#1E90FF]" aria-label="Group admin" />}
+            {member.user_id === me && <span className="text-[10px] font-normal text-[#9B9B9B]">(you)</span>}
+          </p>
+          <p className="text-xs text-[#6B6B6B]">{member.profile?.username ? `@${member.profile.username}` : ''}</p>
+        </Link>
+        {canManage && (
+          <span className="flex shrink-0 gap-1">
+            {!isCreator && (
+              <button
+                onClick={() => void makeOwner(member.user_id)}
+                className="flex h-9 items-center gap-1 rounded-lg border border-amber-200 px-2 text-[11px] font-semibold text-amber-700 hover:bg-amber-50"
+                aria-label={`Make ${member.profile?.username || 'member'} the group owner`}
+              >
+                <Crown className="h-3.5 w-3.5" />
+                Make owner
+              </button>
+            )}
+            <button
+              onClick={() => changeMemberRole(member.user_id, member.role === 'admin' || member.role === 'moderator' ? 'member' : 'admin')}
+              className="flex h-9 items-center gap-1 rounded-lg border border-[#E8E2E4] px-2 text-[11px] font-semibold text-[#6B6B6B] hover:bg-gray-50"
+              aria-label={(member.role === 'admin' || member.role === 'moderator') ? `Demote ${member.profile?.username || 'member'}` : `Promote ${member.profile?.username || 'member'} to admin`}
+            >
+              {(member.role === 'admin' || member.role === 'moderator') ? <UserMinus className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
+              {(member.role === 'admin' || member.role === 'moderator') ? 'Demote' : 'Promote'}
+            </button>
+            <button
+              onClick={() => removeMember(member.user_id)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-500 hover:bg-red-50"
+              aria-label={`Remove ${member.profile?.username || 'member'} from group`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </span>
+        )}
+      </li>
+    );
+  };
+
   const changeMemberRole = async (userId: string, role: 'member' | 'admin') => {
     if (!amGroupAdmin) return;
     setGroupError(null);
@@ -1320,55 +1370,33 @@ function ChatRoom() {
                 </div>
               )}
             </div>
-            <ul className="space-y-2">
-              {groupMembers.map((member) => {
-                const isCreator = member.user_id === conversation.created_by;
-                const canManage = amGroupAdmin && !isCreator && member.user_id !== me;
-                return (
-                  <li key={member.user_id} className="flex items-center gap-3 rounded-xl p-2 hover:bg-gray-50">
-                    <Avatar src={member.profile?.avatar_url} name={member.profile?.full_text_name || member.profile?.username} size={40} />
-                    <Link href={member.profile?.username ? `/u/${member.profile.username}` : '#'} className="min-w-0 flex-1">
-                      <p className="flex items-center gap-1.5 truncate text-sm font-semibold">
-                        {member.profile?.full_text_name || member.profile?.username || 'Member'}
-                        {isCreator && <Crown className="h-3.5 w-3.5 text-amber-500" aria-label="Group creator" />}
-                        {!isCreator && (member.role === 'admin' || member.role === 'moderator') && <Shield className="h-3.5 w-3.5 text-[#1E90FF]" aria-label="Group admin" />}
-                        {member.user_id === me && <span className="text-[10px] font-normal text-[#9B9B9B]">(you)</span>}
+            {(() => {
+              /* Owner + admins/moderators surface first under their own
+               * heading; everyone else follows under Members. */
+              const admins = groupMembers.filter((member) => member.user_id === conversation.created_by || member.role === 'admin' || member.role === 'moderator');
+              const regulars = groupMembers.filter((member) => member.user_id !== conversation.created_by && member.role !== 'admin' && member.role !== 'moderator');
+              return (
+                <div>
+                  {admins.length > 0 && (
+                    <section className="mb-4">
+                      <p className="mb-1.5 flex items-center gap-1.5 px-2 text-[11px] font-bold uppercase tracking-wide text-[#9B9B9B]">
+                        <Shield className="h-3 w-3 text-[#1E90FF]" />
+                        Group admins ({admins.length})
                       </p>
-                      <p className="text-xs text-[#6B6B6B]">{member.profile?.username ? `@${member.profile.username}` : ''}</p>
-                    </Link>
-                    {canManage && (
-                      <span className="flex shrink-0 gap-1">
-                        {!isCreator && (
-                          <button
-                            onClick={() => void makeOwner(member.user_id)}
-                            className="flex h-9 items-center gap-1 rounded-lg border border-amber-200 px-2 text-[11px] font-semibold text-amber-700 hover:bg-amber-50"
-                            aria-label={`Make ${member.profile?.username || 'member'} the group owner`}
-                          >
-                            <Crown className="h-3.5 w-3.5" />
-                            Make owner
-                          </button>
-                        )}
-                        <button
-                          onClick={() => changeMemberRole(member.user_id, member.role === 'admin' || member.role === 'moderator' ? 'member' : 'admin')}
-                          className="flex h-9 items-center gap-1 rounded-lg border border-[#E8E2E4] px-2 text-[11px] font-semibold text-[#6B6B6B] hover:bg-gray-50"
-                          aria-label={(member.role === 'admin' || member.role === 'moderator') ? `Demote ${member.profile?.username || 'member'}` : `Promote ${member.profile?.username || 'member'} to admin`}
-                        >
-                          {(member.role === 'admin' || member.role === 'moderator') ? <UserMinus className="h-3.5 w-3.5" /> : <Shield className="h-3.5 w-3.5" />}
-                          {(member.role === 'admin' || member.role === 'moderator') ? 'Demote' : 'Promote'}
-                        </button>
-                        <button
-                          onClick={() => removeMember(member.user_id)}
-                          className="flex h-9 w-9 items-center justify-center rounded-lg border border-red-200 text-red-500 hover:bg-red-50"
-                          aria-label={`Remove ${member.profile?.username || 'member'} from group`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                      <ul className="space-y-2">{admins.map(renderMemberRow)}</ul>
+                    </section>
+                  )}
+                  {regulars.length > 0 && (
+                    <section>
+                      <p className="mb-1.5 px-2 text-[11px] font-bold uppercase tracking-wide text-[#9B9B9B]">
+                        Members ({regulars.length})
+                      </p>
+                      <ul className="space-y-2">{regulars.map(renderMemberRow)}</ul>
+                    </section>
+                  )}
+                </div>
+              );
+            })()}
             {groupError && <p role="alert" className="mt-3 rounded-lg bg-red-50 p-2.5 text-xs text-red-600">{groupError}</p>}
             {groupNotice && <p className="mt-3 rounded-lg bg-emerald-50 p-2.5 text-xs text-emerald-700">{groupNotice}</p>}
           </div>
