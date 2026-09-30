@@ -144,6 +144,58 @@ function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewP
 }
 
 
+function FilterPreviewCard({
+  project, clipId, playhead, filter, active, onHover, onLeave, onApply,
+}: {
+  project: VideoProject; clipId: string; playhead: number; filter: string; active: boolean;
+  onHover: () => void; onLeave: () => void; onApply: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<VideoRenderer | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  const renderAt = useCallback(async (t: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+    const previewProject: VideoProject = {
+      ...project,
+      clips: project.clips.map((clip) => clip.id === clipId ? { ...clip, filter } : clip),
+    };
+    try {
+      await rendererRef.current.drawFrame(canvas, previewProject, t, { previewing: true, playing: false });
+    } catch {}
+  }, [project, clipId, filter]);
+
+  useEffect(() => {
+    const clip = project.clips.find((item) => item.id === clipId);
+    const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
+    const base = clip ? Math.max(0, Math.min(Math.max(0.05, duration - 0.05), playhead)) : 0;
+    void renderAt(base);
+    if (!active) return;
+    const started = performance.now();
+    const tick = () => {
+      const elapsed = ((performance.now() - started) / 1000) % Math.min(duration, 3);
+      void renderAt(elapsed);
+      timerRef.current = window.setTimeout(tick, 140);
+    };
+    tick();
+    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
+  }, [active, clipId, playhead, project.clips, renderAt]);
+
+  return (
+    <button type="button" onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave}
+      onClick={onApply} aria-pressed={active}
+      className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+      <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+        <canvas ref={canvasRef} className="block h-full w-full object-cover" />
+        <span className="absolute bottom-1 left-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold">{FILTER_PRESETS.find((item) => item.id === filter)?.name || filter}</span>
+        {active && <span className="absolute right-1 top-1 rounded-md bg-[#E5798F] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
+      </div>
+    </button>
+  );
+}
+
 function EffectPreviewCard({
   project, clipId, playhead, effect, filter, active, onHover, onLeave, onApply,
 }: {
@@ -5800,7 +5852,7 @@ function VideoEditor() {
                         aria-pressed={selectedClip.filter === f.id}
                         className={`group overflow-hidden rounded-xl border p-1 text-left transition ${selectedClip.filter === f.id ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
                         <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-                          <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-black/50" />
+                          <canvas data-filter-preview={f.id} className="block h-full w-full object-cover" />
                           <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold">{f.name}</span>
                         </div>
                       </button>
