@@ -1652,7 +1652,7 @@ export class VideoRenderer {
           else if (isImageOverlay || /\.(gif|png|jpe?g|webp|avif)$/i.test(src)) await loadImage(src);
         } catch {
           const clip = scaled.clips.find((c) => c.src === src);
-          if (clip) failedClips.add(clip.name || 'clip');
+          if (clip && clip.media_type !== 'image') failedClips.add(clip.name || 'clip');
           else if (!isVideoOverlay && !isImageOverlay) {
             /* decorative asset the painter skips anyway — ignore */
           } else {
