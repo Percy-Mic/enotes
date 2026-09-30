@@ -4222,16 +4222,23 @@ function VideoEditor() {
               {/* Overlay lanes */}
               {project.tracks.map((track) => {
                 const items = project.elements.filter((el) => (el.track_id || project.tracks[0]?.id) === track.id);
+                /* Auto-collapse: an empty overlay lane shrinks to a slim
+                   strip so deletions never leave a stack of ghost lanes.
+                   Purely visual — the track and its id stay in the project,
+                   it re-expands the moment an element lands on it, and it
+                   remains a drop target while collapsed. */
+                const collapsed = track.kind === 'overlay' && items.length === 0;
                 return (
                   <div
                     key={track.id}
                     data-lane-id={track.id}
                     data-lane-kind="overlay"
-                    className="relative flex h-11 items-stretch border-b border-white/10 bg-white/[0.015]"
+                    data-lane-collapsed={collapsed || undefined}
+                    className={`group relative flex ${collapsed ? 'h-6' : 'h-11'} items-stretch border-b border-white/10 ${collapsed ? 'bg-transparent' : 'bg-white/[0.015]'} transition-[height] duration-200`}
                   >
                     <div className="sticky left-0 z-30 flex w-16 shrink-0 items-center justify-between border-r border-white/10 bg-[#111]/95 px-1.5 backdrop-blur">
-                      <span className="truncate text-[9px] font-bold text-white/50">{track.name}</span>
-                       <div className="flex shrink-0 items-center gap-0.5">
+                      <span className={`truncate text-[9px] font-bold ${collapsed ? 'text-white/25' : 'text-white/50'}`}>{track.name}</span>
+                       <div className={`flex shrink-0 items-center gap-0.5 ${collapsed ? 'opacity-0 transition-opacity group-hover:opacity-100' : ''}`}>{''}
                          <button onClick={() => toggleTrackFlag(track.id, 'muted')} className={`rounded p-1 ${track.muted ? 'bg-red-500/30 text-red-200' : 'text-white/35 hover:text-white'}`} aria-label={track.muted ? 'Unmute track' : 'Mute track'}>{track.muted ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}</button>
                          <button onClick={() => toggleTrackFlag(track.id, 'locked')} className={`rounded p-1 ${track.locked ? 'bg-amber-500/30 text-amber-200' : 'text-white/35 hover:text-white'}`} aria-label={track.locked ? 'Unlock track' : 'Lock track'}><Lock className="h-3 w-3" /></button>
                        </div>
@@ -4277,7 +4284,7 @@ function VideoEditor() {
                           </div>
                         );
                       })}
-                      {items.length === 0 && (
+                      {!collapsed && items.length === 0 && (
                         <span className="pointer-events-none absolute left-2 top-3 text-[9px] text-white/20">Drag text, media or video here</span>
                       )}
                     </div>
