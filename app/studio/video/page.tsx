@@ -355,7 +355,7 @@ function VideoEditor() {
   const [stockError, setStockError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [effectSearch, setEffectSearch] = useState('');
-  const [effectCategory, setEffectCategory] = useState<'Popular' | 'Motion' | 'Retro' | 'Cinematic' | 'Glitch' | 'Stylize' | 'AI Looks' | 'All'>('Popular');
+  const [effectCategory, setEffectCategory] = useState<'Popular' | 'Motion' | 'Retro' | 'Cinematic' | 'Glitch' | 'Stylize' | 'Style Lab' | 'All'>('Popular');
 
   /** Active crop session: which entity is being cropped + its starting crop
       (so Cancel can restore). null = normal editing. */
@@ -5762,7 +5762,7 @@ function VideoEditor() {
 
                 <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
                   <div className="mb-3 flex items-center justify-between">
-                    <div><p className="text-xs font-semibold text-white">Filter Library</p><p className="text-[10px] text-white/40">Every card is a real preview from your selected footage. Hover to animate; click to apply.</p></div>
+                    <div><p className="text-xs font-semibold text-white">Filter Library</p><p className="text-[10px] text-white/40">Preview and export use the same renderer. Hover a card to animate its own preview.</p></div>
                     <span className="rounded-full bg-white/10 px-2 py-1 text-[9px] font-semibold text-white/55">LIVE PREVIEW</span>
                   </div>
                   <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} filter={lookPreviewFilter ?? selectedClip.filter} effect={selectedClip.effect} />
@@ -5862,12 +5862,12 @@ function VideoEditor() {
                       <input value={effectSearch} onChange={(e) => setEffectSearch(e.target.value)} placeholder="Search effects, retro, VHS, glow…" className="w-full rounded-xl border border-white/10 bg-black/20 py-2 pl-8 pr-3 text-xs outline-none focus:border-white/25" />
                     </div>
                     <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
-                      {(['Popular','Motion','Retro','Cinematic','Glitch','Stylize','AI Looks','All'] as const).map((cat) => (
+                      {(['Popular','Motion','Retro','Cinematic','Glitch','Stylize','Style Lab','All'] as const).map((cat) => (
                         <button key={cat} onClick={() => setEffectCategory(cat)} className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-semibold ${effectCategory === cat ? 'bg-white text-black' : 'bg-white/10 text-white/55'}`}>{cat}</button>
                       ))}
                     </div>
                     {(() => {
-                      const categories = ['Popular', 'Motion', 'Retro', 'Cinematic', 'Glitch', 'Stylize', 'AI Looks'] as const;
+                      const categories = ['Popular', 'Motion', 'Retro', 'Cinematic', 'Glitch', 'Stylize', 'Style Lab'] as const;
                       const selectedCategory = effectCategory === 'All' ? 'All' : effectCategory;
                       const q = effectSearch.trim().toLowerCase();
                       const filtered = EFFECT_PRESETS.filter((fx) =>
