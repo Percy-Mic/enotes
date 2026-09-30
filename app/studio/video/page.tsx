@@ -300,6 +300,8 @@ function VideoEditor() {
   const [stockBusy, setStockBusy] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [effectSearch, setEffectSearch] = useState('');
+  const [effectCategory, setEffectCategory] = useState<'Trending' | 'Motion' | 'Retro' | 'Cinematic' | 'All'>('Trending');
 
   /** Active crop session: which entity is being cropped + its starting crop
       (so Cancel can restore). null = normal editing. */
@@ -5656,22 +5658,41 @@ function VideoEditor() {
                     <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[9px] font-semibold text-[#ffb6c1]">AUDITION</span>
                   </div>
                   <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} effect={lookPreviewEffect ?? selectedClip.effect} filter={selectedClip.filter} />
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {EFFECT_PRESETS.map((fx) => {
-                      const gated = fx.id !== 'none' && fx.id !== 'zoom' && !has('video.advanced_effects');
+                  <div className="mt-3">
+                    <div className="relative mb-2">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35" />
+                      <input value={effectSearch} onChange={(e) => setEffectSearch(e.target.value)} placeholder="Search effects" className="w-full rounded-xl border border-white/10 bg-black/20 py-2 pl-8 pr-3 text-xs outline-none focus:border-white/25" />
+                    </div>
+                    <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
+                      {(['Trending','Motion','Retro','Cinematic','All'] as const).map((cat) => (
+                        <button key={cat} onClick={() => setEffectCategory(cat)} className={`shrink-0 rounded-full px-3 py-1.5 text-[10px] font-semibold ${effectCategory === cat ? 'bg-white text-black' : 'bg-white/10 text-white/55'}`}>{cat}</button>
+                      ))}
+                    </div>
+                    {(() => {
+                      const categories: Record<string, string[]> = {
+                        Trending: ['flash','glitch','chromatic','dream','film'],
+                        Motion: ['zoom','ken-burns','dolly-out','handheld','shake','pulse'],
+                        Retro: ['vhs','film-grain','light-leak','letterbox','film'],
+                        Cinematic: ['ken-burns','dolly-out','dream','film','vignette'],
+                        All: EFFECT_PRESETS.map((item) => item.id),
+                      };
+                      const ids = categories[effectCategory] || categories.All;
+                      const q = effectSearch.trim().toLowerCase();
+                      const filtered = EFFECT_PRESETS.filter((fx) => ids.includes(fx.id) && (!q || (fx.name + ' ' + fx.hint).toLowerCase().includes(q)));
                       return (
-                        <button key={fx.id}
-                          onMouseEnter={() => setLookPreviewEffect(fx.id)} onMouseLeave={() => setLookPreviewEffect(null)}
-                          onFocus={() => setLookPreviewEffect(fx.id)} onBlur={() => setLookPreviewEffect(null)}
-                          onClick={() => updateClip(selectedClip.id, { effect: fx.id, effect_intensity: fx.id === 'none' ? 0 : (selectedClip.effect_intensity ?? 1) }, 'Apply effect')}
-                          disabled={gated} aria-pressed={selectedClip.effect === fx.id}
-                          title={gated ? 'Advanced effect' : fx.hint}
-                          className={`group rounded-xl border p-2 text-left transition focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${selectedClip.effect === fx.id ? 'border-[#E5798F] bg-[#E5798F]/10' : gated ? 'border-white/5 bg-white/[0.02] text-white/30' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
-                          <div className="mb-2 flex h-14 items-center justify-center rounded-lg bg-gradient-to-br from-white/10 via-white/[0.03] to-black"><span className="text-[10px] font-bold">{fx.name}</span></div>
-                          <div className="flex items-center justify-between gap-2"><span className="truncate text-[9px] text-white/45">{fx.hint}</span>{gated && <span className="text-[9px]">PRO</span>}</div>
-                        </button>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {filtered.map((fx) => {
+                            const gated = fx.id !== 'none' && fx.id !== 'zoom' && !has('video.advanced_effects');
+                            return (
+                              <button key={fx.id} onMouseEnter={() => setLookPreviewEffect(fx.id)} onMouseLeave={() => setLookPreviewEffect(null)} onFocus={() => setLookPreviewEffect(fx.id)} onBlur={() => setLookPreviewEffect(null)} onClick={() => updateClip(selectedClip.id, { effect: fx.id, effect_intensity: fx.id === 'none' ? 0 : (selectedClip.effect_intensity ?? 1) }, 'Apply effect')} disabled={gated} aria-pressed={selectedClip.effect === fx.id} title={gated ? 'Advanced effect' : fx.hint} className={`group min-w-0 rounded-xl border p-2 text-left transition focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${selectedClip.effect === fx.id ? 'border-[#E5798F] bg-[#E5798F]/10' : gated ? 'border-white/5 bg-white/[0.02] text-white/30' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+                                <div className="mb-2 flex h-14 items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br from-white/10 via-white/[0.03] to-black"><span className="text-[10px] font-bold">{fx.name}</span></div>
+                                <div className="flex items-center justify-between gap-2"><span className="truncate text-[9px] text-white/45">{fx.hint}</span>{gated && <span className="text-[9px]">PRO</span>}</div>
+                              </button>
+                            );
+                          })}
+                        </div>
                       );
-                    })}
+                    })()}
                   </div>
                   {selectedClip.effect !== 'none' && (
                     <div className="mt-3 rounded-xl bg-black/20 p-2.5">
