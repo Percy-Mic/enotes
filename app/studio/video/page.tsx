@@ -6437,17 +6437,24 @@ function VideoEditor() {
                   </div>
                   <Slider label="Noise reduction" min={0} max={100} step={5} value={selectedClip.audioProcessing?.noiseReduction ?? 0} onChange={(v) => setNoiseReduction(v)} />
                 </div>
-                {/* Effect library — audition the real clip before committing. */}
+                {/* Advanced effect stack — layers are composable, individually blendable and use the same renderer as export. */}
                 <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
-                  <div className="mb-3 flex items-center justify-between">
-                    <div><p className="text-xs font-semibold text-white">Effect Library</p><p className="text-[10px] text-white/40">Every card previews your footage. Hover to animate; click to apply. Preview and export use the same renderer.</p></div>
-                    <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[9px] font-semibold text-[#ffb6c1]">AUDITION</span>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-white">Advanced Effect Stack</p>
+                      <p className="text-[10px] text-white/40">Build a stack instead of choosing only one effect. Every layer previews on your footage and exports through the same compositor.</p>
+                    </div>
+                    <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[9px] font-semibold text-[#ffb6c1]">
+                      {selectedClip.effects?.length || (selectedClip.effect !== 'none' ? 1 : 0)} LAYERS
+                    </span>
                   </div>
+
                   <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} effect={lookPreviewEffect ?? selectedClip.effect} filter={selectedClip.filter} />
+
                   <div className="mt-3">
                     <div className="relative mb-2">
                       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35" />
-                      <input value={effectSearch} onChange={(e) => setEffectSearch(e.target.value)} placeholder="Search effects, retro, VHS, glow…" className="w-full rounded-xl border border-white/10 bg-black/20 py-2 pl-8 pr-3 text-xs outline-none focus:border-white/25" />
+                      <input value={effectSearch} onChange={(e) => setEffectSearch(e.target.value)} placeholder="Search effects, prism, VHS, glow, bokeh…" className="w-full rounded-xl border border-white/10 bg-black/20 py-2 pl-8 pr-3 text-xs outline-none focus:border-white/25" />
                     </div>
                     <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
                       {(['Popular','Motion','Retro','Cinematic','Glitch','Stylize','Style Lab','All'] as const).map((cat) => (
@@ -6455,7 +6462,6 @@ function VideoEditor() {
                       ))}
                     </div>
                     {(() => {
-                      const categories = ['Popular', 'Motion', 'Retro', 'Cinematic', 'Glitch', 'Stylize', 'Style Lab'] as const;
                       const selectedCategory = effectCategory === 'All' ? 'All' : effectCategory;
                       const q = effectSearch.trim().toLowerCase();
                       const filtered = EFFECT_PRESETS.filter((fx) =>
@@ -6475,23 +6481,107 @@ function VideoEditor() {
                               active={(lookPreviewEffect ?? selectedClip.effect) === fx.id}
                               onHover={() => setLookPreviewEffect(fx.id)}
                               onLeave={() => setLookPreviewEffect(null)}
-                              onApply={() => updateClip(selectedClip.id, {
-                                effect: fx.id,
-                                effects: fx.id === 'none' ? [] : [{ type: fx.id, intensity: selectedClip.effect_intensity ?? 1 }],
-                                effect_intensity: fx.id === 'none' ? 0 : (selectedClip.effect_intensity ?? 1),
-                              }, 'Apply effect')}
+                              onApply={() => {
+                                const current = Array.isArray(selectedClip.effects) ? selectedClip.effects : [];
+                                if (fx.id === 'none') {
+                                  updateClip(selectedClip.id, { effect: 'none', effects: [], effect_intensity: 0 }, 'Clear effects');
+                                  return;
+                                }
+                                const existing = current.find((layer) => layer.type === fx.id);
+                                const next = existing
+                                  ? current.map((layer) => layer.type === fx.id ? { ...layer, intensity: Math.min(1, (layer.intensity ?? 1) + 0.1) } : layer)
+                                  : [...current, { type: fx.id, intensity: selectedClip.effect_intensity ?? 1, blendMode: 'normal' as const }];
+                                updateClip(selectedClip.id, {
+                                  effect: fx.id,
+                                  effects: next,
+                                  effect_intensity: selectedClip.effect_intensity ?? 1,
+                                }, existing ? 'Boost effect layer' : 'Add effect layer');
+                              }}
                             />
                           ))}
                         </div>
                       );
                     })()}
                   </div>
-                  {selectedClip.effect !== 'none' && (
-                    <div className="mt-3 rounded-xl bg-black/20 p-2.5">
-                      <Slider label={`Effect intensity ${Math.round((selectedClip.effect_intensity ?? 1) * 100)}%`} min={0} max={100} value={(selectedClip.effect_intensity ?? 1) * 100}
-                        onChange={(v) => updateClip(selectedClip.id, { effect_intensity: v / 100 }, 'Effect intensity', `fx-intensity-${selectedClip.id}`)} />
+
+                  <div className="mt-3 space-y-2">
+                    {(selectedClip.effects || (selectedClip.effect !== 'none' ? [{ type: selectedClip.effect, intensity: selectedClip.effect_intensity ?? 1 }] : [])).map((layer, index) => (
+                      <div key={`${layer.type}-${index}`} className="rounded-xl border border-white/10 bg-black/20 p-2.5">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate text-[11px] font-semibold text-white">{EFFECT_PRESETS.find((fx) => fx.id === layer.type)?.name || layer.type}</p>
+                            <p className="text-[9px] text-white/35">{EFFECT_PRESETS.find((fx) => fx.id === layer.type)?.hint || 'Composable effect layer'}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const current = selectedClip.effects || [];
+                              const next = current.filter((_, i) => i !== index);
+                              updateClip(selectedClip.id, { effects: next, effect: next[0]?.type || 'none', effect_intensity: next[0]?.intensity ?? 0 }, 'Remove effect layer');
+                            }}
+                            className="rounded-lg bg-white/10 p-1.5 text-white/55 hover:bg-red-500/20 hover:text-red-200"
+                            aria-label={`Remove ${layer.type}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <Slider
+                          label={`Intensity ${Math.round((layer.intensity ?? 1) * 100)}%`}
+                          min={0}
+                          max={100}
+                          value={(layer.intensity ?? 1) * 100}
+                          onChange={(v) => {
+                            const current = selectedClip.effects || [];
+                            const next = current.map((item, i) => i === index ? { ...item, intensity: v / 100 } : item);
+                            updateClip(selectedClip.id, { effects: next, effect_intensity: next[0]?.intensity ?? 0, effect: next[0]?.type || 'none' }, 'Effect intensity', `fx-layer-${selectedClip.id}-${index}`);
+                          }}
+                        />
+                        <label className="mt-2 flex items-center justify-between gap-2 text-[9px] text-white/45">
+                          Blend
+                          <select
+                            value={layer.blendMode || 'normal'}
+                            onChange={(e) => {
+                              const current = selectedClip.effects || [];
+                              const next = current.map((item, i) => i === index ? { ...item, blendMode: e.target.value as NonNullable<typeof item.blendMode> } : item);
+                              updateClip(selectedClip.id, { effects: next }, 'Effect blend mode');
+                            }}
+                            className="rounded-lg bg-white/10 px-2 py-1.5 text-[10px] text-white outline-none"
+                          >
+                            {['normal','screen','overlay','soft-light','multiply','difference','lighter'].map((mode) => <option key={mode} value={mode}>{mode}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-2.5">
+                    <p className="text-[10px] font-semibold text-white/60">Pro effect recipes</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {[
+                        ['VHS Memory', ['vhs','film-grain','scanlines','flicker','tape-warp']],
+                        ['Dreamy Cinema', ['glow','bloom','bokeh','film-grain']],
+                        ['Digital Impact', ['glitch','glitch-blocks','chromatic-aberration','motion-blur']],
+                        ['Prism Night', ['prism','lens-flare','bokeh','colorize']],
+                      ].map(([name, layers]) => (
+                        <button
+                          key={String(name)}
+                          type="button"
+                          onClick={() => {
+                            const ids = layers as string[];
+                            const current = selectedClip.effects || [];
+                            const next = [...current];
+                            for (const id of ids) {
+                              if (!next.some((layer) => layer.type === id)) next.push({ type: id as VideoClip['effect'], intensity: 0.75, blendMode: id === 'film-grain' || id === 'bokeh' ? 'screen' as const : 'normal' as const });
+                            }
+                            updateClip(selectedClip.id, { effect: (ids[0] as VideoClip['effect']) || 'none', effects: next, effect_intensity: 0.75 }, `Apply ${String(name)} recipe`);
+                          }}
+                          className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[9px] font-semibold text-white/70 hover:bg-white/15"
+                        >
+                          {String(name)}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 {/* transition into this clip */}
