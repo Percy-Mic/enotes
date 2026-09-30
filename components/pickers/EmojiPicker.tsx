@@ -79,6 +79,24 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
           className="w-full rounded-lg border border-[#E8E2E4] py-2 pl-9 pr-3 text-sm focus:border-[#1E90FF] focus:outline-none"
           aria-label="Search emojis"
         />
+        {/* Teach the vocabulary: the sample keywords run the real ranked
+           search (exact match first) and the row hides once typing
+           starts, so it never crowds actual results. */}
+        {!query && (
+          <div className="mt-1.5 flex items-center gap-1.5 px-0.5 text-[10px] text-[#9B9B9B]">
+            <span className="shrink-0">Try</span>
+            {['laugh', 'pizza', 'fire', 'heart'].map((hint) => (
+              <button
+                key={hint}
+                type="button"
+                onClick={() => setQuery(hint)}
+                className="rounded-full bg-[#FFF0F3] px-1.5 py-0.5 font-semibold text-[#B45374] transition hover:bg-[#FFE4EC]"
+              >
+                {hint}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div
