@@ -1241,7 +1241,8 @@ function applyTransition(
       for (let s = 0; s < slices; s += 1) {
         const jitter = Math.sin(timeIn * 47 + s * 12.9898) * energy * W * 0.06;
         const y = s * sliceH;
-        const snap = Math.random() < energy * 0.25 ? (Math.random() - 0.5) * energy * W * 0.08 : 0;
+        const noise = Math.sin(timeIn * 91.7 + s * 17.13);
+        const snap = noise > 1 - energy * 0.5 ? noise * energy * W * 0.08 : 0;
         ctx.drawImage(ctx.canvas, 0, y, W, sliceH, jitter + snap, y, W, sliceH);
       }
       if (energy > 0.4) {
@@ -1360,6 +1361,9 @@ function connectAudioProcessing(
 
 export class VideoRenderer {
   private ctx: CanvasRenderingContext2D | null = null;
+  /* Async media decoding can finish out of order. A render generation per
+     canvas prevents stale preview frames from painting over the newest one. */
+  private renderTokens = new WeakMap<HTMLCanvasElement, number>();
   /** Set when the most recent drawFrame hit an undecodable/unreachable clip
       source; cleared on the next successful draw. The editor surfaces this. */
   lastSourceError: string | null = null;
@@ -1429,6 +1433,9 @@ export class VideoRenderer {
   ) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    const token = (this.renderTokens.get(canvas) || 0) + 1;
+    this.renderTokens.set(canvas, token);
+    const isCurrent = () => this.renderTokens.get(canvas) === token;
     project = normalizeProject(project);
     this.ctx = ctx;
     const { width: W, height: H } = project.canvas;
@@ -1461,7 +1468,9 @@ export class VideoRenderer {
       const eff = effectTransform(clip, timeIn, dur);
       try {
         const image = clip.media_type === 'image' ? await loadImage(clip.src) : null;
+        if (!isCurrent()) return;
         const video = image ? null : await loadVideo(clip.src);
+        if (!isCurrent()) return;
         const target = clip.reverse
           ? Math.max(clip.trimStart, sourceTime)
           : Math.min(sourceTime, Math.max(0, (clip.sourceDuration || 0) - 0.05));
@@ -1523,6 +1532,7 @@ export class VideoRenderer {
           if (!paintedFromCache) {
             if (video) {
               await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+              if (!isCurrent()) return;
             }
             ctx.save();
             ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
@@ -1578,12 +1588,14 @@ export class VideoRenderer {
       .sort((a, b) => a.z - b.z);
 
     for (const el of overlays) {
+      if (!isCurrent()) return;
       const timeIn = Math.max(0, time - el.start);
       if (el.kind === 'text') {
         drawTextElement(ctx, el, W, timeIn);
       } else if (el.kind === 'video' || el.media_type === 'video') {
         try {
           await drawVideoElement(ctx, el, timeIn, !!opts.previewing, !!opts.playing);
+          if (!isCurrent()) return;
         } catch {
           this.lastSourceError = el.src;
         }
@@ -1598,6 +1610,7 @@ export class VideoRenderer {
     for (const el of overlays) {
       if (el.src && (el.kind === 'video' || el.media_type === 'video')) activeSources.add(el.src);
     }
+    if (!isCurrent()) return;
     if (!opts.playing) {
       videoCache.forEach((video, src) => {
         if (!activeSources.has(src) && !video.paused) video.pause();
