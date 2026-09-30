@@ -81,12 +81,17 @@ export default function MessagesPage() {
       if (last) {
         const isVoice = last.message_type === 'audio';
         const isCallInvite = last.message_type === 'call_invite';
-        const body = isCallInvite
-          ? '🎥 Group video call'
-          : isVoice
-            ? 'Voice message'
-            : last.content;
-        if (last.sender_id === user.id) {
+        const isSystem = last.message_type === 'system';
+        const body = isSystem
+          ? last.content /* already reads as an event, no attribution prefix */
+          : isCallInvite
+            ? '🎥 Group video call'
+            : isVoice
+              ? 'Voice message'
+              : last.content;
+        if (isSystem) {
+          lastMessage = body;
+        } else if (last.sender_id === user.id) {
           lastMessage = `you: ${body}`;
         } else if (conv.is_group) {
           const sender = members.find((m) => m.id === last.sender_id);

@@ -169,6 +169,21 @@ export default function MessageRow({
     return <Check className="h-3 w-3" />;
   };
 
+  /* System messages (join announcements, etc.) render as a centered,
+     interaction-free line — no bubble, avatar, toolbar or receipts. */
+  if (message.message_type === 'system' && !isDeleted) {
+    return (
+      <li className="flex justify-center py-1" data-system-message="true">
+        <span
+          className="max-w-[85%] rounded-full bg-black/5 px-3 py-1 text-center text-[11px] font-medium text-[#6B6B6B]"
+          style={{ fontFamily: theme.fontFamily || undefined }}
+        >
+          {message.content}
+        </span>
+      </li>
+    );
+  }
+
   return (
     <li className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
       {!mine && isGroup && (

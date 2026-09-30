@@ -837,6 +837,21 @@ function ChatRoom() {
     setInviteQuery('');
     setInviteResults((list) => list.filter((p) => p.id !== profile.id));
     setGroupNotice(`${profile.full_text_name || profile.username || 'Member'} added to the group.`);
+    /* Join announcement: a persistent system message naming the adder and
+       the new member. Best-effort — membership already succeeded. */
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: adder } = await supabase.from('profiles')
+          .select('full_text_name, username').eq('id', user.id).maybeSingle();
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          sender_id: user.id,
+          content: `${adder?.full_text_name || adder?.username || 'Someone'} added ${profile.full_text_name || profile.username || 'a new member'}`,
+          message_type: 'system',
+        });
+      }
+    } catch { /* announcement is best-effort */ }
     void loadMembers();
   };
 

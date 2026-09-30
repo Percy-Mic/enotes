@@ -142,7 +142,7 @@ export interface Notification {
 
 /* ---------- messaging ---------- */
 
-export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'file' | 'gif' | 'sticker' | 'call_invite';
+export type MessageType = 'text' | 'image' | 'video' | 'audio' | 'file' | 'gif' | 'sticker' | 'call_invite' | 'system';
 
 export interface Conversation {
   id: string;
