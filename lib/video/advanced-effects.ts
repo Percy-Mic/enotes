@@ -15,6 +15,18 @@ function rgba(hex:string,a:number){
   return `rgba(${r},${g},${b},${clamp(a)})`;
 }
 
+/* Never draw a canvas back onto itself. Browser canvas implementations are
+   allowed to produce feedback/undefined pixels for self-blits, which showed
+   up as flashes/black frames in blur and kaleidoscope previews. */
+function snapshotCanvas(ctx:Ctx,W:number,H:number): HTMLCanvasElement | null {
+  const copy=document.createElement('canvas');
+  copy.width=W; copy.height=H;
+  const c=copy.getContext('2d');
+  if(!c) return null;
+  c.drawImage(ctx.canvas,0,0,W,H);
+  return copy;
+}
+
 export function drawAdvancedEffectLayer(
   ctx: Ctx,
   layer: VideoEffectLayer,
@@ -108,7 +120,8 @@ export function drawAdvancedEffectLayer(
   } else if(type==='radial-blur'){
     ctx.globalAlpha=.06*i;
     const cx=W/2,cy=H/2;
-    for(let n=1;n<=5;n++){const s=1+n*.012*i*amount;ctx.drawImage(ctx.canvas,0,0,W,H,cx-(W*s)/2,cy-(H*s)/2,W*s,H*s);}
+    const source=snapshotCanvas(ctx,W,H);
+    if(source) for(let n=1;n<=5;n++){const s=1+n*.012*i*amount;ctx.drawImage(source,0,0,W,H,cx-(W*s)/2,cy-(H*s)/2,W*s,H*s);}
   } else if(type==='tilt-shift'){
     const band=H*(.22+.12*(1-softness));const g=ctx.createLinearGradient(0,0,0,H);
     g.addColorStop(0,'rgba(255,255,255,.08)');g.addColorStop(.5-.12,'rgba(0,0,0,0)');g.addColorStop(.5+.12,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.10)');
@@ -127,8 +140,11 @@ export function drawAdvancedEffectLayer(
   } else if(type==='kaleidoscope'){
     ctx.globalCompositeOperation='screen';ctx.globalAlpha=.10*i;
     const slices=6;const cx=W/2,cy=H/2;
-    ctx.translate(cx,cy);
-    for(let n=0;n<slices;n++){ctx.save();ctx.rotate((Math.PI*2*n)/slices+t*.12);if(n%2)ctx.scale(-1,1);ctx.drawImage(ctx.canvas,-cx,-cy,W,H);ctx.restore();}
+    const source=snapshotCanvas(ctx,W,H);
+    if(source){
+      ctx.translate(cx,cy);
+      for(let n=0;n<slices;n++){ctx.save();ctx.rotate((Math.PI*2*n)/slices+t*.12);if(n%2)ctx.scale(-1,1);ctx.drawImage(source,-cx,-cy,W,H);ctx.restore();}
+    }
   }
   ctx.restore();
 }
