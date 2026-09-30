@@ -3852,16 +3852,22 @@ function VideoEditor() {
               )}
 
               {/* selection frame + handles for overlays — screen-space overlay
-                  matching the canvas box */}
-              {selectedElement && previewScale > 0 && !cropMode && (
+                  matching the canvas box. Positions resolve KEYFRAMES at the
+                  playhead (same as drawTextElement/drawVideoElement), so the
+                  frame follows animated elements instead of lagging behind at
+                  the static x/y. */}
+              {selectedElement && previewScale > 0 && !cropMode && (() => {
+                const timeIn = Math.max(0, Math.min(selectedElement.end - selectedElement.start, playhead - selectedElement.start));
+                const rv = resolveElementValues(selectedElement, timeIn);
+                return (
                 <div
                   className="pointer-events-none absolute"
                   style={{
-                    left: selectedElement.x * previewScale,
-                    top: selectedElement.y * previewScale,
-                    width: selectedElement.width * previewScale,
-                    height: selectedElement.height * previewScale,
-                    transform: `rotate(${selectedElement.rotation}deg)`,
+                    left: rv.x * previewScale,
+                    top: rv.y * previewScale,
+                    width: selectedElement.width * rv.scale * previewScale,
+                    height: selectedElement.height * rv.scale * previewScale,
+                    transform: `rotate(${rv.rotation}deg)`,
                     outline: '1.5px solid rgba(229,121,143,0.95)',
                     outlineOffset: 0,
                   }}
@@ -3909,7 +3915,8 @@ function VideoEditor() {
                     <RotateCw className="h-3.5 w-3.5 text-white" />
                   </span>
                 </div>
-              )}
+                );
+              })()}
 
               {cropMode && cropRect && previewScale > 0 && (
                 <CropOverlay
