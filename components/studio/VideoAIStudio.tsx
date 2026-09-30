@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import {
+  AlertTriangle,
   Bot,
   Captions,
   Check,
@@ -10,7 +11,10 @@ import {
   Loader2,
   Sparkles,
   Wand2,
+  X,
 } from 'lucide-react';
+
+import type { VideoClip, TimelineElement } from '@/lib/video/project';
 
 export type VideoAIEditAction = {
   type:
@@ -196,6 +200,47 @@ const SUGGESTIONS = [
   { label: 'Add captions', prompt: 'Generate accurate timed captions and add them to the timeline with readable animated styling.' },
 ];
 
+/* Destructive actions remove user content. They are held for explicit
+   confirmation with a human-readable list of exactly what disappears
+   before anything is applied. */
+const DESTRUCTIVE_ACTIONS = new Set(['delete_clip', 'delete_element', 'split_clip']);
+
+function resolveActionTargets(
+  action: VideoAIEditAction,
+  project: unknown,
+): { kind: 'clip' | 'element'; label: string }[] {
+  const p = (project || {}) as { clips?: VideoClip[]; elements?: TimelineElement[] };
+  const clips = Array.isArray(p.clips) ? p.clips : [];
+  const elements = Array.isArray(p.elements) ? p.elements : [];
+  if (action.type === 'delete_clip') {
+    const hit = clips.find((c) => c.id === action.clipId);
+    if (!hit) return [];
+    const seconds = Math.max(0, (hit.trimEnd ?? hit.sourceDuration) - (hit.trimStart ?? 0));
+    return [{ kind: 'clip', label: `“${hit.name || 'Untitled clip'}” (${seconds.toFixed(1)}s)` }];
+  }
+  if (action.type === 'delete_element') {
+    const hit = elements.find((el) => el.id === action.elementId);
+    if (!hit) return [];
+    const what = hit.kind === 'text' ? 'Text overlay' : hit.kind === 'image' ? 'Image overlay' : hit.kind === 'video' ? 'Video overlay' : hit.kind === 'sticker' ? 'Sticker' : hit.kind === 'gif' ? 'GIF overlay' : 'Overlay';
+    const preview = hit.kind === 'text' && hit.content ? ` … ${String(hit.content).slice(0, 40)}` : '';
+    return [{ kind: 'element', label: `${what}${preview}` }];
+  }
+  if (action.type === 'split_clip') {
+    const at = Number(action.value);
+    if (!Number.isFinite(at)) return [];
+    let acc = 0;
+    for (const clip of clips) {
+      const d = Math.max(0, (clip.trimEnd ?? clip.sourceDuration) - (clip.trimStart ?? 0)) / (clip.speed || 1);
+      if (at > acc + 0.15 && at < acc + d - 0.15) {
+        return [{ kind: 'clip', label: `“${clip.name || 'Untitled clip'}” at ${at.toFixed(1)}s` }];
+      }
+      acc += d;
+    }
+    return [];
+  }
+  return [];
+}
+
 function actionLabel(action: VideoAIEditAction) {
   switch (action.type) {
     case 'set_clip_speed': return `Speed → ${action.value}×`;
@@ -245,6 +290,7 @@ export default function VideoAIStudio({
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pendingDestructive, setPendingDestructive] = useState<{ actions: VideoAIEditAction[]; targets: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [conversation, setConversation] = useState<Array<{
     role: 'user' | 'assistant';
@@ -446,13 +492,29 @@ export default function VideoAIStudio({
       }
 
       if (actions.length && onApplyActions) {
-        void Promise.resolve(onApplyActions(actions.filter((action) =>
+        const applicable = actions.filter((action) =>
           action.type !== 'generate_captions' &&
           action.type !== 'transcribe' &&
           action.type !== 'add_stock_video' &&
           action.type !== 'add_library_audio' &&
           action.type !== 'speak_narration'
-        ))).catch(() => undefined);
+        );
+        const destructive = applicable.filter((action) => DESTRUCTIVE_ACTIONS.has(action.type));
+        if (destructive.length > 0) {
+          const targets: string[] = [];
+          for (const action of destructive) {
+            for (const t of resolveActionTargets(action, project)) targets.push(t.label);
+          }
+          if (targets.length > 0) {
+            setPendingDestructive({ actions: applicable, targets: Array.from(new Set(targets)) });
+          } else {
+            /* Destructive actions whose targets no longer exist are dropped;
+               the rest of the plan applies without a pointless prompt. */
+            void Promise.resolve(onApplyActions(applicable.filter((action) => !DESTRUCTIVE_ACTIONS.has(action.type)))).catch(() => undefined);
+          }
+        } else {
+          void Promise.resolve(onApplyActions(applicable)).catch(() => undefined);
+        }
       }
 
       if (typeof output?.transcript?.text === 'string') setLastTranscript(output.transcript.text);
@@ -537,6 +599,56 @@ export default function VideoAIStudio({
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {pendingDestructive && (
+        <div role="alertdialog" aria-label="Confirm destructive edits" className="rounded-2xl border border-red-400/30 bg-red-500/[0.08] p-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-red-300" />
+            <p className="text-xs font-bold text-red-100">The assistant wants to remove {pendingDestructive.targets.length === 1 ? 'an item' : `${pendingDestructive.targets.length} items`}</p>
+            <button type="button" onClick={() => setPendingDestructive(null)} className="ml-auto flex h-7 w-7 items-center justify-center rounded-full text-red-200/70 hover:bg-white/10" aria-label="Dismiss">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {pendingDestructive.targets.map((target, i) => (
+              <li key={i} className="flex items-center gap-1.5 text-[11px] text-red-100/85">
+                <span className="h-1 w-1 shrink-0 rounded-full bg-red-300" aria-hidden="true" />
+                <span className="min-w-0 flex-1 truncate">{target}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[10px] text-red-100/55">This cannot be undone in the assistant … undo is available in the editor history.</p>
+          <div className="mt-2.5 flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const pending = pendingDestructive;
+                setPendingDestructive(null);
+                if (pending && onApplyActions) void Promise.resolve(onApplyActions(pending.actions)).catch(() => undefined);
+              }}
+              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-500/90 px-3 text-[10px] font-bold text-white transition hover:bg-red-500"
+            >
+              <Check className="h-3.5 w-3.5" />
+              Remove {pendingDestructive.targets.length === 1 ? 'it' : 'all'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const pending = pendingDestructive;
+                setPendingDestructive(null);
+                if (pending && onApplyActions) {
+                  const destructive = new Set(pending.actions.filter((action) => DESTRUCTIVE_ACTIONS.has(action.type)).map((action) => `${action.type}:${action.clipId || action.elementId || ''}:${action.type === 'split_clip' ? String(action.value ?? '') : ''}`));
+                  void Promise.resolve(onApplyActions(pending.actions.filter((action) => !destructive.has(`${action.type}:${action.clipId || action.elementId || ''}:${action.type === 'split_clip' ? String(action.value ?? '') : ''}`)))).catch(() => undefined);
+                }
+              }}
+              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 text-[10px] font-bold text-white/75 transition hover:bg-white/10"
+            >
+              <X className="h-3.5 w-3.5" />
+              Apply the rest
+            </button>
+          </div>
         </div>
       )}
 
