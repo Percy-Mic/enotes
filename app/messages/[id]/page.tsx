@@ -922,17 +922,58 @@ function ChatRoom() {
     }
     setGroupMembers((list) => list.filter((m) => m.user_id !== userId));
     setGroupNotice('Member removed.');
+
+    /* System announcement "X removed Y" — the remover is still a member,
+       so the message insert passes RLS even after the removed member's
+       row is gone. Best-effort: membership already succeeded. */
+    const removedMember = groupMembers.find((m) => m.user_id === userId);
+    const removedName = removedMember?.profile?.full_text_name || removedMember?.profile?.username || 'a member';
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: actor } = await supabase.from('profiles')
+          .select('full_text_name, username').eq('id', user.id).maybeSingle();
+        await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          sender_id: user.id,
+          content: `${actor?.full_text_name || actor?.username || 'An admin'} removed ${removedName}`,
+          message_type: 'system',
+        });
+      }
+    } catch { /* announcement is best-effort */ }
   };
 
   const leaveGroup = async () => {
     if (!me || !conversation?.is_group) return;
     setShowMenu(false);
+    /* "X left" announcement must be written BEFORE the membership row is
+       deleted (message inserts require the sender to be a member); if the
+       leave itself then fails, the announcement is rolled back so the
+       transcript never records a departure that did not happen. */
+    let announcementId: string | null = null;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: actor } = await supabase.from('profiles')
+          .select('full_text_name, username').eq('id', user.id).maybeSingle();
+        const { data: inserted } = await supabase.from('messages').insert({
+          conversation_id: conversationId,
+          sender_id: user.id,
+          content: `${actor?.full_text_name || actor?.username || 'Someone'} left`,
+          message_type: 'system',
+        }).select('id').maybeSingle();
+        announcementId = (inserted as { id?: string } | null)?.id || null;
+      }
+    } catch { /* announcement is best-effort */ }
     const { error: leaveError } = await supabase
       .from('conversation_members')
       .delete()
       .eq('conversation_id', conversationId)
       .eq('user_id', me);
     if (leaveError) {
+      if (announcementId) {
+        try { await supabase.from('messages').delete().eq('id', announcementId); } catch { /* best-effort */ }
+      }
       setError(`Could not leave the group — ${leaveError.message}`);
       return;
     }
