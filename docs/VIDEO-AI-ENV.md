@@ -58,3 +58,34 @@ The existing enotes AI assistant remains separate from the media-processing prov
 - You do **not** need `FAL_KEY` or `REPLICATE_API_TOKEN` for the free-tier implementation above.
 - Cloudinary's free plan and Hugging Face's free allowance have usage limits; this implementation does not assume unlimited usage.
 - Supabase storage/RLS remains the source of truth for user-owned Studio uploads.
+
+
+### Pro AI effects and generation
+
+The editor's AI provider layer also supports these optional operations:
+
+- generate-video
+- remove-object
+- track-object
+- style-transfer
+- relight
+- clone-voice
+- convert-voice
+
+These are deliberately model-configurable because different AI providers expose different input/output schemas.
+
+Recommended Vercel environment variables:
+
+FAL_VIDEO_MODEL=
+FAL_OBJECT_REMOVE_MODEL=
+FAL_OBJECT_TRACK_MODEL=
+FAL_STYLE_MODEL=
+FAL_RELIGHT_MODEL=
+FAL_VOICE_CLONE_MODEL=
+FAL_VOICE_CONVERT_MODEL=
+
+Existing variables remain supported: FAL_KEY, FAL_IMAGE_MODEL, FAL_VOICE_MODEL and FAL_MUSIC_MODEL.
+
+The AI layer also recognizes auto-edit and recommend-effects through the existing Gemini editing planner. generate-captions and transcribe continue using the existing speech providers.
+
+AI model processing is optional: the local editor, timeline, effects, keyframes, audio processing and export continue to work without these providers.
