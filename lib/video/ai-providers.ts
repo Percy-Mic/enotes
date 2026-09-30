@@ -3,7 +3,6 @@ import type { AIJobInput, AIResult, VideoAIOperation } from '@/lib/video/ai';
 type Provider = 'huggingface' | 'fal' | 'replicate' | 'cloudinary';
 
 function providerFor(operation: VideoAIOperation): Provider | null {
-  if (operation === 'remove-background') return 'huggingface';
   if (operation === 'remove-background' || operation === 'enhance') return 'huggingface';
   if (
     operation === 'remove-object' ||
