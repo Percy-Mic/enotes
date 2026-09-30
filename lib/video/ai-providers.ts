@@ -47,10 +47,15 @@ async function huggingFace(input: AIJobInput): Promise<AIResult> {
         ? (process.env.HF_ENHANCE_MODEL || 'caidas/swin2SR-classical-sr-x2-64')
         : (process.env.HF_VIDEO_MODEL || 'facebook/detr-resnet-50');
 
+  const source = await fetch(input.mediaUrl, { cache: 'no-store' });
+  if (!source.ok) throw new Error(`Could not read source media (${source.status}).`);
+  const mediaBytes = await source.arrayBuffer();
+  const contentType = source.headers.get('content-type') || 'application/octet-stream';
+
   const response = await fetch(`https://router.huggingface.co/hf-inference/models/${encodeURIComponent(model)}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ inputs: input.mediaUrl }),
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': contentType },
+    body: mediaBytes,
     cache: 'no-store',
   });
   if (!response.ok) {
