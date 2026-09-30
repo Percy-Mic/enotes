@@ -1756,6 +1756,33 @@ function VideoEditor() {
     updateClip(clip.id, { keyframes: upsertClipKeyframe(clip, prop, selectedClipTimeIn, value) }, 'Add clip keyframe', `clip-kf-${clip.id}-${prop}`);
   }, [selectedClipId, selectedClipTimeIn, updateClip]);
 
+  const applyMotionPreset = useCallback((preset: 'zoom-in' | 'zoom-out' | 'spin' | 'float' | 'pop' | 'shake') => {
+    const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
+    if (!clip) return;
+    const d = Math.max(0.2, clipDuration(clip));
+    const base = resolveClipValues(clip, 0);
+    const make = (t: number, value: number) => ({ id: makeVideoId('kf'), t, value });
+    const k = (posX: number[], posY: number[], scale: number[], rotation: number[], opacity: number[]) => ({
+      pos_x_kf: [0, 0.5, 1].map((u, i) => make(u * d, posX[i])),
+      pos_y_kf: [0, 0.5, 1].map((u, i) => make(u * d, posY[i])),
+      scale_kf: [0, 0.5, 1].map((u, i) => make(u * d, scale[i])),
+      rotation_kf: [0, 0.5, 1].map((u, i) => make(u * d, rotation[i])),
+      opacity_kf: [0, 0.5, 1].map((u, i) => make(u * d, opacity[i])),
+    });
+    const x = base.offset_x, y = base.offset_y, r = base.rotation, sc = base.scale;
+    let keyframes;
+    switch (preset) {
+      case 'zoom-in': keyframes = k([x,x,x],[y,y,y],[sc,sc*1.18,sc*1.35],[r,r,r],[1,1,1]); break;
+      case 'zoom-out': keyframes = k([x,x,x],[y,y,y],[sc*1.35,sc*1.18,sc],[r,r,r],[1,1,1]); break;
+      case 'spin': keyframes = k([x,x,x],[y,y,y],[sc,sc,sc],[r,r+180,r+360],[1,1,1]); break;
+      case 'float': keyframes = k([x,x,x],[y-22,y+22,y],[sc,sc*1.02,sc],[r-2,r+2,r],[1,1,1]); break;
+      case 'pop': keyframes = k([x,x,x],[y,y,y],[sc*0.82,sc*1.08,sc],[r,r,r],[0,1,1]); break;
+      case 'shake': keyframes = k([x-14,x+14,x],[y,y-8,y],[sc,sc,sc],[r-2,r+2,r],[1,1,1]); break;
+    }
+    updateClip(clip.id, { keyframes: { ...(clip.keyframes || {}), ...keyframes } }, 'Apply motion preset');
+    notify(`${preset.replace('-', ' ')} animation applied.`);
+  }, [notify, selectedClipId, updateClip]);
+
   const removeMainClipKeyframe = useCallback((prop: KeyframeProperty) => {
     const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
     if (!clip) return;
@@ -5481,6 +5508,26 @@ function VideoEditor() {
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <div>
+                      <p className="text-xs font-semibold">Animation presets</p>
+                      <p className="text-[10px] text-white/40">Real keyframes — preview and export use the same animation.</p>
+                    </div>
+                    <span className="text-[10px] text-[#FFB6C1]">No API</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {([
+                      ['zoom-in','Zoom in'],['zoom-out','Zoom out'],['spin','Spin'],
+                      ['float','Float'],['pop','Pop'],['shake','Shake'],
+                    ] as const).map(([id,label]) => (
+                      <button key={id} type="button" onClick={() => applyMotionPreset(id)}
+                        className="rounded-xl bg-white/[0.07] px-2 py-2.5 text-[10px] font-semibold text-white/75 active:bg-[#E5798F]/25">
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <div>
                       <p className="text-xs font-semibold">Keyframes</p>
                       <p className="text-[10px] text-white/40">At {fmt(selectedClipTimeIn)} inside this clip</p>
                     </div>
@@ -6298,17 +6345,20 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
   return (
     <div
       ref={ref}
-      className="absolute inset-0 z-[70] overflow-hidden"
-      style={{touchAction:'none'}}
+      className="absolute inset-0 z-[70] overflow-hidden pointer-events-none"
       role="dialog"
       aria-label="Crop editor"
-      onPointerDown={begin}
-      onPointerMove={move}
-      onPointerUp={end}
-      onPointerCancel={end}
     >
       <div className="pointer-events-none absolute inset-0 bg-black/[0.18]" />
-      <div className="pointer-events-none absolute border-2 border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25)]" style={{left:inner.left,top:inner.top,width:inner.width,height:inner.height}}>
+      <div
+        className="pointer-events-auto absolute overflow-visible"
+        style={{left:base.left,top:base.top,width:base.width,height:base.height,touchAction:'none'}}
+        onPointerDown={begin}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerCancel={end}
+      >
+      <div className="pointer-events-none absolute border-2 border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25)]" style={{left:current.left*base.width,top:current.top*base.height,width:Math.max(8,(1-current.left-current.right)*base.width),height:Math.max(8,(1-current.top-current.bottom)*base.height)}}>
         <div className="absolute inset-0">
           <div className="absolute inset-y-0 left-1/3 w-px bg-white/30" />
           <div className="absolute inset-y-0 left-2/3 w-px bg-white/30" />
@@ -6331,6 +6381,7 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
             <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
           </span>
         ))}
+      </div>
       </div>
       <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
         <div className="rounded-full bg-black/65 px-3 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">Drag · Pinch to zoom · Two fingers to move · Rotate</div>
