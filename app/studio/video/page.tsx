@@ -912,7 +912,7 @@ function VideoEditor() {
           /* Optional Cloudinary mirror/optimization. Supabase remains the
              source of truth and the upload above always succeeds even when
              Cloudinary is not configured or its free quota is unavailable. */
-          let mediaUrl = mediaUrl;
+          let mediaUrl = up.url;
           try {
             const cloudinaryResponse = await fetch('/api/video/cloudinary', {
               method: 'POST',
