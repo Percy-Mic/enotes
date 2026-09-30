@@ -36,7 +36,7 @@ export async function cloudinaryProcessUrl(input: {
 }) {
   const config = credentials();
   if (!config) return null;
-  if (!/^https?:\\/\\//i.test(input.url)) throw new Error('Cloudinary needs an accessible source URL.');
+  if (!/^https?:\/\//i.test(input.url)) throw new Error('Cloudinary needs an accessible source URL.');
 
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const resourceType = input.mediaType === 'image' ? 'image' : 'video';
