@@ -407,7 +407,37 @@ export interface TimelineElement {
   line_height?: number;
   text_case?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   text_effect?: 'none' | 'neon' | 'outline' | 'glow' | '3d' | 'hollow' | 'gradient' | 'retro' | 'glitch';
-  animation?: 'none' | 'fade' | 'pop' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'bounce' | 'typewriter' | 'shake' | 'blur-in' | 'rotate-in' | 'elastic' | 'mask-wipe';
+  animation?:
+    | 'none'
+    | 'fade'
+    | 'pop'
+    | 'slide-up'
+    | 'slide-down'
+    | 'slide-left'
+    | 'slide-right'
+    | 'zoom-in'
+    | 'zoom-out'
+    | 'bounce'
+    | 'typewriter'
+    | 'shake'
+    | 'blur-in'
+    | 'blur-up'
+    | 'blur-down'
+    | 'fade-up'
+    | 'fade-down'
+    | 'rotate-in'
+    | 'elastic'
+    | 'elastic-in'
+    | 'elastic-out'
+    | 'flip-in'
+    | 'flip-out'
+    | 'glitch-in'
+    | 'glitch-out'
+    | 'wave'
+    | 'tracking'
+    | 'split-reveal'
+    | 'typewriter-reveal'
+    | 'mask-wipe';
   // Optional video-overlay fields kept for backward-compatible project JSON.
   media_type?: string;
   source_duration?: number;
