@@ -938,7 +938,7 @@ function VideoEditor() {
 
           if (isImage) {
             const img = new Image();
-            img.src = up.url;
+            img.src = mediaUrl;
             await img.decode().catch(() => undefined);
             const iw = img.naturalWidth || 320;
             const ih = img.naturalHeight || 240;
@@ -947,7 +947,7 @@ function VideoEditor() {
             const w = Math.round(iw * s);
             const h = Math.round(ih * s);
             const el: TimelineElement = {
-              id: makeVideoId('el'), kind: 'image', content: file.name, src: up.url, track_id: project.tracks[0]?.id,
+              id: makeVideoId('el'), kind: 'image', content: file.name, src: mediaUrl, track_id: project.tracks[0]?.id,
               start: playheadRef.current, end: playheadRef.current + 4,
               x: Math.round((project.canvas.width - w) / 2), y: Math.round((project.canvas.height - h) / 2),
               width: w, height: h, rotation: 0, opacity: 1, z: project.elements.length + 1,
@@ -965,7 +965,7 @@ function VideoEditor() {
                 clips: p.clips.map((c) => c.id === replacement.id
                   ? {
                       ...c,
-                      src: up.url,
+                      src: mediaUrl,
                       name: file.name,
                       sourceDuration: meta.duration,
                       trimStart: 0,
@@ -979,7 +979,7 @@ function VideoEditor() {
               notify('Clip replaced — your edit position and timeline slot were preserved.');
             } else {
               const clip: VideoClip = {
-                id: makeVideoId('clip'), src: up.url, name: file.name,
+                id: makeVideoId('clip'), src: mediaUrl, name: file.name,
                 sourceDuration: meta.duration, trimStart: 0,
                 trimEnd: Math.min(meta.duration, 30), speed: 1, volume: 1, muted: false,
                 source_width: meta.w || undefined, source_height: meta.h || undefined,
@@ -1261,7 +1261,7 @@ function VideoEditor() {
         });
         const up = await uploadFile(file, 'studio-media', meId);
         const span = realDuration > 0 ? realDuration : Math.max(2, String(obj.text || '').split(/\s+/).length / 2.6);
-        preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: up.url });
+        preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: mediaUrl });
       } catch {
         preparedNarrations.push(null);
       }
@@ -2517,7 +2517,7 @@ function VideoEditor() {
       const width = Math.min(project.canvas.width * 0.55, Math.max(180, meta.w || 640));
       const height = width * ((meta.h || 360) / Math.max(1, meta.w || 640));
       const el: TimelineElement = {
-        id: makeVideoId('el'), kind: 'video', content: file.name, src: up.url, media_type: 'video', track_id: project.tracks[0]?.id,
+        id: makeVideoId('el'), kind: 'video', content: file.name, src: mediaUrl, media_type: 'video', track_id: project.tracks[0]?.id,
         source_duration: meta.duration, trim_start: 0, trim_end: Math.min(meta.duration, durationForLayer), speed: 1, volume: 1, muted: true, object_fit: 'contain',
         start: playheadRef.current, end: Math.min(duration, playheadRef.current + durationForLayer),
         x: (project.canvas.width - width) / 2, y: (project.canvas.height - height) / 2, width, height, rotation: 0, opacity: 1, z: project.elements.length + 1, animation: 'fade',
@@ -3520,7 +3520,7 @@ function VideoEditor() {
               a.onerror = () => res(30);
               a.src = URL.createObjectURL(blob);
             });
-            addSoundTrack({ title: 'Voiceover', url: up.url, duration_seconds: dur }, 'voiceover');
+            addSoundTrack({ title: 'Voiceover', url: mediaUrl, duration_seconds: dur }, 'voiceover');
             notify('Voiceover added to the timeline.');
           } catch {
             notify('Could not save the voiceover — the upload failed. Try again.');
@@ -3601,7 +3601,7 @@ function VideoEditor() {
         user_id: meId,
         bucket: 'studio-media',
         path: up.path,
-        url: up.url,
+        url: mediaUrl,
         media_type: 'video',
         size_bytes: result.blob.size,
         duration_seconds: result.durationSeconds,
@@ -3615,7 +3615,7 @@ function VideoEditor() {
       if (savedProjectId) {
         const { error: updError } = await supabase
           .from('video_projects')
-          .update({ exported_url: up.url })
+          .update({ exported_url: mediaUrl })
           .eq('id', savedProjectId);
         if (updError) notify(`Could not link the export to this project — ${updError.message}`);
       }
@@ -3646,7 +3646,7 @@ function VideoEditor() {
       const up = await uploadFile(file, 'post-media', meId);
       const { data, error } = await supabase
         .from('posts')
-        .insert({ author_id: meId, content: doc.title, media_url: up.url, media_type: 'video', visibility: 'public' })
+        .insert({ author_id: meId, content: doc.title, media_url: mediaUrl, media_type: 'video', visibility: 'public' })
         .select('id')
         .single();
       if (!error && data) {
@@ -3766,7 +3766,7 @@ function VideoEditor() {
         const blob: Blob = await new Promise((res) => shot.toBlob((b) => res(b!), 'image/jpeg', 0.85));
         if (blob) {
           const up = await uploadFile(new File([blob], 'thumbnail.jpg', { type: 'image/jpeg' }), 'studio-media', meId);
-          thumbnailUrl = up.url;
+          thumbnailUrl = mediaUrl;
         }
 
         /* video preview: play the timeline once while recording the canvas */
