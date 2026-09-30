@@ -6300,7 +6300,7 @@ function ClipThumb({ clip }: { clip: VideoClip }) {
   if (isPlaceholder(clip.src)) {
     return <span className="flex h-full w-full items-center justify-center text-lg text-white/30">⬚</span>;
   }
-  if (/\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(clip.src) || clip.src.startsWith('data:image/')) {
+  if (clip.media_type === 'image' || /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(clip.src) || clip.src.startsWith('data:image/')) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={clip.src} alt="" className="h-full w-full object-cover" />;
   }
