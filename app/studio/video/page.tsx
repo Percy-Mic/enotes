@@ -5886,6 +5886,7 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
   const begin = (ev: React.PointerEvent) => {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     const target = ev.target as HTMLElement | null;
+    if (target?.closest?.('button')) return; /* let Cancel/Reset/Apply clicks through untouched */
     const mode = (target?.closest?.('[data-crop-handle]') as HTMLElement | null)?.dataset.cropHandle as 'move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw' || 'move';
     pointersRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (pointersRef.current.size === 1) {
@@ -5980,7 +5981,17 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
   };
 
   return (
-    <div ref={ref} className="absolute inset-0 z-[70] overflow-hidden" style={{touchAction:'none'}} role="dialog" aria-label="Crop editor">
+    <div
+      ref={ref}
+      className="absolute inset-0 z-[70] overflow-hidden"
+      style={{touchAction:'none'}}
+      role="dialog"
+      aria-label="Crop editor"
+      onPointerDown={begin}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+    >
       <div className="pointer-events-none absolute inset-0 bg-black/[0.18]" />
       <div className="pointer-events-none absolute border-2 border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25)]" style={{left:inner.left,top:inner.top,width:inner.width,height:inner.height}}>
         <div className="absolute inset-0">
