@@ -4084,7 +4084,7 @@ function VideoEditor() {
 
   return (
     <main
-      className="flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white"
+      className={`flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200 ${toolDrawerOpen ? 'md:pr-[min(430px,32vw)]' : ''}`}
       data-history-scoped="true"
     >
       {/* fullscreen preview overlay (renders above everything when active) */}
@@ -4943,7 +4943,7 @@ function VideoEditor() {
             type="button"
             aria-label="Close editor tools"
             onClick={() => setToolDrawerOpen(false)}
-            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]"
+            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px] md:hidden"
           />
           <section
             className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-50 flex h-[72dvh] max-h-[calc(100dvh-64px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
@@ -4953,7 +4953,7 @@ function VideoEditor() {
               <div className="h-1 w-10 rounded-full bg-white/20 md:hidden" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-bold">{TOOL_LABELS[tool]}</p>
-                <p className="hidden text-[9px] text-white/35 md:block">Editor controls</p>
+                <p className="text-[9px] text-white/35">Live controls · changes stay visible in the canvas</p>
               </div>
               <button
                 type="button"
