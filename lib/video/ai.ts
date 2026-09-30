@@ -2517,6 +2517,12 @@ ${JSON.stringify((input.visionFrames || []).slice(0, 18).map((frame) => ({
 
 The visual frames attached to this request are the actual representative frames extracted from the current project clips. Match each frame to its clipId/time above. Use what you can actually see in those frames when deciding clip order, trims, text placement, pacing, crop/framing, effects, and advertising structure. If a frame is unavailable or ambiguous, do not invent its contents.
 
+PLACEMENT CONTRACT (text & overlays — canvas is ${JSON.stringify(compactCanvas)} px, origin top-left):
+- Titles/hooks: TOP band (y ≈ 7% of height), horizontally centered, font_size 5–7% of height, width ≈ canvas minus 11% side margins.
+- Captions/subtitles: LOWER-THIRD band (y ≈ 72% of height), centered, font_size ≈ 4% of height.
+- CTAs: BOTTOM band (y ≈ 80% of height), centered, never below 88% of height.
+- NEVER place two texts at the same y — stagger bands so nothing overlaps. Keep 6% side margins. A deterministic layout guard re-centers, sizes and de-overlaps anything ambiguous, but emit deliberate, non-colliding coordinates.
+
 TIMELINE RULES:
 - Treat the timeline manifest as authoritative for clip order and timing.
 - timelineStart/timelineEnd are project-time seconds; sourceStart/sourceEnd are source-media seconds.
@@ -3210,6 +3216,73 @@ Return {"add": [...], "fixes": [{"index": <0-based index into the plan>, "action
       } catch {
         /* Copy enhancement is optional; cues keep their neutral fallback. */
       }
+    }
+
+    /*
+     * Layout guard — deterministic placement for text cues, independent of
+     * what coordinates the model guessed. Centers horizontally, assigns
+     * distinct vertical bands per simultaneous cue, sizes type to the copy,
+     * and de-overlaps against PRE-EXISTING elements so AI text never stacks
+     * on top of old slivers at the same spot.
+     */
+    const canvasW = Number(compactCanvas.width) || 1080;
+    const canvasH = Number(compactCanvas.height) || 1920;
+    const margin = Math.round(canvasW * 0.06);
+    const preExisting: Array<{ start: number; end: number; y: number; h: number }> = []
+      , preEls = Array.isArray(rawProject.elements) ? rawProject.elements as any[] : [];
+    for (const el of preEls) {
+      const s = Number(el?.start), e = Number(el?.end);
+      if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) continue;
+      preExisting.push({ start: s, end: e, y: Number(el?.y) || 0, h: Number(el?.height) || 80 });
+    }
+    const cues: Array<{ idx: number; start: number; end: number }> = [];
+    sanitizedActions.forEach((action: any, idx: number) => {
+      if (action.type !== 'add_text_element') return;
+      const obj = action.object = action.object && typeof action.object === 'object' ? action.object : {};
+      const s = Number(obj.start) || 0;
+      const e = Number(obj.end) || (Number.isFinite(Number(obj.end)) ? s : s + 3);
+      cues.push({ idx, start: s, end: Math.max(s + 0.5, Number.isFinite(Number(obj.end)) ? Number(obj.end) : s + 3) });
+      const txt = String(obj.text || '').trim();
+      const isUpper = txt === txt.toUpperCase() && /[A-Z]/.test(txt);
+      const isCta = /follow|subscribe|like|share|comment|watch more|shop|link|sign up|swipe/i.test(txt);
+      /* font size follows copy length and case (canvas-relative) */
+      const words = txt.split(/\s+/).filter(Boolean).length;
+      const base = canvasH * (words <= 3 ? 0.062 : words <= 6 ? 0.052 : 0.04);
+      obj.font_size = Math.round(Math.max(canvasH * 0.032, Math.min(canvasH * 0.075, isUpper ? base * 1.08 : base)));
+      obj.width = Math.max(canvasW * 0.5, canvasW - margin * 2);
+      obj.height = Math.round(obj.font_size * 2.4);
+      obj.align = 'center';
+      /* vertical band by role, then de-overlap within simultaneous cues */
+      const mid = (cues[cues.length - 1].start + cues[cues.length - 1].end) / 2;
+      const roleBand = /follow|subscribe|like|share|comment|watch more|shop|link|sign up|swipe/i.test(txt)
+        ? 0.8
+        : mid >= Math.max(1, timelineEnd) * 0.6 && timelineEnd > 0
+          ? 0.8
+          : mid <= 3.5
+            ? 0.07
+            : 0.72;
+      obj.y = Math.round(canvasH * roleBand);
+      obj.x = Math.round((canvasW - obj.width) / 2);
+    });
+    /* de-overlap: sort simultaneous cues by band, push colliders downward in 4% steps */
+    const active = cues.filter((c) => {
+      const a: any = sanitizedActions[c.idx];
+      return a && a.object;
+    });
+    active.sort((a, b) => (a.start + a.end) / 2 - (b.start + b.end) / 2);
+    for (let i = 0; i < active.length; i++) {
+      const a: any = sanitizedActions[active[i].idx].object;
+      const spanA = { start: active[i].start, end: active[i].end, y: a.y, h: a.height };
+      const collides = (b: typeof spanA) => spanA.start < b.end && b.start < spanA.end && Math.abs(a.y - b.y) < Math.max(a.height, b.h) * 0.9;
+      for (const pe of preExisting) { while (collides(pe)) a.y += Math.round(canvasH * 0.04); spanA.y = a.y; }
+      for (let j = 0; j < i; j++) {
+        const b: any = sanitizedActions[active[j].idx].object;
+        const spanB = { start: active[j].start, end: active[j].end, y: b.y, h: b.height };
+        let guard = 0;
+        while (collides(spanB) && guard++ < 8) a.y += Math.round(canvasH * 0.04);
+        spanA.y = a.y;
+      }
+      a.y = Math.min(a.y, Math.round(canvasH * 0.88));
     }
 
     await rememberUserInstruction(
