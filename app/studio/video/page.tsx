@@ -908,6 +908,29 @@ function VideoEditor() {
 
           setImporting({ name: file.name, percent: 35 });
           const up = await uploadFile(file, 'studio-media', meId);
+
+          /* Optional Cloudinary mirror/optimization. Supabase remains the
+             source of truth and the upload above always succeeds even when
+             Cloudinary is not configured or its free quota is unavailable. */
+          let mediaUrl = up.url;
+          try {
+            const cloudinaryResponse = await fetch('/api/video/cloudinary', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                url: up.url,
+                mediaType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'video',
+                mode: project.aspect === '9:16' ? 'vertical' : project.aspect === '1:1' ? 'square' : 'optimize',
+              }),
+            });
+            const cloudinary = await cloudinaryResponse.json().catch(() => ({}));
+            if (cloudinaryResponse.ok && typeof cloudinary.url === 'string' && cloudinary.url) {
+              mediaUrl = cloudinary.url;
+            }
+          } catch {
+            /* Cloudinary is an optional optimization layer; keep Supabase URL. */
+          }
+
           setImporting({ name: file.name, percent: 90 });
 
           const isImage = file.type.startsWith('image/');
