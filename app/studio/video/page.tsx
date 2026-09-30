@@ -5260,7 +5260,7 @@ function VideoEditor() {
             selectedMediaUrl={selectedClip?.src || selectedElement?.src || null}
             selectedMediaType={
               selectedClip
-                ? 'video'
+                ? (selectedClip.media_type === 'image' ? 'image' : 'video')
                 : selectedElement?.kind === 'image'
                   ? 'image'
                   : selectedElement?.kind === 'video'
