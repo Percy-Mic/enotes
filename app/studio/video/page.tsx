@@ -4918,13 +4918,59 @@ function VideoEditor() {
                         key={clip.id}
                         data-timeline-item="true"
                         onPointerDown={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleSelectedId(clip.id); setSelectedClipId(clip.id); setSelectedElementId(null); return; } setSelectedIds([clip.id]); beginClipDrag(e, clip); }}
-                        className={`relative shrink-0 touch-none overflow-hidden rounded-md border transition-shadow ${selected ? 'border-[#E5798F] bg-[#E5798F]/35 ring-1 ring-[#E5798F]/60' : 'border-white/15 bg-white/10'} ${dragging ? 'opacity-80 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
+                        className={`relative shrink-0 touch-none overflow-visible rounded-md border transition-shadow ${selected ? 'border-[#E5798F] bg-[#E5798F]/35 ring-1 ring-[#E5798F]/60' : 'border-white/15 bg-white/10'} ${dragging ? 'opacity-80 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
                         style={{ width: w }}
                         role="button"
                         aria-label={`Clip ${clip.name}, ${fmt(clipDuration(clip))}${selected ? ', selected' : ''}`}
                         aria-pressed={selected}
                         title="Drag to reorder • drag edges to trim"
                       >
+                        {project.clips.indexOf(clip) > 0 && clip.transitionIn.type !== 'none' && (() => {
+                          const maxDuration = Math.min(1.5, Math.max(0.2, clipDuration(clip)));
+                          const width = Math.max(10, Math.min(32, clip.transitionIn.duration * pxPerSec));
+                          const begin = (e: React.PointerEvent) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedClipId(clip.id);
+                            setSelectedElementId(null);
+                            setSelectedIds([clip.id]);
+                            const startX = e.clientX;
+                            const startDuration = clip.transitionIn.duration;
+                            const onMove = (ev: PointerEvent) => {
+                              const next = Math.max(0.2, Math.min(maxDuration, startDuration + (ev.clientX - startX) / Math.max(1, pxPerSec)));
+                              updateClip(clip.id, { transitionIn: { ...clip.transitionIn, duration: Math.round(next * 20) / 20 } }, 'Transition length', `tr-drag-${clip.id}`);
+                            };
+                            const onUp = () => {
+                              window.removeEventListener('pointermove', onMove);
+                              window.removeEventListener('pointerup', onUp);
+                              window.removeEventListener('pointercancel', onUp);
+                            };
+                            window.addEventListener('pointermove', onMove);
+                            window.addEventListener('pointerup', onUp);
+                            window.addEventListener('pointercancel', onUp);
+                          };
+                          return (
+                            <button
+                              type="button"
+                              data-timeline-item="true"
+                              onPointerDown={begin}
+                              onDoubleClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                updateClip(clip.id, { transitionIn: { type: 'none', duration: clip.transitionIn.duration } }, 'Remove transition');
+                              }}
+                              className="absolute -left-2 top-1/2 z-50 flex -translate-y-1/2 items-center justify-center rounded-md border border-violet-200/50 bg-violet-600/95 shadow-[0_0_10px_rgba(124,92,255,.55)]"
+                              style={{ width: Math.max(14, width), height: 20 }}
+                              title={`Transition: ${clip.transitionIn.type} · ${clip.transitionIn.duration.toFixed(2)}s · drag to resize · double-click to remove`}
+                              aria-label={`Transition ${clip.transitionIn.type}, ${clip.transitionIn.duration.toFixed(2)} seconds`}
+                            >
+                              <span className="text-[7px] font-black uppercase tracking-tight text-white">
+                                {clip.transitionIn.type === 'crossfade' ? 'X' : clip.transitionIn.type === 'dip-black' ? 'DB' : clip.transitionIn.type === 'luma-wipe' ? 'LW' : 'TR'}
+                              </span>
+                            </button>
+                          );
+                        })()}
+
                         {/* thumbnail: real first frame / media / glyph */}
                         <div className="pointer-events-none absolute inset-0 opacity-60">
                           <ClipThumb clip={clip} />
@@ -6434,7 +6480,18 @@ function VideoEditor() {
                 </div>
 
                 {/* transition into this clip */}
-                <div>
+                <div className="rounded-xl border border-violet-300/10 bg-violet-500/[0.04] p-2.5">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-white/75">Transition in</p>
+                      <p className="text-[9px] text-white/35">The timeline block can be dragged to resize.</p>
+                    </div>
+                    {selectedClip.transitionIn.type !== 'none' && (
+                      <span className="rounded-md bg-violet-500/15 px-2 py-1 text-[9px] font-semibold text-violet-200">
+                        {selectedClip.transitionIn.duration.toFixed(2)}s
+                      </span>
+                    )}
+                  </div>
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Transition in</p>
                   <div className="flex flex-wrap gap-1.5">
                     {(['none', 'fade', 'crossfade', 'slide', 'push', 'zoom', 'zoom-blur', 'whip-pan', 'spin', 'wipe', 'luma-wipe', 'dip-black', 'blur', 'glitch-cut', 'film-burn'] as const).map((t) => (
