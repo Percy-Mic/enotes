@@ -3651,7 +3651,9 @@ function VideoEditor() {
     const update = () => {
       const stage = stageRef.current;
       const maxW = Math.max(240, Math.min((stage?.clientWidth ?? window.innerWidth) - 24, window.innerWidth * 0.94));
-      const maxH = Math.max(180, Math.min(window.innerHeight * 0.52, 620));
+      const maxH = window.innerWidth < 768
+        ? Math.max(170, Math.min(window.innerHeight * 0.42, 520))
+        : Math.max(180, Math.min(window.innerHeight * 0.52, 620));
       const scale = Math.min(maxW / project.canvas.width, maxH / project.canvas.height);
       setPreviewSize({ width: Math.max(1, Math.round(project.canvas.width * scale)), height: Math.max(1, Math.round(project.canvas.height * scale)) });
       const rect = canvas.getBoundingClientRect();
@@ -4475,7 +4477,7 @@ function VideoEditor() {
 
   return (
     <main
-      className={`flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200 ${toolDrawerOpen ? 'md:pr-[min(430px,32vw)]' : ''}`}
+      className={`flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200 ${toolDrawerOpen ? 'pb-[42dvh] md:pb-0 md:pr-[min(430px,32vw)]' : ''}`}
       data-history-scoped="true"
     >
       {/* fullscreen preview overlay (renders above everything when active) */}
@@ -4492,7 +4494,7 @@ function VideoEditor() {
         />
       )}
       {/* ---------- top bar ---------- */}
-      <header className="flex shrink-0 items-center gap-2 border-b border-white/10 px-3 py-2">
+      <header className="flex min-h-12 shrink-0 items-center gap-1.5 border-b border-white/10 px-2 sm:gap-2 sm:px-3 sm:py-2">
         <Link href="/studio" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" aria-label="Back to studio">
           ←
         </Link>
@@ -4515,17 +4517,17 @@ function VideoEditor() {
         <button
           onClick={() => void saveNow()}
           disabled={saving || !history.dirty}
-          className="flex items-center gap-1.5 rounded-lg border border-white/20 px-3 py-1.5 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40"
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-white/20 px-2 sm:px-3 py-1.5 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40"
           title="Save (Ctrl+S)"
         >
-          <Save className="h-3.5 w-3.5" /> Save
+          <Save className="h-3.5 w-3.5" /><span className="hidden sm:inline">Save</span>
         </button>
         <button
           onClick={() => { openTool('export'); }}
-          className="flex items-center gap-1.5 rounded-lg bg-[#E5798F] px-3 py-1.5 text-xs font-bold text-white focus-visible:ring-2 focus-visible:ring-white"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-[#E5798F] px-2 sm:px-3 py-1.5 text-xs font-bold text-white focus-visible:ring-2 focus-visible:ring-white"
           title="Export"
         >
-          <Download className="h-3.5 w-3.5" /> Export
+          <Download className="h-3.5 w-3.5" /><span className="hidden sm:inline">Export</span>
         </button>
       </header>
 
@@ -4570,7 +4572,7 @@ function VideoEditor() {
           </div>
         )}
         {/* ---------- preview stage ---------- */}
-        <section ref={stageRef} className="shrink-0 px-3 pt-2">
+        <section ref={stageRef} className="shrink-0 px-1.5 pt-1 sm:px-3 sm:pt-2">
           <div className="mx-auto flex w-fit items-center justify-center">
             <div className="relative overflow-visible rounded-2xl border border-white/10 bg-black shadow-lg">
               {/* enter fullscreen preview */}
@@ -4578,7 +4580,7 @@ function VideoEditor() {
                 onClick={() => setFullscreen(true)}
                 aria-label="Fullscreen preview"
                 title="Fullscreen preview (Esc to exit)"
-                className="absolute -top-11 right-0 z-30 flex h-9 items-center gap-1.5 rounded-lg bg-white/10 px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                className="absolute -top-9 right-0 z-30 flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-2 sm:-top-11 sm:h-9 sm:px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
               >
                 <Maximize2 className="h-4 w-4" /><span className="hidden sm:inline">Fullscreen</span>
               </button>
@@ -4774,7 +4776,7 @@ function VideoEditor() {
                 Drag to move · pinch to resize · two-finger twist to rotate · long-press to select
               </p>
           {/* transport */}
-          <div className="flex items-center justify-center gap-3 py-1.5">
+          <div className="flex items-center justify-center gap-2 py-1.5 sm:gap-3">
             <button onClick={() => seekTo(playheadRef.current - 1 / 30)} aria-label="Previous frame" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
               <SkipBack className="h-4 w-4" />
             </button>
@@ -4784,7 +4786,7 @@ function VideoEditor() {
             <button onClick={() => seekTo(playheadRef.current + 1 / 30)} aria-label="Next frame" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
               <SkipForward className="h-4 w-4" />
             </button>
-            <span className="w-24 text-center text-xs tabular-nums text-white/70" aria-live="off">
+            <span className="w-20 text-center text-[11px] tabular-nums text-white/70 sm:w-24 sm:text-xs" aria-live="off">
               {fmt(playhead)} / {fmt(duration)}
             </span>
             <button
@@ -4871,13 +4873,13 @@ function VideoEditor() {
         </section>
 
         {/* ---------- multi-track timeline ---------- */}
-        <section className="shrink-0 border-t border-white/10 px-3 pb-1 pt-1.5">
+        <section className="shrink-0 border-t border-white/10 px-1.5 pb-1 pt-1 sm:px-3 sm:pt-1.5">
           <div className="mb-1 flex items-center justify-between gap-2">
-            <p className="text-xs font-bold text-white">
+            <p className="text-[11px] font-bold text-white sm:text-xs">
               Timeline
-              <span className="ml-2 font-normal text-white/35">drag to reorder · edges trim · tap ruler to seek</span>
+              <span className="ml-2 hidden font-normal text-white/35 sm:inline">drag to reorder · edges trim · tap ruler to seek</span>
             </p>
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1 overflow-x-auto no-scrollbar">
               <div className="flex items-center overflow-hidden rounded-lg border border-white/15" role="group" aria-label="Timeline zoom">
                 <button onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))} disabled={zoom <= 0.5} aria-label="Zoom out" className="px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40">−</button>
                 <span className="px-1 text-[10px] tabular-nums text-white/50">{Math.round(zoom * 100)}%</span>
@@ -4910,7 +4912,7 @@ function VideoEditor() {
               ruler is sticky so the playhead never scrolls out of view */}
           <div
             ref={timelineRef}
-            className="no-scrollbar relative max-h-[38dvh] overflow-x-auto overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#0c0c0c]"
+            className="no-scrollbar relative max-h-[34dvh] overflow-x-auto overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#0c0c0c] sm:max-h-[38dvh]"
           >
             <div className="relative select-none" style={{ width: timelineWidth, minWidth: '100%' }} onPointerDown={laneTapSeek}>
               {/* ruler + playhead handle (drag to scrub) */}
@@ -5505,10 +5507,10 @@ function VideoEditor() {
             className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px] md:hidden"
           />
           <section
-            className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-50 flex h-[72dvh] max-h-[calc(100dvh-64px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
+            className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[40dvh] max-h-[calc(100dvh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:right-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
             aria-label={`${TOOL_LABELS[tool]} tools`}
           >
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b border-white/10 px-3">
+            <div className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 px-3">
               <div className="h-1 w-10 rounded-full bg-white/20 md:hidden" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-bold">{TOOL_LABELS[tool]}</p>
