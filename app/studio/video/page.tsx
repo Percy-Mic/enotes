@@ -21,7 +21,7 @@ import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
   placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipAdjustments, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
-  type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type VideoClip, type VideoProject,
+  type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject,
 } from '@/lib/video/project';
 import {
   EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
@@ -143,6 +143,58 @@ function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewP
   );
 }
 
+
+function FilterPreviewCard({
+  project, clipId, playhead, filter, active, onHover, onLeave, onApply,
+}: {
+  project: VideoProject; clipId: string; playhead: number; filter: string; active: boolean;
+  onHover: () => void; onLeave: () => void; onApply: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<VideoRenderer | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  const renderAt = useCallback(async (t: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+    const previewProject: VideoProject = {
+      ...project,
+      clips: project.clips.map((clip) => clip.id === clipId ? { ...clip, filter } : clip),
+    };
+    try {
+      await rendererRef.current.drawFrame(canvas, previewProject, t, { previewing: true, playing: false });
+    } catch {}
+  }, [project, clipId, filter]);
+
+  useEffect(() => {
+    const clip = project.clips.find((item) => item.id === clipId);
+    const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
+    const base = clip ? Math.max(0, Math.min(Math.max(0.05, duration - 0.05), playhead)) : 0;
+    void renderAt(base);
+    if (!active) return;
+    const started = performance.now();
+    const tick = () => {
+      const elapsed = ((performance.now() - started) / 1000) % Math.min(duration, 3);
+      void renderAt(elapsed);
+      timerRef.current = window.setTimeout(tick, 140);
+    };
+    tick();
+    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
+  }, [active, clipId, playhead, project.clips, renderAt]);
+
+  return (
+    <button type="button" onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave}
+      onClick={onApply} aria-pressed={active}
+      className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+      <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+        <canvas ref={canvasRef} className="block h-full w-full object-cover" />
+        <span className="absolute bottom-1 left-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold">{FILTER_PRESETS.find((item) => item.id === filter)?.name || filter}</span>
+        {active && <span className="absolute right-1 top-1 rounded-md bg-[#E5798F] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
+      </div>
+    </button>
+  );
+}
 
 function EffectPreviewCard({
   project, clipId, playhead, effect, filter, active, onHover, onLeave, onApply,
@@ -276,6 +328,15 @@ function clipBoxRect(clip: VideoClip, canvasW: number, canvasH: number) {
   };
 }
 
+type TimelineKeyframeRef = {
+  owner: 'clip' | 'element';
+  ownerId: string;
+  prop: KeyframeProperty;
+  keyframeId: string;
+};
+
+type TimelineKeyframeDrag = TimelineKeyframeRef & { pointerId: number };
+
 type Gesture =
   | 'move'
   | 'rotate'
@@ -343,6 +404,7 @@ function VideoEditor() {
   const [clipSpeedMenuOpen, setClipSpeedMenuOpen] = useState(false);
   const [frameMode, setFrameMode] = useState<'motion' | 'layer' | 'ai-drawing' | 'ai-portrait'>('motion');
   const [beatBusy, setBeatBusy] = useState(false);
+  const [aiQuickBusy, setAiQuickBusy] = useState<string | null>(null);
   const openTool = useCallback((next: Tool) => {
     setTool(next);
     setToolDrawerOpen(true);
@@ -420,6 +482,83 @@ function VideoEditor() {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  const runQuickAI = useCallback(async (operation: string) => {
+    const source = selectedClip?.src || selectedElement?.src || null;
+    const mediaType = selectedClip?.media_type === 'image' || selectedElement?.kind === 'image' ? 'image' : selectedClip || selectedElement?.kind === 'video' ? 'video' : null;
+    if (!source && !['generate-image', 'generate-video'].includes(operation)) {
+      notify('Select a video or image first.');
+      return;
+    }
+    setAiQuickBusy(operation);
+    try {
+      const response = await fetch('/api/video/ai', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation, projectId, project, mediaUrl: source, mediaType }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'The AI operation failed.');
+      const findUrl = (value: unknown): string | null => {
+        if (typeof value === 'string' && /^https?:\\/\\//i.test(value)) return value;
+        if (Array.isArray(value)) { for (const item of value) { const found = findUrl(item); if (found) return found; } }
+        if (value && typeof value === 'object') { for (const item of Object.values(value as Record<string, unknown>)) { const found = findUrl(item); if (found) return found; } }
+        return null;
+      };
+      let url = findUrl(data?.output);
+      const binary = data?.output && typeof data.output === 'object'
+        ? data.output as { bytesBase64?: unknown; contentType?: unknown }
+        : null;
+      if (!url && typeof binary?.bytesBase64 === 'string' && meId) {
+        const raw = atob(binary.bytesBase64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        const blob = new Blob([bytes], { type: String(binary.contentType || 'image/png') });
+        const extension = String(binary.contentType || 'image/png').split('/')[1]?.split(';')[0] || 'png';
+        const uploaded = await uploadFile(new File([blob], 'ai-result.' + extension, { type: blob.type }), 'studio-media', meId);
+        url = uploaded.url;
+      }
+      if (!url) {
+        notify('AI finished, but the provider returned no directly importable media URL.');
+        return;
+      }
+      if (operation === 'generate-image' || operation === 'remove-background' || operation === 'style-transfer' || operation === 'relight') {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = url;
+        await img.decode().catch(() => undefined);
+        const w = img.naturalWidth || project.canvas.width;
+        const h = img.naturalHeight || project.canvas.height;
+        const clip: VideoClip = {
+          id: makeVideoId('ai-clip'), src: url, name: 'AI · ' + operation, sourceDuration: 4, trimStart: 0, trimEnd: 4,
+          speed: 1, volume: 0, muted: true, media_type: 'image', source_width: w, source_height: h,
+          transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none',
+          effect_intensity: 1, reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
+        };
+        updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add AI media');
+        setSelectedClipId(clip.id); setSelectedElementId(null);
+        notify('AI result added to the main track.');
+      } else if (operation === 'generate-video' || operation === 'remove-object' || operation === 'track-object') {
+        if (!selectedClip) { notify('Select a main-track clip to apply this AI video result.'); return; }
+        updateClip(selectedClip.id, { src: url, media_type: 'video', name: 'AI · ' + operation, reverse: false }, 'Apply AI video result');
+        notify('AI video result applied to the selected clip.');
+      } else if (operation === 'clone-voice' || operation === 'convert-voice' || operation === 'generate-voice' || operation === 'generate-music') {
+        const track: AudioTrack = {
+          id: makeVideoId('ai-aud'), name: 'AI · ' + operation, src: url,
+          track_id: project.tracks.find((t) => t.kind === 'audio')?.id, start: playheadRef.current, sourceDuration: 15,
+          trimStart: 0, trimEnd: 15, volume: 1, fadeIn: 0, fadeOut: 0,
+          kind: operation === 'generate-music' ? 'music' : 'voiceover',
+        };
+        updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'Add AI audio');
+        setSelectedAudioId(track.id);
+        notify('AI audio added to the timeline.');
+      }
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'AI operation failed.');
+    } finally {
+      setAiQuickBusy(null);
+    }
+  }, [projectId, project, selectedClip, selectedElement, meId, notify, updateProject, updateClip]);
 
   /* ---------- auth ---------- */
   useEffect(() => {
@@ -913,22 +1052,36 @@ function VideoEditor() {
 
         setImporting({ name: file.name, percent: 10 });
         try {
-          // probe dimensions/duration before committing
-          const probeUrl = URL.createObjectURL(file);
-          const meta = await new Promise<{ duration: number; w: number; h: number }>((res, rej) => {
-            const el = document.createElement('video');
-            el.preload = 'metadata';
-            el.onloadedmetadata = async () => {
-              /* Infinity duration (webm/screen recordings, some phone mp4s)
-                 must be resolved BEFORE use, or the clip gets a nonsense trim
-                 range → black preview and broken exports. */
-              const dur = await normalizeVideoDuration(el);
-              res({ duration: dur || 5, w: el.videoWidth, h: el.videoHeight });
-            };
-            el.onerror = () => rej(new Error(`Unable to load video "${file.name}" — the file may be corrupt or in an unsupported format.`));
-            el.src = probeUrl;
-          });
-          URL.revokeObjectURL(probeUrl);
+          // Probe dimensions/duration before committing. Images are first-class
+          // main-track media, so they never pass through a <video> metadata probe.
+          let meta: { duration: number; w: number; h: number };
+          if (file.type.startsWith('image/')) {
+            const probeUrl = URL.createObjectURL(file);
+            try {
+              const image = new Image();
+              image.src = probeUrl;
+              await image.decode();
+              meta = { duration: 4, w: image.naturalWidth || 1080, h: image.naturalHeight || 1080 };
+            } finally {
+              URL.revokeObjectURL(probeUrl);
+            }
+          } else {
+            const probeUrl = URL.createObjectURL(file);
+            try {
+              meta = await new Promise<{ duration: number; w: number; h: number }>((res, rej) => {
+                const el = document.createElement('video');
+                el.preload = 'metadata';
+                el.onloadedmetadata = async () => {
+                  const dur = await normalizeVideoDuration(el);
+                  res({ duration: dur || 5, w: el.videoWidth, h: el.videoHeight });
+                };
+                el.onerror = () => rej(new Error(`Unable to load video "${file.name}" — the file may be corrupt or in an unsupported format.`));
+                el.src = probeUrl;
+              });
+            } finally {
+              URL.revokeObjectURL(probeUrl);
+            }
+          }
 
           /* DECODE PROBE — metadata can load for codecs the browser cannot
              decode (HEVC/H.265 phone videos are the classic case). Those files
@@ -991,23 +1144,25 @@ function VideoEditor() {
           setImporting(null);
 
           if (isImage) {
-            const img = new Image();
-            img.src = mediaUrl;
-            await img.decode().catch(() => undefined);
-            const iw = img.naturalWidth || 320;
-            const ih = img.naturalHeight || 240;
-            /* fit inside 60% of the canvas, keeping the image's real aspect */
-            const s = Math.min(1, (project.canvas.width * 0.6) / iw, (project.canvas.height * 0.6) / ih);
-            const w = Math.round(iw * s);
-            const h = Math.round(ih * s);
-            const el: TimelineElement = {
-              id: makeVideoId('el'), kind: 'image', content: file.name, src: mediaUrl, track_id: project.tracks[0]?.id,
-              start: playheadRef.current, end: playheadRef.current + 4,
-              x: Math.round((project.canvas.width - w) / 2), y: Math.round((project.canvas.height - h) / 2),
-              width: w, height: h, rotation: 0, opacity: 1, z: project.elements.length + 1,
-              animation: 'fade',
+            const firstMainMedia = !docRef.current.project.clips.length && !docRef.current.project.elements.length;
+            const clip: VideoClip = {
+              id: makeVideoId('clip'), src: mediaUrl, name: file.name,
+              sourceDuration: 4, trimStart: 0, trimEnd: 4, speed: 1, volume: 0, muted: true,
+              media_type: 'image',
+              source_width: meta.w || undefined, source_height: meta.h || undefined,
+              transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
+              filter: 'none', effect: 'ken-burns', effect_intensity: 0.55, reverse: false,
+              audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
             };
-            updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add image');
+            updateProject((p) => ({
+              ...p,
+              aspect: firstMainMedia ? 'original' : p.aspect,
+              canvas: firstMainMedia ? { width: meta.w, height: meta.h } : p.canvas,
+              clips: [...p.clips, clip],
+            }), 'Add image to main track');
+            setSelectedClipId(clip.id);
+            setSelectedElementId(null);
+            notify(firstMainMedia ? 'Image added — canvas matched the source orientation.' : 'Image added to the main track.');
           } else {
             const replacement = replaceClipId
               ? docRef.current.project.clips.find((c) => c.id === replaceClipId)
@@ -1032,16 +1187,25 @@ function VideoEditor() {
               setSelectedClipId(replacement.id);
               notify('Clip replaced — your edit position and timeline slot were preserved.');
             } else {
+              const firstMainMedia = !docRef.current.project.clips.length && !docRef.current.project.elements.length;
               const clip: VideoClip = {
                 id: makeVideoId('clip'), src: mediaUrl, name: file.name,
                 sourceDuration: meta.duration, trimStart: 0,
                 trimEnd: meta.duration, speed: 1, volume: 1, muted: false,
+                media_type: 'video',
                 source_width: meta.w || undefined, source_height: meta.h || undefined,
                 transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
                 filter: 'none', effect: 'none', reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
               };
-              updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add clip');
+              updateProject((p) => ({
+                ...p,
+                aspect: firstMainMedia ? 'original' : p.aspect,
+                canvas: firstMainMedia && meta.w && meta.h ? { width: meta.w, height: meta.h } : p.canvas,
+                clips: [...p.clips, clip],
+              }), 'Add clip');
               setSelectedClipId(clip.id);
+              setSelectedElementId(null);
+              if (firstMainMedia) notify('Video added — canvas matched the source orientation.');
             }
           }
         } catch (e) {
@@ -2133,6 +2297,47 @@ function VideoEditor() {
     },
   }, true);
   const [pointerDragId, setPointerDragId] = useState<string | null>(null);
+  const [selectedKeyframe, setSelectedKeyframe] = useState<TimelineKeyframeRef | null>(null);
+  const keyframeDragRef = useRef<TimelineKeyframeDrag | null>(null);
+
+  const snapTimelineTime = useCallback((time: number, threshold = 0.12) => {
+    if (!snapEnabled) return Math.max(0, time);
+    const candidates: number[] = [0, duration];
+    let acc = 0;
+    for (const clip of project.clips) {
+      candidates.push(acc, acc + clipDuration(clip));
+      acc += clipDuration(clip);
+    }
+    for (const el of project.elements) candidates.push(el.start, el.end);
+    for (const audio of project.audio) {
+      const len = Math.max(0.1, audio.trimEnd - audio.trimStart);
+      candidates.push(audio.start, audio.start + len);
+    }
+    for (const marker of project.markers || []) candidates.push(marker.time);
+    for (const beat of project.beatMarkers || []) candidates.push(beat);
+    let closest = time;
+    let distance = threshold;
+    for (const candidate of candidates) {
+      const d = Math.abs(candidate - time);
+      if (d < distance) { closest = candidate; distance = d; }
+    }
+    return Math.max(0, closest);
+  }, [duration, project.audio, project.beatMarkers, project.clips, project.elements, project.markers, snapEnabled]);
+
+  const addTimelineMarker = useCallback(() => {
+    const time = snapTimelineTime(playheadRef.current, 0.2);
+    const marker: TimelineMarker = {
+      id: makeVideoId('marker'),
+      time,
+      label: `Marker ${(docRef.current.project.markers?.length || 0) + 1}`,
+    };
+    updateProject((p) => ({ ...p, markers: [...(p.markers || []), marker] }), 'Add timeline marker');
+    notify(`Marker added at ${fmt(time)}.`);
+  }, [notify, snapTimelineTime, updateProject]);
+
+  const removeTimelineMarker = useCallback((id: string) => {
+    updateProject((p) => ({ ...p, markers: (p.markers || []).filter((m) => m.id !== id) }), 'Delete timeline marker');
+  }, [updateProject]);
 
   /** Convert a clientX into timeline seconds (accounts for scroll + labels). */
   const timeAtClientX = useCallback(
@@ -2145,6 +2350,190 @@ function VideoEditor() {
     },
     [pxPerSec]
   );
+
+  const getKeyframeValueAt = useCallback((owner: 'clip' | 'element', ownerId: string, prop: KeyframeProperty, localTime: number): number => {
+    const current = docRef.current.project;
+    if (owner === 'clip') {
+      const clip = current.clips.find((item) => item.id === ownerId);
+      if (!clip) return 0;
+      const values = resolveClipValues(clip, localTime);
+      const graded = resolveClipAdjustments(clip, localTime);
+      switch (prop) {
+        case 'pos_x_kf': return values.offset_x;
+        case 'pos_y_kf': return values.offset_y;
+        case 'scale_kf': return values.scale;
+        case 'rotation_kf': return values.rotation;
+        case 'opacity_kf': return values.opacity;
+        case 'volume_kf': return values.volume;
+        case 'brightness_kf': return graded.brightness;
+        case 'contrast_kf': return graded.contrast;
+        case 'saturate_kf': return graded.saturate;
+        case 'hue_kf': return graded.hue;
+        case 'temperature_kf': return graded.temperature;
+        case 'exposure_kf': return graded.exposure;
+        case 'vignette_kf': return graded.vignette;
+        case 'blur_kf': return graded.blur;
+      }
+    }
+    const element = current.elements.find((item) => item.id === ownerId);
+    if (!element) return 0;
+    const values = resolveElementValues(element, localTime);
+    switch (prop) {
+      case 'pos_x_kf': return values.x;
+      case 'pos_y_kf': return values.y;
+      case 'scale_kf': return values.scale;
+      case 'rotation_kf': return values.rotation;
+      case 'opacity_kf': return values.opacity;
+      case 'volume_kf': return values.volume;
+      default: return 0;
+    }
+  }, []);
+
+  const addTimelineKeyframeAt = useCallback((owner: 'clip' | 'element', ownerId: string, prop: KeyframeProperty, localTime: number) => {
+    const current = docRef.current.project;
+    if (owner === 'clip') {
+      const clip = current.clips.find((item) => item.id === ownerId);
+      if (!clip) return;
+      const t = Math.max(0, Math.min(clipDuration(clip), localTime));
+      const map = upsertClipKeyframe(clip, prop, t, getKeyframeValueAt(owner, ownerId, prop, t));
+      const created = (map[prop] || []).reduce((best, item) => Math.abs(item.t - t) < Math.abs(best.t - t) ? item : best);
+      updateClip(clip.id, { keyframes: map }, 'Add keyframe', `timeline-kf-${ownerId}-${prop}`);
+      setSelectedKeyframe({ owner, ownerId, prop, keyframeId: created.id });
+      return;
+    }
+    const element = current.elements.find((item) => item.id === ownerId);
+    if (!element) return;
+    const t = Math.max(0, Math.min(Math.max(0.2, element.end - element.start), localTime));
+    const map = upsertKeyframe(element, prop, t, getKeyframeValueAt(owner, ownerId, prop, t));
+    const created = (map[prop] || []).reduce((best, item) => Math.abs(item.t - t) < Math.abs(best.t - t) ? item : best);
+    updateProject((p) => ({
+      ...p,
+      elements: p.elements.map((item) => item.id === ownerId ? { ...item, keyframes: map } : item),
+    }), 'Add keyframe', `timeline-kf-${ownerId}-${prop}`);
+    setSelectedKeyframe({ owner, ownerId, prop, keyframeId: created.id });
+  }, [getKeyframeValueAt, updateClip, updateProject]);
+
+  const removeTimelineKeyframe = useCallback((selection: TimelineKeyframeRef) => {
+    if (selection.owner === 'clip') {
+      const clip = docRef.current.project.clips.find((item) => item.id === selection.ownerId);
+      if (!clip) return;
+      const map = { ...(clip.keyframes || {}) };
+      const list = (map[selection.prop] || []).filter((item) => item.id !== selection.keyframeId);
+      if (list.length) map[selection.prop] = list;
+      else delete map[selection.prop];
+      updateClip(
+        clip.id,
+        { keyframes: Object.keys(map).length ? map : undefined },
+        'Delete keyframe',
+        `timeline-kf-${selection.ownerId}-${selection.prop}`
+      );
+    } else {
+      const element = docRef.current.project.elements.find((item) => item.id === selection.ownerId);
+      if (!element) return;
+      updateProject((p) => ({
+        ...p,
+        elements: p.elements.map((item) => item.id === selection.ownerId
+          ? { ...item, keyframes: removeKeyframe(item, selection.prop, selection.keyframeId) }
+          : item),
+      }), 'Delete keyframe', `timeline-kf-${selection.ownerId}-${selection.prop}`);
+    }
+    setSelectedKeyframe(null);
+  }, [updateClip, updateProject]);
+
+  const moveTimelineKeyframe = useCallback((selection: TimelineKeyframeRef, nextLocalTime: number) => {
+    const current = docRef.current.project;
+    if (selection.owner === 'clip') {
+      const clip = current.clips.find((item) => item.id === selection.ownerId);
+      if (!clip) return;
+      const t = Math.max(0, Math.min(clipDuration(clip), nextLocalTime));
+      updateClip(clip.id, {
+        keyframes: (() => {
+          const map = { ...(clip.keyframes || {}) };
+          const list = [...(map[selection.prop] || [])];
+          const index = list.findIndex((item) => item.id === selection.keyframeId);
+          if (index < 0) return map;
+          const collision = list.find((item) => item.id !== selection.keyframeId && Math.abs(item.t - t) < 0.045);
+          if (collision) return map;
+          list[index] = { ...list[index], t };
+          list.sort((a, b) => a.t - b.t);
+          map[selection.prop] = list;
+          return map;
+        })(),
+      }, 'Move keyframe', `timeline-kf-drag-${selection.ownerId}-${selection.prop}-${selection.keyframeId}`);
+      return;
+    }
+    const element = current.elements.find((item) => item.id === selection.ownerId);
+    if (!element) return;
+    const t = Math.max(0, Math.min(Math.max(0.2, element.end - element.start), nextLocalTime));
+    updateProject((p) => ({
+      ...p,
+      elements: p.elements.map((item) => {
+        if (item.id !== selection.ownerId) return item;
+        const map = { ...(item.keyframes || {}) };
+        const list = [...(map[selection.prop] || [])];
+        const index = list.findIndex((keyframe) => keyframe.id === selection.keyframeId);
+        if (index < 0) return item;
+        const collision = list.find((keyframe) => keyframe.id !== selection.keyframeId && Math.abs(keyframe.t - t) < 0.045);
+        if (collision) return item;
+        list[index] = { ...list[index], t };
+        list.sort((a, b) => a.t - b.t);
+        map[selection.prop] = list;
+        return { ...item, keyframes: map };
+      }),
+    }), 'Move keyframe', `timeline-kf-drag-${selection.ownerId}-${selection.prop}-${selection.keyframeId}`);
+  }, [updateClip, updateProject]);
+
+  const beginTimelineKeyframeDrag = useCallback((e: React.PointerEvent, selection: TimelineKeyframeRef) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedKeyframe(selection);
+    keyframeDragRef.current = { ...selection, pointerId: e.pointerId };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }, []);
+
+  useEffect(() => {
+    const drag = keyframeDragRef.current;
+    if (!drag) return;
+    const onMove = (e: PointerEvent) => {
+      const active = keyframeDragRef.current;
+      if (!active || active.pointerId !== e.pointerId) return;
+      const global = timeAtClientX(e.clientX);
+      const current = docRef.current.project;
+      if (active.owner === 'clip') {
+        let clipStart = 0;
+        for (const clip of current.clips) {
+          if (clip.id === active.ownerId) break;
+          clipStart += clipDuration(clip);
+        }
+        moveTimelineKeyframe(active, global - clipStart);
+      } else {
+        const element = current.elements.find((item) => item.id === active.ownerId);
+        if (element) moveTimelineKeyframe(active, global - element.start);
+      }
+    };
+    const onUp = () => { keyframeDragRef.current = null; };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [moveTimelineKeyframe, timeAtClientX]);
+
+  useEffect(() => {
+    if (!selectedKeyframe) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const target = e.target as HTMLElement | null;
+      if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      e.preventDefault();
+      removeTimelineKeyframe(selectedKeyframe);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [removeTimelineKeyframe, selectedKeyframe]);
 
   /** Continuous scrub from the ruler or the playhead handle. */
   const beginPlayheadDrag = (e: React.PointerEvent) => {
@@ -2323,9 +2712,7 @@ function VideoEditor() {
       moved = true;
       const dx = (ev.clientX - startX) / Math.max(1, pxPerSec);
       let nextStart = Math.max(0, Math.min(maxStart, startStart + dx));
-      /* magnetic whole-second snap */
-      const r = Math.round(nextStart);
-      if (Math.abs(nextStart - r) < 0.08) nextStart = r;
+      nextStart = snapTimelineTime(nextStart);
       updateElement(el.id, { start: nextStart, end: nextStart + len }, 'Move overlay on timeline', `tlmove-${el.id}`);
 
       /* vertical: switch lane when the finger crosses one */
@@ -2418,7 +2805,7 @@ function VideoEditor() {
       moved = true;
 
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
-      const ns = Math.max(0, startStart + d);
+      const ns = snapTimelineTime(Math.max(0, startStart + d));
       const lanes = laneRects();
       const currentLane = lanes.find((l) => l.id === currentTrackId);
       const belowLastLane = lanes.length > 0 && ev.clientY > Math.max(...lanes.map((l) => l.bottom));
@@ -4059,7 +4446,7 @@ function VideoEditor() {
 
   return (
     <main
-      className="flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white"
+      className={`flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200 ${toolDrawerOpen ? 'md:pr-[min(430px,32vw)]' : ''}`}
       data-history-scoped="true"
     >
       {/* fullscreen preview overlay (renders above everything when active) */}
@@ -4467,6 +4854,23 @@ function VideoEditor() {
                 <span className="px-1 text-[10px] tabular-nums text-white/50">{Math.round(zoom * 100)}%</span>
                 <button onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))} disabled={zoom >= 3} aria-label="Zoom in" className="px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40">+</button>
               </div>
+              <button
+                onClick={() => setSnapEnabled((v) => !v)}
+                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${snapEnabled ? 'bg-[#E5798F]/20 text-[#FFB6C1]' : 'bg-white/10 text-white/55'}`}
+                aria-pressed={snapEnabled}
+                title="Snap clips and overlays to nearby clip edges, markers and beats"
+              >Snap</button>
+              <button
+                onClick={() => setRippleEnabled((v) => !v)}
+                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${rippleEnabled ? 'bg-[#E5798F]/20 text-[#FFB6C1]' : 'bg-white/10 text-white/55'}`}
+                aria-pressed={rippleEnabled}
+                title="Ripple delete selected clips"
+              >Ripple</button>
+              <button onClick={addTimelineMarker} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add marker at playhead">
+                <Plus className="h-3.5 w-3.5" /> Marker
+              </button>
+              <button onClick={() => history.undo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Undo"><Undo2 className="h-3.5 w-3.5" /></button>
+              <button onClick={() => history.redo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Redo"><Redo2 className="h-3.5 w-3.5" /></button>
               <button onClick={addEditorTrack} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
                 <Plus className="h-3.5 w-3.5" /> Track
               </button>
@@ -4518,13 +4922,59 @@ function VideoEditor() {
                         key={clip.id}
                         data-timeline-item="true"
                         onPointerDown={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleSelectedId(clip.id); setSelectedClipId(clip.id); setSelectedElementId(null); return; } setSelectedIds([clip.id]); beginClipDrag(e, clip); }}
-                        className={`relative shrink-0 touch-none overflow-hidden rounded-md border transition-shadow ${selected ? 'border-[#E5798F] bg-[#E5798F]/35 ring-1 ring-[#E5798F]/60' : 'border-white/15 bg-white/10'} ${dragging ? 'opacity-80 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
+                        className={`relative shrink-0 touch-none overflow-visible rounded-md border transition-shadow ${selected ? 'border-[#E5798F] bg-[#E5798F]/35 ring-1 ring-[#E5798F]/60' : 'border-white/15 bg-white/10'} ${dragging ? 'opacity-80 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
                         style={{ width: w }}
                         role="button"
                         aria-label={`Clip ${clip.name}, ${fmt(clipDuration(clip))}${selected ? ', selected' : ''}`}
                         aria-pressed={selected}
                         title="Drag to reorder • drag edges to trim"
                       >
+                        {project.clips.indexOf(clip) > 0 && clip.transitionIn.type !== 'none' && (() => {
+                          const maxDuration = Math.min(1.5, Math.max(0.2, clipDuration(clip)));
+                          const width = Math.max(10, Math.min(32, clip.transitionIn.duration * pxPerSec));
+                          const begin = (e: React.PointerEvent) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setSelectedClipId(clip.id);
+                            setSelectedElementId(null);
+                            setSelectedIds([clip.id]);
+                            const startX = e.clientX;
+                            const startDuration = clip.transitionIn.duration;
+                            const onMove = (ev: PointerEvent) => {
+                              const next = Math.max(0.2, Math.min(maxDuration, startDuration + (ev.clientX - startX) / Math.max(1, pxPerSec)));
+                              updateClip(clip.id, { transitionIn: { ...clip.transitionIn, duration: Math.round(next * 20) / 20 } }, 'Transition length', `tr-drag-${clip.id}`);
+                            };
+                            const onUp = () => {
+                              window.removeEventListener('pointermove', onMove);
+                              window.removeEventListener('pointerup', onUp);
+                              window.removeEventListener('pointercancel', onUp);
+                            };
+                            window.addEventListener('pointermove', onMove);
+                            window.addEventListener('pointerup', onUp);
+                            window.addEventListener('pointercancel', onUp);
+                          };
+                          return (
+                            <button
+                              type="button"
+                              data-timeline-item="true"
+                              onPointerDown={begin}
+                              onDoubleClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                updateClip(clip.id, { transitionIn: { type: 'none', duration: clip.transitionIn.duration } }, 'Remove transition');
+                              }}
+                              className="absolute -left-2 top-1/2 z-50 flex -translate-y-1/2 items-center justify-center rounded-md border border-violet-200/50 bg-violet-600/95 shadow-[0_0_10px_rgba(124,92,255,.55)]"
+                              style={{ width: Math.max(14, width), height: 20 }}
+                              title={`Transition: ${clip.transitionIn.type} · ${clip.transitionIn.duration.toFixed(2)}s · drag to resize · double-click to remove`}
+                              aria-label={`Transition ${clip.transitionIn.type}, ${clip.transitionIn.duration.toFixed(2)} seconds`}
+                            >
+                              <span className="text-[7px] font-black uppercase tracking-tight text-white">
+                                {clip.transitionIn.type === 'crossfade' ? 'X' : clip.transitionIn.type === 'dip-black' ? 'DB' : clip.transitionIn.type === 'luma-wipe' ? 'LW' : 'TR'}
+                              </span>
+                            </button>
+                          );
+                        })()}
+
                         {/* thumbnail: real first frame / media / glyph */}
                         <div className="pointer-events-none absolute inset-0 opacity-60">
                           <ClipThumb clip={clip} />
@@ -4729,6 +5179,111 @@ function VideoEditor() {
                 );
               })}
 
+              {/* User timeline markers — draggable/seekable editing landmarks. */}
+              {(project.markers || []).map((marker) => (
+                <button
+                  key={marker.id}
+                  type="button"
+                  className="absolute inset-y-0 z-35 w-4 -translate-x-1/2"
+                  style={{ left: LABEL_W + marker.time * pxPerSec }}
+                  onClick={() => seekTo(marker.time)}
+                  onDoubleClick={() => removeTimelineMarker(marker.id)}
+                  title={`${marker.label} · ${fmt(marker.time)} · double-click to remove`}
+                  aria-label={`${marker.label} at ${fmt(marker.time)}`}
+                >
+                  <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-amber-300/80" />
+                  <span className="absolute left-1/2 top-0 -translate-x-1/2 rounded-b bg-amber-300 px-1 py-0.5 text-[7px] font-bold text-black shadow">
+                    M
+                  </span>
+                </button>
+              ))}
+
+              {(() => {
+                const source = selectedClip
+                  ? { owner: 'clip' as const, ownerId: selectedClip.id, label: 'KEYFRAMES · MAIN', keyframes: selectedClip.keyframes || {}, length: Math.max(0.2, clipDuration(selectedClip)) }
+                  : selectedElement
+                    ? { owner: 'element' as const, ownerId: selectedElement.id, label: 'KEYFRAMES · ' + (selectedElement.kind === 'text' ? 'TEXT' : selectedElement.kind.toUpperCase()), keyframes: selectedElement.keyframes || {}, length: Math.max(0.2, selectedElement.end - selectedElement.start) }
+                    : null;
+                if (!source) return null;
+                const visibleProperties = source.owner === 'clip'
+                  ? KEYFRAMABLE_PROPERTIES
+                  : KEYFRAMABLE_PROPERTIES.filter((item) => ['pos_x_kf', 'pos_y_kf', 'scale_kf', 'rotation_kf', 'opacity_kf', 'volume_kf'].includes(item.id));
+                const selectedProp = selectedKeyframe?.owner === source.owner && selectedKeyframe.ownerId === source.ownerId ? selectedKeyframe.prop : null;
+                const selectedList = selectedProp ? (source.keyframes[selectedProp] || []) : [];
+                const selectedKf = selectedKeyframe ? selectedList.find((item) => item.id === selectedKeyframe.keyframeId) : null;
+                const localPlayhead = source.owner === 'clip'
+                  ? selectedClipTimeIn
+                  : Math.max(0, Math.min(source.length, playhead - (selectedElement?.start || 0)));
+                const currentValue = selectedProp
+                  ? getKeyframeValueAt(source.owner, source.ownerId, selectedProp, localPlayhead)
+                  : null;
+                return (
+                  <div className="relative border-b border-white/10 bg-[#15120c]" data-lane-id="__keyframes">
+                    <div className="flex min-h-10 border-b border-amber-300/10 bg-[#111]/95">
+                      <div className="sticky left-0 z-30 flex w-16 shrink-0 items-center border-r border-amber-300/15 bg-[#111]/95 px-1.5 text-[7px] font-bold text-amber-200/70 backdrop-blur">
+                        KF
+                      </div>
+                      <div className="min-w-0 flex-1 px-2 py-1">
+                        <div className="flex items-center gap-2 text-[8px]">
+                          <span className="font-bold text-amber-200/80">{source.label}</span>
+                          <span className="text-white/25">•</span>
+                          <span className="text-white/35">Double-click a lane to add · drag diamonds · Delete removes selected</span>
+                          {selectedProp && (
+                            <>
+                              <span className="text-white/25">•</span>
+                              <span className="font-semibold text-white/60">
+                                {KEYFRAMABLE_PROPERTIES.find((p) => p.id === selectedProp)?.label || selectedProp}
+                                {selectedKf ? ` @ ${selectedKf.t.toFixed(2)}s` : ''}
+                                {currentValue != null ? ` · ${currentValue.toFixed(2)}` : ''}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 top-10">
+                      <div className="absolute inset-y-0 left-16 right-0">
+                        {visibleProperties.map((propertyConfig) => {
+                          const property = propertyConfig.id;
+                          const list = source.keyframes[property] || [];
+                          return (
+                            <div
+                              key={property}
+                              className="relative h-7 border-b border-white/[0.04]"
+                              onDoubleClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const ratio = rect.width > 0 ? (e.clientX - rect.left) / rect.width : 0;
+                                const t = Math.max(0, Math.min(source.length, ratio * source.length));
+                                addTimelineKeyframeAt(source.owner, source.ownerId, property, t);
+                              }}
+                            >
+                              <span className="absolute left-1 top-1 z-10 rounded bg-black/60 px-1 text-[7px] text-white/45">
+                                {KEYFRAMABLE_PROPERTIES.find((p) => p.id === property)?.label || property}
+                              </span>
+                              {(list || []).map((kf) => {
+                                const selected = selectedKeyframe?.owner === source.owner && selectedKeyframe.ownerId === source.ownerId && selectedKeyframe.prop === property && selectedKeyframe.keyframeId === kf.id;
+                                return (
+                                  <button
+                                    key={kf.id}
+                                    type="button"
+                                    className={`absolute top-1/2 z-20 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[2px] border transition ${selected ? 'border-white bg-white shadow-[0_0_0_2px_rgba(252,211,77,.45),0_0_9px_rgba(252,211,77,.8)]' : 'border-amber-100/40 bg-amber-300 shadow-[0_0_5px_rgba(252,211,77,.6)]'}`}
+                                    style={{ left: `${(Math.max(0, Math.min(source.length, kf.t)) / source.length) * 100}%` }}
+                                    onPointerDown={(e) => beginTimelineKeyframeDrag(e, { owner: source.owner, ownerId: source.ownerId, prop: property, keyframeId: kf.id })}
+                                    onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    title={`${KEYFRAMABLE_PROPERTIES.find((p) => p.id === property)?.label || property} · ${kf.t.toFixed(2)}s · drag to move · Delete to remove`}
+                                    aria-label={`Keyframe ${property} at ${kf.t.toFixed(2)} seconds`}
+                                  />
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* detected beat markers */}
               {(project.beatMarkers || []).filter((t) => t >= 0 && t <= duration).map((t) => (
                 <button
@@ -4755,7 +5310,7 @@ function VideoEditor() {
           <input
             ref={replaceInputRef}
             type="file"
-            accept="video/*"
+            accept="video/*,image/*"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -4918,7 +5473,7 @@ function VideoEditor() {
             type="button"
             aria-label="Close editor tools"
             onClick={() => setToolDrawerOpen(false)}
-            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px]"
+            className="fixed inset-0 z-40 bg-black/45 backdrop-blur-[1px] md:hidden"
           />
           <section
             className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] left-0 right-0 z-50 flex h-[72dvh] max-h-[calc(100dvh-64px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-t-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
@@ -4928,7 +5483,7 @@ function VideoEditor() {
               <div className="h-1 w-10 rounded-full bg-white/20 md:hidden" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-bold">{TOOL_LABELS[tool]}</p>
-                <p className="hidden text-[9px] text-white/35 md:block">Editor controls</p>
+                <p className="text-[9px] text-white/35">Live controls · changes stay visible in the canvas</p>
               </div>
               <button
                 type="button"
@@ -4964,7 +5519,7 @@ function VideoEditor() {
               <Upload className="h-5 w-5" /> Import raw video
               <input
                 type="file"
-                accept="video/*"
+                accept="video/*,image/*"
                 multiple
                 className="hidden"
                 onChange={(e) => e.target.files && void importFiles(e.target.files)}
@@ -5090,13 +5645,34 @@ function VideoEditor() {
         )}
 
         {tool === 'ai' && (
-          <VideoAIStudio
+          <>
+            <div className="mb-3 rounded-2xl border border-[#E5798F]/25 bg-[#E5798F]/[0.06] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold">AI Effects & Generation</p>
+                  <p className="text-[9px] text-white/40">Configured providers · results can be inserted into the live timeline.</p>
+                </div>
+                <Sparkles className="h-4 w-4 text-[#FFB6C1]" />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  ['remove-background','Remove BG'],['remove-object','Remove Object'],['style-transfer','Style Transfer'],['relight','AI Relight'],
+                  ['generate-video','Generate Video'],['generate-image','Generate Image'],['clone-voice','Clone Voice'],['convert-voice','Voice Convert'],
+                ].map(([op,label]) => (
+                  <button key={op} type="button" onClick={() => void runQuickAI(op)} disabled={!!aiQuickBusy}
+                    className="rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-2 text-left text-[10px] font-semibold text-white/75 transition hover:bg-white/[0.08] disabled:opacity-45">
+                    {aiQuickBusy === op ? 'Working…' : label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <VideoAIStudio
             projectId={projectId}
             project={project}
             selectedMediaUrl={selectedClip?.src || selectedElement?.src || null}
             selectedMediaType={
               selectedClip
-                ? 'video'
+                ? (selectedClip.media_type === 'image' ? 'image' : 'video')
                 : selectedElement?.kind === 'image'
                   ? 'image'
                   : selectedElement?.kind === 'video'
@@ -5242,6 +5818,7 @@ function VideoEditor() {
               notify(`Added ${created.length} AI captions to the timeline.`);
             }}
           />
+          </>
         )}
 
         {tool === 'overlays' && (
@@ -5768,17 +6345,17 @@ function VideoEditor() {
                   <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} filter={lookPreviewFilter ?? selectedClip.filter} effect={selectedClip.effect} />
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     {FILTER_PRESETS.map((f) => (
-                      <button key={f.id}
-                        onMouseEnter={() => setLookPreviewFilter(f.id)} onMouseLeave={() => setLookPreviewFilter(null)}
-                        onFocus={() => setLookPreviewFilter(f.id)} onBlur={() => setLookPreviewFilter(null)}
-                        onClick={() => updateClip(selectedClip.id, { filter: f.id }, 'Apply filter')}
-                        aria-pressed={selectedClip.filter === f.id}
-                        className={`group overflow-hidden rounded-xl border p-1 text-left transition ${selectedClip.filter === f.id ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
-                        <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-                          <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-transparent to-black/50" />
-                          <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold">{f.name}</span>
-                        </div>
-                      </button>
+                      <FilterPreviewCard
+                        key={f.id}
+                        project={project}
+                        clipId={selectedClip.id}
+                        playhead={playhead}
+                        filter={f.id}
+                        active={selectedClip.filter === f.id}
+                        onHover={() => setLookPreviewFilter(f.id)}
+                        onLeave={() => setLookPreviewFilter(null)}
+                        onApply={() => updateClip(selectedClip.id, { filter: f.id }, 'Apply filter')}
+                      />
                     ))}
                   </div>
                 </div>
@@ -5907,7 +6484,18 @@ function VideoEditor() {
                 </div>
 
                 {/* transition into this clip */}
-                <div>
+                <div className="rounded-xl border border-violet-300/10 bg-violet-500/[0.04] p-2.5">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-semibold text-white/75">Transition in</p>
+                      <p className="text-[9px] text-white/35">The timeline block can be dragged to resize.</p>
+                    </div>
+                    {selectedClip.transitionIn.type !== 'none' && (
+                      <span className="rounded-md bg-violet-500/15 px-2 py-1 text-[9px] font-semibold text-violet-200">
+                        {selectedClip.transitionIn.duration.toFixed(2)}s
+                      </span>
+                    )}
+                  </div>
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Transition in</p>
                   <div className="flex flex-wrap gap-1.5">
                     {(['none', 'fade', 'crossfade', 'slide', 'push', 'zoom', 'zoom-blur', 'whip-pan', 'spin', 'wipe', 'luma-wipe', 'dip-black', 'blur', 'glitch-cut', 'film-burn'] as const).map((t) => (
@@ -6223,7 +6811,7 @@ function ClipThumb({ clip }: { clip: VideoClip }) {
   if (isPlaceholder(clip.src)) {
     return <span className="flex h-full w-full items-center justify-center text-lg text-white/30">⬚</span>;
   }
-  if (/\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(clip.src) || clip.src.startsWith('data:image/')) {
+  if (clip.media_type === 'image' || /\.(png|jpe?g|gif|webp|avif)(\?|$)/i.test(clip.src) || clip.src.startsWith('data:image/')) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={clip.src} alt="" className="h-full w-full object-cover" />;
   }
@@ -6687,13 +7275,13 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
             <label className="space-y-1">
               <span className="text-white/60">Font</span>
               <select value={el.font_family || 'Poppins, sans-serif'} onChange={(e) => onChange({ font_family: e.target.value }, 'Text font')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Font family">
-                {['Poppins, sans-serif', 'Inter, sans-serif', 'Georgia, serif', 'Courier New, monospace'].map((f) => <option key={f} value={f} className="text-black">{f.split(',')[0]}</option>)}
+                {['Poppins, sans-serif', 'Inter, sans-serif', 'Arial, sans-serif', 'Helvetica, sans-serif', 'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Impact, sans-serif'].map((f) => <option key={f} value={f} className="text-black">{f.split(',')[0]}</option>)}
               </select>
             </label>
             <label className="space-y-1">
               <span className="text-white/60">Weight</span>
               <select value={el.font_weight || 700} onChange={(e) => onChange({ font_weight: Number(e.target.value) }, 'Text weight')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Font weight">
-                {[400, 600, 700, 800].map((w) => <option key={w} value={w} className="text-black">{w}</option>)}
+                {[300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w} className="text-black">{w}</option>)}
               </select>
             </label>
             <div className="space-y-1">
@@ -6732,6 +7320,28 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                 aria-label="Text background color"
               />
             </label>
+            <div className="grid grid-cols-2 gap-2">
+              <Slider label="Stroke width" min={0} max={16} step={1} value={el.stroke_width || 2} onChange={(v) => onChange({ stroke_width: v }, 'Stroke width', `stw-${el.id}`)} />
+              <Slider label="Shadow blur" min={0} max={40} step={1} value={el.shadow_blur ?? 10} onChange={(v) => onChange({ shadow_blur: v }, 'Shadow blur', `shb-${el.id}`)} />
+              <Slider label="Shadow opacity" min={0} max={1} step={0.05} value={el.shadow_opacity ?? 0.55} onChange={(v) => onChange({ shadow_opacity: v }, 'Shadow opacity', `sho-${el.id}`)} />
+              <Slider label="Letter spacing" min={-4} max={16} step={0.5} value={el.letter_spacing ?? 0} onChange={(v) => onChange({ letter_spacing: v }, 'Letter spacing', `ls-${el.id}`)} />
+              <Slider label="Line height" min={0.8} max={2} step={0.05} value={el.line_height ?? 1.25} onChange={(v) => onChange({ line_height: v }, 'Line height', `lh-${el.id}`)} />
+              <Slider label="Background radius" min={0} max={80} step={2} value={el.background_radius ?? 8} onChange={(v) => onChange({ background_radius: v }, 'Background radius', `br-${el.id}`)} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1">
+                <span className="text-white/60">Case</span>
+                <select value={el.text_case || 'none'} onChange={(e) => onChange({ text_case: e.target.value as TimelineElement['text_case'] }, 'Text case')} className="w-full rounded bg-white/10 px-2 py-1.5 text-xs">
+                  {['none','uppercase','lowercase','capitalize'].map((v) => <option key={v} value={v} className="text-black">{v}</option>)}
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-white/60">Text effect</span>
+                <select value={el.text_effect || 'none'} onChange={(e) => onChange({ text_effect: e.target.value as TimelineElement['text_effect'] }, 'Text effect')} className="w-full rounded bg-white/10 px-2 py-1.5 text-xs">
+                  {['none','neon','glow','3d','hollow','gradient','retro','glitch'].map((v) => <option key={v} value={v} className="text-black">{v}</option>)}
+                </select>
+              </label>
+            </div>
             <div className="space-y-1">
               <span className="text-white/60">Effects</span>
               <div className="flex gap-1">
@@ -6754,7 +7364,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
             <label className="space-y-1">
               <span className="text-white/60">Animation</span>
               <select value={el.animation || 'none'} onChange={(e) => onChange({ animation: e.target.value as TimelineElement['animation'] }, 'Text animation')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Text animation">
-                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'rotate-in', 'elastic', 'mask-wipe'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
+                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'blur-up', 'blur-down', 'fade-up', 'fade-down', 'rotate-in', 'elastic', 'elastic-in', 'elastic-out', 'flip-in', 'flip-out', 'glitch-in', 'glitch-out', 'wave', 'tracking', 'mask-wipe', 'split-reveal', 'typewriter-reveal'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
               </select>
             </label>
           </div>

@@ -84,6 +84,8 @@ export interface VideoClip {
   volume: number;                // 0-1 (original audio)
   muted: boolean;
   reverse?: boolean;
+  /** Main-track media kind. Images use the same timeline/transform pipeline and hold for sourceDuration. */
+  media_type?: 'video' | 'image';
   audioProcessing?: AudioProcessing;
   track_id?: string;
   transform: ClipTransform;
@@ -145,6 +147,12 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string; categ
   { id: 'blueprint', name: 'Blueprint', hint: 'Technical blue monochrome', category: 'Style Lab' },
   { id: 'cyberpunk', name: 'Cyberpunk', hint: 'Neon contrast and color split', category: 'Style Lab' },
 ];
+
+export interface TimelineMarker {
+  id: string;
+  time: number;
+  label: string;
+}
 
 export interface TimelineTrack {
   id: string;
@@ -345,6 +353,15 @@ export interface TimelineElement {
   background?: string | null;
   stroke_color?: string | null;
   shadow?: boolean;
+  stroke_width?: number;
+  shadow_blur?: number;
+  shadow_opacity?: number;
+  background_radius?: number;
+  background_padding?: number;
+  letter_spacing?: number;
+  line_height?: number;
+  text_case?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  text_effect?: 'none' | 'neon' | 'outline' | 'glow' | '3d' | 'hollow' | 'gradient' | 'retro' | 'glitch';
   animation?: 'none' | 'fade' | 'pop' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'bounce' | 'typewriter' | 'shake' | 'blur-in' | 'rotate-in' | 'elastic' | 'mask-wipe';
   // Optional video-overlay fields kept for backward-compatible project JSON.
   media_type?: string;
@@ -399,6 +416,8 @@ export interface VideoProject {
   masterMuted: boolean;
   /** Optional project-time beat markers detected from a selected audio track. */
   beatMarkers?: number[];
+  /** User-created timeline markers used for beats, cuts, captions and review points. */
+  markers?: TimelineMarker[];
 }
 
 export const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
@@ -419,6 +438,17 @@ export const FILTER_PRESETS: { id: string; name: string; css: string }[] = [
   { id: 'golden', name: 'Golden', css: 'sepia(0.2) saturate(1.45) brightness(1.06)' },
   { id: 'noir', name: 'Noir', css: 'grayscale(0.92) contrast(1.35) brightness(0.9)' },
   { id: 'retro', name: 'Retro', css: 'sepia(0.3) saturate(1.18) contrast(0.94)' },
+  { id: 'matte', name: 'Matte', css: 'contrast(0.9) brightness(1.04) saturate(0.78)' },
+  { id: 'sunset', name: 'Sunset', css: 'sepia(0.18) saturate(1.45) hue-rotate(-8deg) brightness(1.03)' },
+  { id: 'arctic', name: 'Arctic', css: 'saturate(0.82) contrast(1.08) brightness(1.05) hue-rotate(18deg)' },
+  { id: 'forest', name: 'Forest', css: 'saturate(0.9) contrast(1.12) hue-rotate(-18deg)' },
+  { id: 'rose', name: 'Rose', css: 'sepia(0.08) saturate(1.3) hue-rotate(-18deg) brightness(1.02)' },
+  { id: 'bleach', name: 'Bleach', css: 'saturate(0.35) contrast(1.22) brightness(1.08)' },
+  { id: 'teal', name: 'Teal', css: 'saturate(1.2) contrast(1.1) hue-rotate(22deg)' },
+  { id: 'violet', name: 'Violet', css: 'saturate(1.25) hue-rotate(40deg) contrast(1.05)' },
+  { id: 'amber', name: 'Amber', css: 'sepia(0.22) saturate(1.35) hue-rotate(-5deg) brightness(1.04)' },
+  { id: 'crush', name: 'Contrast Crush', css: 'contrast(1.7) saturate(1.1) brightness(0.95)' },
+  { id: 'soft', name: 'Soft', css: 'brightness(1.06) contrast(0.88) saturate(0.92)' },
 ];
 
 export const CANVAS_SIZES: Record<Exclude<AspectRatio, 'original'>, { width: number; height: number }> = {
@@ -510,6 +540,7 @@ export function normalizeProject(input: unknown): VideoProject {
     return {
       id: String(clip.id || makeVideoId('clip')), src: String(clip.src || ''), name: String(clip.name || 'Untitled clip'),
       sourceDuration, trimStart, trimEnd, speed: Math.max(0.05, Number(clip.speed) || 1),
+      media_type: clip.media_type === 'image' ? 'image' : 'video',
       volume: Math.max(0, Math.min(1, clip.volume == null ? 1 : Number(clip.volume))), muted: Boolean(clip.muted),
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
       effect: (clip.effect || 'none') as EffectType,
@@ -544,7 +575,17 @@ export function normalizeProject(input: unknown): VideoProject {
       ...(el.font_weight != null ? { font_weight: Number(el.font_weight) } : {}), ...(el.color ? { color: String(el.color) } : {}),
       ...(el.align ? { align: el.align as TimelineElement['align'] } : {}), ...(el.background !== undefined ? { background: el.background as string | null } : {}),
       ...(el.stroke_color !== undefined ? { stroke_color: el.stroke_color as string | null } : {}),
-      ...(el.shadow !== undefined ? { shadow: Boolean(el.shadow) } : {}), ...(el.animation ? { animation: el.animation as TimelineElement['animation'] } : {}),
+      ...(el.shadow !== undefined ? { shadow: Boolean(el.shadow) } : {}),
+      ...(el.stroke_width != null ? { stroke_width: Number(el.stroke_width) } : {}),
+      ...(el.shadow_blur != null ? { shadow_blur: Number(el.shadow_blur) } : {}),
+      ...(el.shadow_opacity != null ? { shadow_opacity: Number(el.shadow_opacity) } : {}),
+      ...(el.background_radius != null ? { background_radius: Number(el.background_radius) } : {}),
+      ...(el.background_padding != null ? { background_padding: Number(el.background_padding) } : {}),
+      ...(el.letter_spacing != null ? { letter_spacing: Number(el.letter_spacing) } : {}),
+      ...(el.line_height != null ? { line_height: Number(el.line_height) } : {}),
+      ...(el.text_case ? { text_case: el.text_case as TimelineElement['text_case'] } : {}),
+      ...(el.text_effect ? { text_effect: el.text_effect as TimelineElement['text_effect'] } : {}),
+      ...(el.animation ? { animation: el.animation as TimelineElement['animation'] } : {}),
       ...(el.media_type ? { media_type: String(el.media_type) } : {}), ...(el.source_duration != null ? { source_duration: Number(el.source_duration) } : {}),
       ...(el.trim_start != null ? { trim_start: Number(el.trim_start) } : {}), ...(el.trim_end != null ? { trim_end: Number(el.trim_end) } : {}),
       ...(el.speed != null ? { speed: Number(el.speed) } : {}), ...(el.volume != null ? { volume: Number(el.volume) } : {}),
@@ -635,7 +676,17 @@ export function normalizeProject(input: unknown): VideoProject {
       ? a.track_id
       : firstAudioId,
   }));
-  return { version: 3, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted) };
+  const markers = Array.isArray(raw.markers)
+    ? raw.markers.map((value, index) => {
+        const m = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+        return {
+          id: String(m.id || makeVideoId('marker')),
+          time: Math.max(0, Number(m.time) || 0),
+          label: String(m.label || `Marker ${index + 1}`),
+        };
+      }).filter((m) => Number.isFinite(m.time))
+    : [];
+  return { version: 3, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted), markers };
 }
 
 export function addTimelineTrack<T extends VideoClip | AudioTrack | TimelineElement>(
@@ -734,6 +785,7 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
       { id: 'track-audio', name: 'Audio', kind: 'audio', order: 2, muted: false, locked: false },
     ],
     masterMuted: false,
+    markers: [],
   };
 }
 

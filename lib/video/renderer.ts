@@ -811,6 +811,27 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
       ctx.scale(k * spring || 0.001, k * spring || 0.001);
       ctx.globalAlpha = v.opacity * Math.min(1, progress * 2.5);
     }
+    if (el.animation === 'fade-up' || el.animation === 'blur-up') ctx.translate(0, (1 - easeOut(progress)) * 55);
+    if (el.animation === 'fade-down' || el.animation === 'blur-down') ctx.translate(0, -(1 - easeOut(progress)) * 55);
+    if (el.animation === 'elastic-in' || el.animation === 'elastic-out') {
+      const spring = 1 + Math.sin(progress * Math.PI * 2.6) * (1 - progress) * 0.3;
+      const s = (el.animation === 'elastic-in' ? easeOut(progress) : 1 - (1 - easeOut(progress)) * 0.15) * spring;
+      ctx.scale(Math.max(0.001, s), Math.max(0.001, s));
+    }
+    if (el.animation === 'glitch-in' || el.animation === 'glitch-out') {
+      const jitter = (1 - progress) * 18;
+      ctx.translate(Math.sin(timeIn * 60) * jitter, Math.cos(timeIn * 47) * jitter * 0.4);
+      ctx.globalAlpha = v.opacity * Math.min(1, progress * 2);
+    }
+    if (el.animation === 'flip-in' || el.animation === 'flip-out') {
+      const flip = el.animation === 'flip-in' ? (1 - progress) * Math.PI * 0.5 : progress * Math.PI * 0.15;
+      ctx.rotate(flip);
+      ctx.scale(Math.max(0.001, Math.cos(flip)), 1);
+    }
+    if (el.animation === 'wave') {
+      ctx.translate(0, Math.sin(timeIn * 8) * 7);
+      ctx.rotate(Math.sin(timeIn * 7) * 0.025);
+    }
   }
   /* Exit fade across the last 0.35s so text never hard-pops off. */
   {
@@ -827,19 +848,29 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   ctx.textAlign = (el.align || 'center') as CanvasTextAlign;
   ctx.textBaseline = 'middle';
+  const ctxWithSpacing = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+  if (typeof el.letter_spacing === 'number') ctxWithSpacing.letterSpacing = `${el.letter_spacing}px`;
 
-  const lines = (el.content || '').split('\n');
-  const lineHeight = fontSize * 1.25;
+  const rawContent = el.content || '';
+  const content = el.text_case === 'uppercase' ? rawContent.toUpperCase() : el.text_case === 'lowercase' ? rawContent.toLowerCase() : el.text_case === 'capitalize' ? rawContent.replace(/\b\w/g, (m) => m.toUpperCase()) : rawContent;
+  const lines = content.split('\n');
+  const lineHeight = fontSize * (el.line_height || 1.25);
   const totalHeight = lines.length * lineHeight;
+
 
   if (el.background) {
     const metrics = ctx.measureText(lines.reduce((a, b) => (a.length > b.length ? a : b), ''));
     ctx.fillStyle = el.background;
-    const padX = fontSize * 0.4;
-    const padY = fontSize * 0.25;
-    ctx.fillRect(-metrics.width / 2 - padX, -totalHeight / 2 - padY, metrics.width + padX * 2, totalHeight + padY * 2);
+    const padX = fontSize * (el.background_padding ?? 0.4);
+    const padY = fontSize * ((el.background_padding ?? 0.25) * 0.65);
+    const bx = -metrics.width / 2 - padX;
+    const by = -totalHeight / 2 - padY;
+    const bw = metrics.width + padX * 2;
+    const bh = totalHeight + padY * 2;
+    const radius = Math.max(0, el.background_radius ?? fontSize * 0.15);
+    if (radius > 0 && typeof ctx.roundRect === 'function') { ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, Math.min(radius, Math.min(bw, bh) / 2)); ctx.fill(); }
+    else ctx.fillRect(bx, by, bw, bh);
   }
-
   const isTypewriter = el.animation === 'typewriter';
   const isMaskWipe = el.animation === 'mask-wipe';
   /* Typewriter reveals characters at ~28 cps; other animations draw full text. */
@@ -870,20 +901,22 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     }
     if (el.stroke_color) {
       ctx.strokeStyle = el.stroke_color;
-      ctx.lineWidth = Math.max(2, fontSize / 12);
+      ctx.lineWidth = Math.max(1, el.stroke_width ?? fontSize / 12);
       ctx.strokeText(visibleLine, 0, y);
     }
     if (el.shadow) {
-      ctx.shadowColor = 'rgba(0,0,0,0.55)';
-      ctx.shadowBlur = fontSize / 5;
+      ctx.shadowColor = 'rgba(0,0,0,' + Math.max(0, Math.min(1, el.shadow_opacity ?? 0.55)) + ')';
+      ctx.shadowBlur = el.shadow_blur ?? fontSize / 5;
       ctx.shadowOffsetY = 2;
     } else {
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
     }
-    ctx.fillStyle = el.color || '#FFFFFF';
-    ctx.fillText(visibleLine, 0, y);
-    if (isTypewriter && i === lines.length - 1 && revealed < totalChars) {
+    if (el.text_effect === '3d') { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillText(visibleLine, 4, y + 4); }
+    if (el.text_effect === 'hollow') { ctx.strokeStyle = el.color || '#FFFFFF'; ctx.lineWidth = Math.max(1, el.stroke_width ?? 2); ctx.strokeText(visibleLine, 0, y); }
+    else if (el.text_effect === 'neon' || el.text_effect === 'glow') { ctx.shadowColor = el.color || '#FFFFFF'; ctx.shadowBlur = el.text_effect === 'neon' ? fontSize * 0.55 : fontSize * 0.35; ctx.fillStyle = el.color || '#FFFFFF'; ctx.fillText(visibleLine, 0, y); }
+    else if (el.text_effect === 'gradient') { const gradient = ctx.createLinearGradient(-fontSize * 2, y - fontSize, fontSize * 2, y + fontSize); gradient.addColorStop(0, el.color || '#FFFFFF'); gradient.addColorStop(1, '#FF8FA3'); ctx.fillStyle = gradient; ctx.fillText(visibleLine, 0, y); }
+    else { ctx.fillStyle = el.color || '#FFFFFF'; ctx.fillText(visibleLine, 0, y); }    if (isTypewriter && i === lines.length - 1 && revealed < totalChars) {
       /* Caret blinks at 2 Hz while typing. */
       if (Math.floor(timeIn * 4) % 2 === 0) {
         const caretX = ctx.measureText(visibleLine).width / 2 + 4;
@@ -1372,17 +1405,21 @@ export class VideoRenderer {
       const dur = clipDuration(clip);
       const eff = effectTransform(clip, timeIn, dur);
       try {
-        const video = await loadVideo(clip.src);
+        const image = clip.media_type === 'image' ? await loadImage(clip.src) : null;
+        const video = image ? null : await loadVideo(clip.src);
         const target = clip.reverse
           ? Math.max(clip.trimStart, sourceTime)
           : Math.min(sourceTime, Math.max(0, (clip.sourceDuration || 0) - 0.05));
-        if (video.readyState >= 2) {
+        const mediaReady = image ? image.complete : !!video && video.readyState >= 2;
+        if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
           const animatedClip = animated.scale === clip.transform.scale && animated.rotation === clip.transform.rotation && animated.offset_x === clip.transform.offset_x && animated.offset_y === clip.transform.offset_y
             ? clip
             : { ...clip, volume: animated.volume, transform: { ...clip.transform, scale: animated.scale, offset_x: animated.offset_x, offset_y: animated.offset_y, rotation: animated.rotation } };
-          const t = clipDrawRect(animatedClip, W, H, video.videoWidth, video.videoHeight, eff);
+          const mediaW = image ? image.naturalWidth : video!.videoWidth;
+          const mediaH = image ? image.naturalHeight : video!.videoHeight;
+          const t = clipDrawRect(animatedClip, W, H, mediaW, mediaH, eff);
 
           /* REVERSE, fast path: paint from the pre-built frame cache instead
              of seek-per-frame (~2.5 fps measured → unusable). Cache is built
@@ -1429,13 +1466,19 @@ export class VideoRenderer {
           }
 
           if (!paintedFromCache) {
-            await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+            if (video) {
+              await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+            }
             ctx.save();
             ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
             ctx.rotate((animated.rotation * Math.PI) / 180);
             ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
             ctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
-            ctx.drawImage(video, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
+            if (image) {
+              ctx.drawImage(image, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
+            } else {
+              ctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
+            }
             ctx.filter = 'none';
             ctx.restore();
           }
@@ -1642,7 +1685,7 @@ export class VideoRenderer {
           else if (isImageOverlay || /\.(gif|png|jpe?g|webp|avif)$/i.test(src)) await loadImage(src);
         } catch {
           const clip = scaled.clips.find((c) => c.src === src);
-          if (clip) failedClips.add(clip.name || 'clip');
+          if (clip && clip.media_type !== 'image') failedClips.add(clip.name || 'clip');
           else if (!isVideoOverlay && !isImageOverlay) {
             /* decorative asset the painter skips anyway — ignore */
           } else {
@@ -1795,7 +1838,7 @@ export class VideoRenderer {
         let clipStart = 0;
         for (const clip of scaled.clips) {
           const clipDurationSec = clipDuration(clip);
-          if (!clip.muted && clip.volume > 0 && !isPlaceholder(clip.src)) {
+          if (clip.media_type !== 'image' && !clip.muted && clip.volume > 0 && !isPlaceholder(clip.src)) {
             try {
               const res = await fetch(clip.src);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);

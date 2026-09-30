@@ -11,8 +11,15 @@ export type VideoAIOperation =
   | 'auto-reframe'
   | 'enhance'
   | 'generate-image'
+  | 'generate-video'
   | 'generate-voice'
-  | 'generate-music';
+  | 'clone-voice'
+  | 'convert-voice'
+  | 'style-transfer'
+  | 'relight'
+  | 'generate-music'
+  | 'auto-edit'
+  | 'recommend-effects';
 
 export interface AIJobInput {
   operation: VideoAIOperation;
@@ -1964,7 +1971,7 @@ export async function runVideoAI(
           >)
         : {};
 
-    const persistedVisionIndex = input.operation === 'assistant' && input.projectId && Array.isArray(input.visionFrames)
+    const persistedVisionIndex = (input.operation === 'assistant' || input.operation === 'auto-edit' || input.operation === 'recommend-effects') && input.projectId && Array.isArray(input.visionFrames)
       ? await updateProjectVisionIndex(supabase, auth.user.id, input.projectId, rawProject, input.visionFrames)
       : await loadProjectVisionIndex(supabase, auth.user.id, input.projectId);
 
