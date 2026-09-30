@@ -913,22 +913,36 @@ function VideoEditor() {
 
         setImporting({ name: file.name, percent: 10 });
         try {
-          // probe dimensions/duration before committing
-          const probeUrl = URL.createObjectURL(file);
-          const meta = await new Promise<{ duration: number; w: number; h: number }>((res, rej) => {
-            const el = document.createElement('video');
-            el.preload = 'metadata';
-            el.onloadedmetadata = async () => {
-              /* Infinity duration (webm/screen recordings, some phone mp4s)
-                 must be resolved BEFORE use, or the clip gets a nonsense trim
-                 range → black preview and broken exports. */
-              const dur = await normalizeVideoDuration(el);
-              res({ duration: dur || 5, w: el.videoWidth, h: el.videoHeight });
-            };
-            el.onerror = () => rej(new Error(`Unable to load video "${file.name}" — the file may be corrupt or in an unsupported format.`));
-            el.src = probeUrl;
-          });
-          URL.revokeObjectURL(probeUrl);
+          // Probe dimensions/duration before committing. Images are first-class
+          // main-track media, so they never pass through a <video> metadata probe.
+          let meta: { duration: number; w: number; h: number };
+          if (file.type.startsWith('image/')) {
+            const probeUrl = URL.createObjectURL(file);
+            try {
+              const image = new Image();
+              image.src = probeUrl;
+              await image.decode();
+              meta = { duration: 4, w: image.naturalWidth || 1080, h: image.naturalHeight || 1080 };
+            } finally {
+              URL.revokeObjectURL(probeUrl);
+            }
+          } else {
+            const probeUrl = URL.createObjectURL(file);
+            try {
+              meta = await new Promise<{ duration: number; w: number; h: number }>((res, rej) => {
+                const el = document.createElement('video');
+                el.preload = 'metadata';
+                el.onloadedmetadata = async () => {
+                  const dur = await normalizeVideoDuration(el);
+                  res({ duration: dur || 5, w: el.videoWidth, h: el.videoHeight });
+                };
+                el.onerror = () => rej(new Error(`Unable to load video "${file.name}" — the file may be corrupt or in an unsupported format.`));
+                el.src = probeUrl;
+              });
+            } finally {
+              URL.revokeObjectURL(probeUrl);
+            }
+          }
 
           /* DECODE PROBE — metadata can load for codecs the browser cannot
              decode (HEVC/H.265 phone videos are the classic case). Those files
@@ -991,23 +1005,25 @@ function VideoEditor() {
           setImporting(null);
 
           if (isImage) {
-            const img = new Image();
-            img.src = mediaUrl;
-            await img.decode().catch(() => undefined);
-            const iw = img.naturalWidth || 320;
-            const ih = img.naturalHeight || 240;
-            /* fit inside 60% of the canvas, keeping the image's real aspect */
-            const s = Math.min(1, (project.canvas.width * 0.6) / iw, (project.canvas.height * 0.6) / ih);
-            const w = Math.round(iw * s);
-            const h = Math.round(ih * s);
-            const el: TimelineElement = {
-              id: makeVideoId('el'), kind: 'image', content: file.name, src: mediaUrl, track_id: project.tracks[0]?.id,
-              start: playheadRef.current, end: playheadRef.current + 4,
-              x: Math.round((project.canvas.width - w) / 2), y: Math.round((project.canvas.height - h) / 2),
-              width: w, height: h, rotation: 0, opacity: 1, z: project.elements.length + 1,
-              animation: 'fade',
+            const firstMainMedia = !docRef.current.project.clips.length && !docRef.current.project.elements.length;
+            const clip: VideoClip = {
+              id: makeVideoId('clip'), src: mediaUrl, name: file.name,
+              sourceDuration: 4, trimStart: 0, trimEnd: 4, speed: 1, volume: 0, muted: true,
+              media_type: 'image',
+              source_width: meta.w || undefined, source_height: meta.h || undefined,
+              transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
+              filter: 'none', effect: 'ken-burns', effect_intensity: 0.55, reverse: false,
+              audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
             };
-            updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add image');
+            updateProject((p) => ({
+              ...p,
+              aspect: firstMainMedia ? 'original' : p.aspect,
+              canvas: firstMainMedia ? { width: meta.w, height: meta.h } : p.canvas,
+              clips: [...p.clips, clip],
+            }), 'Add image to main track');
+            setSelectedClipId(clip.id);
+            setSelectedElementId(null);
+            notify(firstMainMedia ? 'Image added — canvas matched the source orientation.' : 'Image added to the main track.');
           } else {
             const replacement = replaceClipId
               ? docRef.current.project.clips.find((c) => c.id === replaceClipId)
@@ -4755,7 +4771,7 @@ function VideoEditor() {
           <input
             ref={replaceInputRef}
             type="file"
-            accept="video/*"
+            accept="video/*,image/*"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -4964,7 +4980,7 @@ function VideoEditor() {
               <Upload className="h-5 w-5" /> Import raw video
               <input
                 type="file"
-                accept="video/*"
+                accept="video/*,image/*"
                 multiple
                 className="hidden"
                 onChange={(e) => e.target.files && void importFiles(e.target.files)}
