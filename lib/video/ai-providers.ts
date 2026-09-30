@@ -62,8 +62,8 @@ async function huggingFace(input: AIJobInput): Promise<AIResult> {
     const message = await response.text().catch(() => '');
     throw new Error(message || `Hugging Face request failed (${response.status}).`);
   }
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
+  const responseContentType = response.headers.get('content-type') || '';
+  if (responseContentType.includes('application/json')) {
     const data = await response.json().catch(() => ({}));
     return { operation: input.operation, provider: 'huggingface', output: data };
   }
@@ -73,7 +73,7 @@ async function huggingFace(input: AIJobInput): Promise<AIResult> {
     provider: 'huggingface',
     output: {
       bytesBase64: Buffer.from(bytes).toString('base64'),
-      contentType,
+      contentType: responseContentType,
       model,
     },
   };
