@@ -1184,7 +1184,7 @@ function VideoEditor() {
   }, [narrationClearWindow]);
 
   const applyAIActions = useCallback(async (actions: VideoAIEditAction[]) => {
-    if (!actions.length) return;
+    if (!actions.length) return { applied: 0, failed: [] as string[] };
 
     /* 'all' targets mean one shared decision applied to every clip
        (e.g. a unified color grade). Expanding them here keeps the AI's
@@ -1200,7 +1200,37 @@ function VideoEditor() {
       }
     }
 
-    const safeActions = expanded.slice(0, 64);
+    const requestedActions = expanded.slice(0, 64);
+    const clipTargetActions = new Set<VideoAIEditAction['type']>([
+      'set_clip_speed', 'set_clip_volume', 'set_clip_mute', 'set_clip_filter',
+      'set_clip_effect', 'set_clip_transition', 'trim_clip', 'transform_clip',
+      'set_clip_adjustments', 'fit_clip', 'delete_clip', 'duplicate_clip',
+      'set_keyframe',
+    ]);
+    const elementTargetActions = new Set<VideoAIEditAction['type']>([
+      'transform_element', 'set_element_opacity', 'delete_element', 'retime_element',
+    ]);
+    const actionFailures: string[] = [];
+    const applicableActions = requestedActions.filter((action) => {
+      if (clipTargetActions.has(action.type) && action.type !== 'set_keyframe' && !action.clipId) {
+        actionFailures.push(`${action.type}: no target clip`);
+        return false;
+      }
+      if (elementTargetActions.has(action.type) && !action.elementId) {
+        actionFailures.push(`${action.type}: no target overlay`);
+        return false;
+      }
+      if (action.clipId && !docRef.current.project.clips.some((clip) => clip.id === action.clipId) && action.type !== 'split_clip') {
+        actionFailures.push(`${action.type}: target clip no longer exists`);
+        return false;
+      }
+      if (action.elementId && !docRef.current.project.elements.some((element) => element.id === action.elementId)) {
+        actionFailures.push(`${action.type}: target overlay no longer exists`);
+        return false;
+      }
+      return true;
+    });
+    const safeActions = applicableActions.slice(0, 64);
 
     /* Plan horizon — the furthest point this batch of actions intends to
        reach. On an (near-)empty timeline projectDuration() is ~0, and
@@ -1716,7 +1746,12 @@ function VideoEditor() {
       if (action.type === 'duplicate_clip' && action.clipId) setSelectedClipId(action.clipId);
     }
 
-    notify(`Applied ${safeActions.length} AI edit ${safeActions.length === 1 ? 'change' : 'changes'}.`);
+    if (safeActions.length > 0) {
+      notify(`Applied ${safeActions.length} AI edit ${safeActions.length === 1 ? 'change' : 'changes'}.`);
+    } else if (actionFailures.length) {
+      notify('No AI timeline changes were applied.');
+    }
+    return { applied: safeActions.length, failed: actionFailures };
   }, [notify, updateProject]);
 
   const moveClip = (id: string, dir: -1 | 1) => {
