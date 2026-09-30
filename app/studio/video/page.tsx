@@ -2417,9 +2417,13 @@ function VideoEditor() {
     if (selection.owner === 'clip') {
       const clip = docRef.current.project.clips.find((item) => item.id === selection.ownerId);
       if (!clip) return;
+      const map = { ...(clip.keyframes || {}) };
+      const list = (map[selection.prop] || []).filter((item) => item.id !== selection.keyframeId);
+      if (list.length) map[selection.prop] = list;
+      else delete map[selection.prop];
       updateClip(
         clip.id,
-        { keyframes: removeKeyframe({ id: clip.id, kind: 'video', content: '', src: clip.src, start: 0, end: clipDuration(clip), x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1, z: 1, keyframes: clip.keyframes }, selection.prop, selection.keyframeId) },
+        { keyframes: Object.keys(map).length ? map : undefined },
         'Delete keyframe',
         `timeline-kf-${selection.ownerId}-${selection.prop}`
       );
