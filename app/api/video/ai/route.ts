@@ -50,13 +50,14 @@ export async function POST(request: Request) {
           }
           if (conversationId) {
             const { error: msgError } = await db.from('video_ai_messages').insert([
-              { conversation_id: conversationId, user_id: userId, role: 'user', content: String(body.prompt || '').slice(0, 4000), context: {} },
+              { conversation_id: conversationId, user_id: userId, role: 'user', content: String(body.prompt || '').slice(0, 4000), context: {}, actions: [], tool_calls: [] },
               {
                 conversation_id: conversationId,
                 user_id: userId,
                 role: 'assistant',
                 content: String((result.output as { message?: unknown } | null)?.message || '').slice(0, 4000),
                 actions: Array.isArray((result.output as { actions?: unknown[] } | null)?.actions) ? (result.output as { actions: unknown[] }).actions.slice(0, 24) : [],
+                tool_calls: [],
                 context: { provider: result.provider || null },
               },
             ]);
