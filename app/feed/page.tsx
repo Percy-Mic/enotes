@@ -63,14 +63,27 @@ export default function FeedPage() {
       if (event.key === 'Escape') closePickers();
     };
 
+    /* Scrolling INSIDE the emoji/GIF grid must not close the drawer (same
+       bug the comment thread had): the capture listener used to catch the
+       grid's own scroll. Page scrolls only matter on ≥sm, where the drawer
+       is anchor-positioned and would visually detach — on phones it is
+       viewport-fixed and the keyboard-opening scroll when tapping search
+       must NOT close it. */
+    const onScroll = (event: Event) => {
+      const target = event.target as Node | null;
+      if (composerPickerRef.current && target && composerPickerRef.current.contains(target)) return;
+      if (!window.matchMedia('(min-width: 640px)').matches) return;
+      closePickers();
+    };
+
     document.addEventListener('pointerdown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
-    window.addEventListener('scroll', closePickers, true);
+    window.addEventListener('scroll', onScroll, true);
 
     return () => {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('scroll', closePickers, true);
+      window.removeEventListener('scroll', onScroll, true);
     };
   }, [showEmoji, showGif]);
 
