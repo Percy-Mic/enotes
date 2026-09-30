@@ -84,6 +84,8 @@ export interface VideoClip {
   volume: number;                // 0-1 (original audio)
   muted: boolean;
   reverse?: boolean;
+  /** Main-track media kind. Images use the same timeline/transform pipeline and hold for sourceDuration. */
+  media_type?: 'video' | 'image';
   audioProcessing?: AudioProcessing;
   track_id?: string;
   transform: ClipTransform;
@@ -345,6 +347,15 @@ export interface TimelineElement {
   background?: string | null;
   stroke_color?: string | null;
   shadow?: boolean;
+  stroke_width?: number;
+  shadow_blur?: number;
+  shadow_opacity?: number;
+  background_radius?: number;
+  background_padding?: number;
+  letter_spacing?: number;
+  line_height?: number;
+  text_case?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  text_effect?: 'none' | 'neon' | 'outline' | 'glow' | '3d' | 'hollow' | 'gradient' | 'retro' | 'glitch';
   animation?: 'none' | 'fade' | 'pop' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'bounce' | 'typewriter' | 'shake' | 'blur-in' | 'rotate-in' | 'elastic' | 'mask-wipe';
   // Optional video-overlay fields kept for backward-compatible project JSON.
   media_type?: string;
@@ -510,6 +521,7 @@ export function normalizeProject(input: unknown): VideoProject {
     return {
       id: String(clip.id || makeVideoId('clip')), src: String(clip.src || ''), name: String(clip.name || 'Untitled clip'),
       sourceDuration, trimStart, trimEnd, speed: Math.max(0.05, Number(clip.speed) || 1),
+      media_type: clip.media_type === 'image' ? 'image' : 'video',
       volume: Math.max(0, Math.min(1, clip.volume == null ? 1 : Number(clip.volume))), muted: Boolean(clip.muted),
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
       effect: (clip.effect || 'none') as EffectType,
@@ -544,7 +556,17 @@ export function normalizeProject(input: unknown): VideoProject {
       ...(el.font_weight != null ? { font_weight: Number(el.font_weight) } : {}), ...(el.color ? { color: String(el.color) } : {}),
       ...(el.align ? { align: el.align as TimelineElement['align'] } : {}), ...(el.background !== undefined ? { background: el.background as string | null } : {}),
       ...(el.stroke_color !== undefined ? { stroke_color: el.stroke_color as string | null } : {}),
-      ...(el.shadow !== undefined ? { shadow: Boolean(el.shadow) } : {}), ...(el.animation ? { animation: el.animation as TimelineElement['animation'] } : {}),
+      ...(el.shadow !== undefined ? { shadow: Boolean(el.shadow) } : {}),
+      ...(el.stroke_width != null ? { stroke_width: Number(el.stroke_width) } : {}),
+      ...(el.shadow_blur != null ? { shadow_blur: Number(el.shadow_blur) } : {}),
+      ...(el.shadow_opacity != null ? { shadow_opacity: Number(el.shadow_opacity) } : {}),
+      ...(el.background_radius != null ? { background_radius: Number(el.background_radius) } : {}),
+      ...(el.background_padding != null ? { background_padding: Number(el.background_padding) } : {}),
+      ...(el.letter_spacing != null ? { letter_spacing: Number(el.letter_spacing) } : {}),
+      ...(el.line_height != null ? { line_height: Number(el.line_height) } : {}),
+      ...(el.text_case ? { text_case: el.text_case as TimelineElement['text_case'] } : {}),
+      ...(el.text_effect ? { text_effect: el.text_effect as TimelineElement['text_effect'] } : {}),
+      ...(el.animation ? { animation: el.animation as TimelineElement['animation'] } : {}),
       ...(el.media_type ? { media_type: String(el.media_type) } : {}), ...(el.source_duration != null ? { source_duration: Number(el.source_duration) } : {}),
       ...(el.trim_start != null ? { trim_start: Number(el.trim_start) } : {}), ...(el.trim_end != null ? { trim_end: Number(el.trim_end) } : {}),
       ...(el.speed != null ? { speed: Number(el.speed) } : {}), ...(el.volume != null ? { volume: Number(el.volume) } : {}),
