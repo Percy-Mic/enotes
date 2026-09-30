@@ -1233,12 +1233,25 @@ function VideoEditor() {
           }
           const safeStart = Number.isFinite(start) ? Math.max(0, start) : playheadRef.current;
           const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(planCeiling, end)) : Math.min(planCeiling, safeStart + 3);
+          /* Lane assignment: put this cue on the first overlay track with no
+             time overlap, so simultaneous AI texts sit on separate lanes
+             instead of piling onto one crowded row. All lanes busy → add one. */
+          const laneHasOverlap = (laneId: string) =>
+            nextProject.elements.some((el) =>
+              (el.track_id || nextProject.tracks[0]?.id) === laneId &&
+              safeStart < el.end && el.start < safeEnd,
+            );
+          let cueLaneId = nextProject.tracks.find((track) => track.kind === 'overlay' && !laneHasOverlap(track.id))?.id;
+          if (!cueLaneId) {
+            nextProject = addTimelineTrack(nextProject, undefined, 'element');
+            cueLaneId = nextProject.tracks[nextProject.tracks.length - 1]?.id;
+          }
           const element: TimelineElement = {
             id: makeVideoId('ai-text'),
             kind: 'text',
             content: String(obj.text || 'Your message'),
             src: null,
-            track_id: nextProject.tracks.find((track) => track.kind === 'overlay')?.id || nextProject.tracks[0]?.id,
+            track_id: cueLaneId || nextProject.tracks.find((track) => track.kind === 'overlay')?.id || nextProject.tracks[0]?.id,
             start: safeStart,
             end: Math.max(safeStart + 0.25, safeEnd),
             x: Number.isFinite(Number(obj.x)) ? Number(obj.x) : nextProject.canvas.width * 0.08,
@@ -1899,6 +1912,52 @@ function VideoEditor() {
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
   };
+
+  /* ---------- timeline panning (desktop) ----------
+     The scrollbar is intentionally hidden (no-scrollbar), so mouse users get
+     explicit panning: horizontal-wheel and Shift+wheel pan directly, a plain
+     vertical wheel converts to horizontal travel once the lanes can't scroll
+     further vertically, and dragging empty timeline space pans (a still tap
+     remains a seek via laneTapSeek). */
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth + 1) return;
+      const horizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      const atTop = el.scrollTop <= 0;
+      const atBottom = el.scrollTop >= el.scrollHeight - el.clientHeight - 1;
+      if (horizontal || e.shiftKey || (e.deltaY > 0 && atBottom) || (e.deltaY < 0 && atTop)) {
+        e.preventDefault();
+        el.scrollLeft += horizontal ? e.deltaX : e.deltaY;
+      }
+    };
+    let panStart: { x: number; scrollLeft: number } | null = null;
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType === 'touch') return; /* touch already scrolls natively */
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-timeline-item],[data-timeline-handle],button,[role="slider"]')) return;
+      panStart = { x: e.clientX, scrollLeft: el.scrollLeft };
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!panStart) return;
+      if (Math.abs(e.clientX - panStart.x) > 3) el.scrollLeft = panStart.scrollLeft - (e.clientX - panStart.x);
+    };
+    const onUp = () => { panStart = null; };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ---------- main-track clip gestures ---------- */
 
