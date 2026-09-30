@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Loader2, Mic, Pause, Play, Plus, Send, Smile, Sticker, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { searchEmojis } from '@/lib/assets';
 import EmojiPicker, { rememberEmoji } from '@/components/pickers/EmojiPicker';
 import GifPicker, { type GifItem } from '@/components/pickers/GifPicker';
 import StickerPicker from '@/components/pickers/StickerPicker';
@@ -257,9 +258,57 @@ export default function ChatComposer({ conversationId, myId, replyingTo, onCance
     }
   };
 
+  /* ---------- :keyword emoji suggestions (as you type) ---------- */
+  const [emojiSuggestions, setEmojiSuggestions] = useState<string[]>([]);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [suggestionQuery, setSuggestionQuery] = useState('');
+  const suggestionStashRef = useRef<string[] | null>(null);
+
+  useEffect(() => {
+    const match = /(?:^|\s):([a-z_0-9]{2,24})$/.exec(draft);
+    if (!match) {
+      setEmojiSuggestions([]);
+      return;
+    }
+    setSuggestionQuery(match[1]);
+    setEmojiSuggestions(searchEmojis(match[1], 6));
+    setActiveSuggestion(0);
+  }, [draft]);
+
+  const acceptSuggestion = (emoji: string) => {
+    persistDraft(draft.replace(/:[a-z_0-9]{2,24}$/, emoji + ' '));
+    rememberEmoji(emoji);
+    setEmojiSuggestions([]);
+    textareaRef.current?.focus();
+  };
+
   /* Enter sends, Shift+Enter makes a newline (desktop behavior;
-     touch keyboards keep their native action + green send button) */
+     touch keyboards keep their native action + green send button).
+     When a :keyword suggestion strip is up, keys drive it instead:
+     arrows move, Enter/Tab accepts, Escape dismisses. */
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (emojiSuggestions.length > 0) {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveSuggestion((i) => (i + 1) % emojiSuggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveSuggestion((i) => (i - 1 + emojiSuggestions.length) % emojiSuggestions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        acceptSuggestion(emojiSuggestions[activeSuggestion] || emojiSuggestions[0]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setEmojiSuggestions([]);
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       const coarse = window.matchMedia?.('(pointer: coarse)').matches;
       if (!coarse) {
@@ -298,7 +347,9 @@ export default function ChatComposer({ conversationId, myId, replyingTo, onCance
     });
   };
 
+  /* Also clear any stale suggestion strip when a picker emoji is used. */
   const insertEmoji = (emoji: string) => {
+    setEmojiSuggestions([]);
     rememberEmoji(emoji);
     persistDraft(draft + emoji);
     textareaRef.current?.focus();
@@ -377,6 +428,29 @@ export default function ChatComposer({ conversationId, myId, replyingTo, onCance
           {error}
           <button type="button" onClick={() => setError(null)} className="ml-2 font-bold underline">dismiss</button>
         </p>
+      )}
+
+      {/* :keyword emoji suggestions -- type a colon word and tap/Enter an
+          emoji; the keyword is replaced in place. Hidden while a picker
+          is open; the last non-empty set is kept for key handling while
+          a picker closes. */}
+      {emojiSuggestions.length > 0 && panel === 'none' && (
+        <div className="mx-auto mb-1.5 flex max-w-2xl items-center gap-1.5 overflow-x-auto rounded-xl border border-[#E8E2E4] bg-[#FFF7F8] p-1.5" role="listbox" aria-label="Emoji suggestions">
+          <span className="shrink-0 pl-1 text-[10px] font-bold uppercase tracking-wider text-[#9B9B9B]">:{suggestionQuery}</span>
+          {emojiSuggestions.map((emoji, i) => (
+            <button
+              key={emoji}
+              type="button"
+              role="option"
+              aria-selected={i === activeSuggestion}
+              onClick={() => acceptSuggestion(emoji)}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-2xl transition ${i === activeSuggestion ? 'bg-[#FFE4EC] ring-2 ring-[#E5798F]' : 'hover:bg-white'}`}
+              aria-label={`Insert ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* Mobile (< sm): everything that must stay reachable sits in a tight
@@ -543,7 +617,8 @@ export default function ChatComposer({ conversationId, myId, replyingTo, onCance
 
       {/* desktop hint */}
       <p className="mx-auto mt-1 hidden max-w-2xl text-right text-[10px] text-[#9B9B9B] sm:block">
-        <kbd className="rounded border px-1">Enter</kbd> to send · <kbd className="rounded border px-1">Shift+Enter</kbd> for a new line
+        <kbd className="rounded border px-1">Enter</kbd> to send · <kbd className="rounded border px-1">Shift+Enter</kbd> for a new line · type
+        <kbd className="mx-1 rounded border px-1">:keyword</kbd> for emoji suggestions
       </p>
     </form>
   );

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Smile } from 'lucide-react';
-import { EMOJI_GROUPS, EMOJI_KEYWORDS, type EmojiCategory } from '@/lib/assets';
+import { EMOJI_GROUPS, searchEmojis, type EmojiCategory } from '@/lib/assets';
 
 const RECENTS_KEY = 'enotes:recent-emojis';
 const MAX_RECENTS = 24;
@@ -50,41 +50,11 @@ export default function EmojiPicker({ onPick, className = '' }: EmojiPickerProps
     }
   }, []);
 
+  /* Ranked search lives in lib/assets (shared with the composer's
+     as-you-type suggestions) -- this keeps a bigger cap for browsing. */
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return null;
-
-    /*
-     * Real keyword search first ('laugh' → 😂), then word prefixes and
-     * substrings, then category labels and the glyph itself so every emoji
-     * stays reachable even without a keyword entry.
-     */
-    const ranked: string[] = [];
-    const push = (emojis: string[] | undefined) => {
-      if (!emojis) return;
-      for (const e of emojis) if (!ranked.includes(e)) ranked.push(e);
-    };
-
-    push(EMOJI_KEYWORDS[q]);
-    for (const [word, emojis] of Object.entries(EMOJI_KEYWORDS)) {
-      if (word !== q && word.startsWith(q)) push(emojis);
-    }
-    if (q.length >= 3) {
-      for (const [word, emojis] of Object.entries(EMOJI_KEYWORDS)) {
-        if (word !== q && !word.startsWith(q) && word.includes(q)) push(emojis);
-      }
-    }
-    const matches = EMOJI_GROUPS
-      .filter((group) => group.label.toLowerCase().includes(q))
-      .flatMap((group) => group.emojis);
-    push(matches);
-
-    const glyphMatches = EMOJI_GROUPS
-      .flatMap((group) => group.emojis)
-      .filter((emoji) => emoji.toLowerCase().includes(q));
-    push(glyphMatches);
-
-    return ranked.slice(0, 120);
+    const results = searchEmojis(query, 120);
+    return results.length > 0 ? results : null;
   }, [query]);
 
   const pick = (emoji: string) => {

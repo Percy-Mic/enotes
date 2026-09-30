@@ -568,6 +568,35 @@ export const EMOJI_KEYWORDS: Record<string, string[]> = {
   vegetables: ['🥕', '🥦', '🌽'], vehicles: ['🚗', '✈️'], sports: ['⚽', '🏀'], weather: ['☀️', '🌧️'],
 };
 
+/* Ranked emoji search shared by the picker and the composer's as-you-type
+   suggestions: exact keyword -> word prefixes -> substrings (>=3 chars) ->
+   category label -> glyph. Single source of truth so both surfaces stay
+   in sync as the index grows. */
+export function searchEmojis(query: string, limit = 12): string[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+
+  const ranked: string[] = [];
+  const push = (emojis: string[] | undefined) => {
+    if (!emojis) return;
+    for (const e of emojis) if (!ranked.includes(e)) ranked.push(e);
+  };
+
+  push(EMOJI_KEYWORDS[q]);
+  for (const [word, emojis] of Object.entries(EMOJI_KEYWORDS)) {
+    if (word !== q && word.startsWith(q)) push(emojis);
+  }
+  if (q.length >= 3) {
+    for (const [word, emojis] of Object.entries(EMOJI_KEYWORDS)) {
+      if (word !== q && !word.startsWith(q) && word.includes(q)) push(emojis);
+    }
+  }
+  push(EMOJI_GROUPS.filter((group) => group.label.toLowerCase().includes(q)).flatMap((group) => group.emojis));
+  push(EMOJI_GROUPS.flatMap((group) => group.emojis).filter((emoji) => emoji.toLowerCase().includes(q)));
+
+  return ranked.slice(0, limit);
+}
+
 /* ============================================================
    CHAT THEMES — predefined palette users can apply to
    conversations (persisted per user + conversation).
