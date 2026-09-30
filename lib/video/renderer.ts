@@ -1,3 +1,4 @@
+import type { MaskSpec } from '@/lib/video/project';
 import { drawAdvancedEffectStack } from '@/lib/video/advanced-effects';
 /* ============================================================
    Video export renderer — the part that makes the editor REAL.
@@ -481,6 +482,50 @@ function nearestReverseFrame(entry: ReverseCacheEntry, t: number): ReverseFrame 
 }
 
 const imageCache = new Map<string, HTMLImageElement>();
+
+function clipMaskPath(ctx: CanvasRenderingContext2D, mask: MaskSpec, W: number, H: number) {
+  const amount = Math.max(0, Math.min(1, mask.amount ?? 0.5));
+  const cx = W / 2, cy = H / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(((mask.rotation || 0) * Math.PI) / 180);
+  ctx.beginPath();
+  if (mask.shape === 'ellipse') {
+    ctx.ellipse(0, 0, W * (0.5 * Math.max(.05, amount)), H * .5, 0, 0, Math.PI * 2);
+  } else if (mask.shape === 'rectangle') {
+    const w = W * Math.max(.05, amount), h = H * Math.max(.05, amount);
+    ctx.rect(-w / 2, -h / 2, w, h);
+  } else if (mask.shape === 'split') {
+    const x = -W / 2 + W * amount;
+    ctx.rect(-W / 2, -H / 2, W * amount, H);
+  } else if (mask.shape === 'shutter') {
+    const gap = H * .5 * amount;
+    ctx.rect(-W / 2, -gap, W, gap);
+    ctx.rect(-W / 2, 0, W, gap);
+  } else {
+    ctx.rect(-W / 2, -H / 2, W, H);
+  }
+  ctx.closePath();
+  ctx.restore();
+  return true;
+}
+
+function applyMaskClip(ctx: CanvasRenderingContext2D, mask: MaskSpec | undefined, W: number, H: number) {
+  if (!mask || mask.shape === 'none') return false;
+  ctx.save();
+  ctx.translate(W / 2, H / 2);
+  ctx.rotate(((mask.rotation || 0) * Math.PI) / 180);
+  const amount = Math.max(0, Math.min(1, mask.amount ?? 0.5));
+  ctx.beginPath();
+  if (mask.shape === 'ellipse') ctx.ellipse(0, 0, W * .5 * amount, H * .5 * amount, 0, 0, Math.PI * 2);
+  else if (mask.shape === 'rectangle') ctx.rect(-W * .5 * amount, -H * .5 * amount, W * amount, H * amount);
+  else if (mask.shape === 'split') ctx.rect(-W/2, -H/2, W*amount, H);
+  else if (mask.shape === 'shutter') { const gap=H*.5*amount; ctx.rect(-W/2,-gap,W,gap); ctx.rect(-W/2,0,W,gap); }
+  else ctx.rect(-W/2,-H/2,W,H);
+  if (mask.invert) { ctx.rect(-W/2,-H/2,W,H); }
+  ctx.clip();
+  return true;
+}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(src);
@@ -1475,11 +1520,13 @@ export class VideoRenderer {
             ctx.rotate((animated.rotation * Math.PI) / 180);
             ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
             ctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
+            const maskSaved = applyMaskClip(ctx, clip.transform.mask, W, H);
             if (image) {
               ctx.drawImage(image, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
             } else {
               ctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
             }
+            if (maskSaved) ctx.restore();
             ctx.filter = 'none';
             ctx.restore();
           }
