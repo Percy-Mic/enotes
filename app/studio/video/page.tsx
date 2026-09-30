@@ -2542,7 +2542,7 @@ function VideoEditor() {
       const width = Math.min(project.canvas.width * 0.55, Math.max(180, meta.w || 640));
       const height = width * ((meta.h || 360) / Math.max(1, meta.w || 640));
       const el: TimelineElement = {
-        id: makeVideoId('el'), kind: 'video', content: file.name, src: up.url, media_type: 'video', track_id: project.tracks[0]?.id,
+        id: makeVideoId('el'), kind: 'video', content: file.name, src: mediaUrl, media_type: 'video', track_id: project.tracks[0]?.id,
         source_duration: meta.duration, trim_start: 0, trim_end: Math.min(meta.duration, durationForLayer), speed: 1, volume: 1, muted: true, object_fit: 'contain',
         start: playheadRef.current, end: Math.min(duration, playheadRef.current + durationForLayer),
         x: (project.canvas.width - width) / 2, y: (project.canvas.height - height) / 2, width, height, rotation: 0, opacity: 1, z: project.elements.length + 1, animation: 'fade',
