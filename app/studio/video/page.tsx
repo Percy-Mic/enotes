@@ -5845,17 +5845,17 @@ function VideoEditor() {
                   <LookPreview project={project} clipId={selectedClip.id} playhead={playhead} filter={lookPreviewFilter ?? selectedClip.filter} effect={selectedClip.effect} />
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     {FILTER_PRESETS.map((f) => (
-                      <button key={f.id}
-                        onMouseEnter={() => setLookPreviewFilter(f.id)} onMouseLeave={() => setLookPreviewFilter(null)}
-                        onFocus={() => setLookPreviewFilter(f.id)} onBlur={() => setLookPreviewFilter(null)}
-                        onClick={() => updateClip(selectedClip.id, { filter: f.id }, 'Apply filter')}
-                        aria-pressed={selectedClip.filter === f.id}
-                        className={`group overflow-hidden rounded-xl border p-1 text-left transition ${selectedClip.filter === f.id ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
-                        <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-                          <canvas data-filter-preview={f.id} className="block h-full w-full object-cover" />
-                          <span className="absolute bottom-1 left-1 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-semibold">{f.name}</span>
-                        </div>
-                      </button>
+                      <FilterPreviewCard
+                        key={f.id}
+                        project={project}
+                        clipId={selectedClip.id}
+                        playhead={playhead}
+                        filter={f.id}
+                        active={selectedClip.filter === f.id}
+                        onHover={() => setLookPreviewFilter(f.id)}
+                        onLeave={() => setLookPreviewFilter(null)}
+                        onApply={() => updateClip(selectedClip.id, { filter: f.id }, 'Apply filter')}
+                      />
                     ))}
                   </div>
                 </div>
