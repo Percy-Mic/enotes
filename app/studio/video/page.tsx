@@ -395,6 +395,7 @@ function VideoEditor() {
   const [clipSpeedMenuOpen, setClipSpeedMenuOpen] = useState(false);
   const [frameMode, setFrameMode] = useState<'motion' | 'layer' | 'ai-drawing' | 'ai-portrait'>('motion');
   const [beatBusy, setBeatBusy] = useState(false);
+  const [aiQuickBusy, setAiQuickBusy] = useState<string | null>(null);
   const openTool = useCallback((next: Tool) => {
     setTool(next);
     setToolDrawerOpen(true);
@@ -472,6 +473,71 @@ function VideoEditor() {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
   }, []);
+
+  const runQuickAI = useCallback(async (operation: string) => {
+    const source = selectedClip?.src || selectedElement?.src || null;
+    const mediaType = selectedClip?.media_type === 'image' || selectedElement?.kind === 'image' ? 'image' : selectedClip || selectedElement?.kind === 'video' ? 'video' : null;
+    if (!source && !['generate-image', 'generate-video'].includes(operation)) {
+      notify('Select a video or image first.');
+      return;
+    }
+    setAiQuickBusy(operation);
+    try {
+      const response = await fetch('/api/video/ai', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ operation, projectId, project, mediaUrl: source, mediaType }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || 'The AI operation failed.');
+      const findUrl = (value: unknown): string | null => {
+        if (typeof value === 'string' && /^https?:\\/\\//i.test(value)) return value;
+        if (Array.isArray(value)) { for (const item of value) { const found = findUrl(item); if (found) return found; } }
+        if (value && typeof value === 'object') { for (const item of Object.values(value as Record<string, unknown>)) { const found = findUrl(item); if (found) return found; } }
+        return null;
+      };
+      const url = findUrl(data?.output);
+      if (!url) {
+        notify('AI finished, but the provider returned no directly importable media URL.');
+        return;
+      }
+      if (operation === 'generate-image' || operation === 'remove-background' || operation === 'style-transfer' || operation === 'relight') {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = url;
+        await img.decode().catch(() => undefined);
+        const w = img.naturalWidth || project.canvas.width;
+        const h = img.naturalHeight || project.canvas.height;
+        const clip: VideoClip = {
+          id: makeVideoId('ai-clip'), src: url, name: 'AI · ' + operation, sourceDuration: 4, trimStart: 0, trimEnd: 4,
+          speed: 1, volume: 0, muted: true, media_type: 'image', source_width: w, source_height: h,
+          transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none',
+          effect_intensity: 1, reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
+        };
+        updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add AI media');
+        setSelectedClipId(clip.id); setSelectedElementId(null);
+        notify('AI result added to the main track.');
+      } else if (operation === 'generate-video' || operation === 'remove-object' || operation === 'track-object') {
+        if (!selectedClip) { notify('Select a main-track clip to apply this AI video result.'); return; }
+        updateClip(selectedClip.id, { src: url, media_type: 'video', name: 'AI · ' + operation, reverse: false }, 'Apply AI video result');
+        notify('AI video result applied to the selected clip.');
+      } else if (operation === 'clone-voice' || operation === 'convert-voice' || operation === 'generate-voice' || operation === 'generate-music') {
+        const track: AudioTrack = {
+          id: makeVideoId('ai-aud'), name: 'AI · ' + operation, src: url,
+          track_id: project.tracks.find((t) => t.kind === 'audio')?.id, start: playheadRef.current, sourceDuration: 15,
+          trimStart: 0, trimEnd: 15, volume: 1, fadeIn: 0, fadeOut: 0,
+          kind: operation === 'generate-music' ? 'music' : 'voiceover',
+        };
+        updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'Add AI audio');
+        setSelectedAudioId(track.id);
+        notify('AI audio added to the timeline.');
+      }
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'AI operation failed.');
+    } finally {
+      setAiQuickBusy(null);
+    }
+  }, [projectId, project, selectedClip, selectedElement, notify, updateProject, updateClip]);
 
   /* ---------- auth ---------- */
   useEffect(() => {
@@ -5167,7 +5233,28 @@ function VideoEditor() {
         )}
 
         {tool === 'ai' && (
-          <VideoAIStudio
+          <>
+            <div className="mb-3 rounded-2xl border border-[#E5798F]/25 bg-[#E5798F]/[0.06] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold">AI Effects & Generation</p>
+                  <p className="text-[9px] text-white/40">Configured providers · results can be inserted into the live timeline.</p>
+                </div>
+                <Sparkles className="h-4 w-4 text-[#FFB6C1]" />
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  ['remove-background','Remove BG'],['remove-object','Remove Object'],['style-transfer','Style Transfer'],['relight','AI Relight'],
+                  ['generate-video','Generate Video'],['generate-image','Generate Image'],['clone-voice','Clone Voice'],['convert-voice','Voice Convert'],
+                ].map(([op,label]) => (
+                  <button key={op} type="button" onClick={() => void runQuickAI(op)} disabled={!!aiQuickBusy}
+                    className="rounded-xl border border-white/10 bg-white/[0.045] px-2.5 py-2 text-left text-[10px] font-semibold text-white/75 transition hover:bg-white/[0.08] disabled:opacity-45">
+                    {aiQuickBusy === op ? 'Working…' : label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <VideoAIStudio
             projectId={projectId}
             project={project}
             selectedMediaUrl={selectedClip?.src || selectedElement?.src || null}
@@ -5319,6 +5406,7 @@ function VideoEditor() {
               notify(`Added ${created.length} AI captions to the timeline.`);
             }}
           />
+          </>
         )}
 
         {tool === 'overlays' && (
