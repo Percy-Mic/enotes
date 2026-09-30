@@ -483,6 +483,36 @@ function VideoEditor() {
     window.setTimeout(() => setToast(null), 2600);
   }, []);
 
+  /* ---------- project mutations (through history) ---------- */
+  const updateProject = useCallback(
+    (fn: (p: VideoProject) => VideoProject, label: string, coalesceKey?: string) => {
+      setDoc(
+        (prev) => ({ ...prev, project: fn(prev.project) }),
+        label,
+        coalesceKey
+      );
+    },
+    [setDoc]
+  );
+
+  const updateClip = useCallback(
+    (clipId: string, patch: Partial<VideoClip>, label: string, coalesceKey?: string) => {
+      updateProject(
+        (p) => ({ ...p, clips: p.clips.map((c) => (c.id === clipId ? { ...c, ...patch } : c)) }),
+        label,
+        coalesceKey
+      );
+      /* Editing a REVERSED clip invalidates its cached frames: trim/speed
+         changes alter the sampled range, filter/adjustment/flip changes alter
+         what each frame should look like (the cache stores painted-looking
+         source pixels only). Cache misses fall back to the seek path, so
+         this is always safe. */
+      const target = docRef.current?.project.clips.find((c) => c.id === clipId);
+      if (target?.reverse) invalidateReversedCache(target.src);
+    },
+    [updateProject]
+  );
+
   const runQuickAI = useCallback(async (operation: string) => {
     const source = selectedClip?.src || selectedElement?.src || null;
     const mediaType = selectedClip?.media_type === 'image' || selectedElement?.kind === 'image' ? 'image' : selectedClip || selectedElement?.kind === 'video' ? 'video' : null;
@@ -1017,36 +1047,6 @@ function VideoEditor() {
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedElementId, selectedClipId, selectedClip, saveNow, seekTo, cropMode]);
-
-  /* ---------- project mutations (through history) ---------- */
-  const updateProject = useCallback(
-    (fn: (p: VideoProject) => VideoProject, label: string, coalesceKey?: string) => {
-      setDoc(
-        (prev) => ({ ...prev, project: fn(prev.project) }),
-        label,
-        coalesceKey
-      );
-    },
-    [setDoc]
-  );
-
-  const updateClip = useCallback(
-    (clipId: string, patch: Partial<VideoClip>, label: string, coalesceKey?: string) => {
-      updateProject(
-        (p) => ({ ...p, clips: p.clips.map((c) => (c.id === clipId ? { ...c, ...patch } : c)) }),
-        label,
-        coalesceKey
-      );
-      /* Editing a REVERSED clip invalidates its cached frames: trim/speed
-         changes alter the sampled range, filter/adjustment/flip changes alter
-         what each frame should look like (the cache stores painted-looking
-         source pixels only). Cache misses fall back to the seek path, so
-         this is always safe. */
-      const target = docRef.current?.project.clips.find((c) => c.id === clipId);
-      if (target?.reverse) invalidateReversedCache(target.src);
-    },
-    [updateProject]
-  );
 
   /* ---------- import clips ---------- */
   const [importing, setImporting] = useState<{ name: string; percent: number } | null>(null);
