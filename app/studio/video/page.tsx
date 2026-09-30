@@ -2301,6 +2301,30 @@ function VideoEditor() {
     openTool('text');
   };
 
+  /* Legacy AI placeholder slivers: before the plan-horizon guard existed,
+     add_text_element plans could land as sub-quarter-second cues pinned
+     at t=0 with the fallback copy. They never render and only clutter
+     the overlay track. This detector matches that exact shape — AI id
+     prefix, placeholder/default text, sliver duration, zero pinned
+     start — so the cleanup can never eat real (edited) text.
+     Manual text uses the 'el-' id prefix, so it is always excluded. */
+  const legacyAiElements = useMemo(() => project.elements.filter((el) => {
+    if (!el.id.startsWith('ai-text-')) return false;
+    const text = String(el.content || '').trim();
+    if (!/^(your message|your story)$/i.test(text)) return false;
+    if (el.end - el.start > 0.3) return false;
+    if (el.start > 0.01) return false;
+    return true;
+  }), [project.elements]);
+
+  const cleanupLegacyAiElements = useCallback(() => {
+    if (legacyAiElements.length === 0) return;
+    const doomed = new Set(legacyAiElements.map((el) => el.id));
+    updateProject((p) => ({ ...p, elements: p.elements.filter((el) => !doomed.has(el.id)) }), 'Clean up legacy AI placeholder slivers');
+    setSelectedElementId((current) => (current && doomed.has(current) ? null : current));
+    notify(`Removed ${legacyAiElements.length} legacy AI placeholder ${legacyAiElements.length === 1 ? 'sliver' : 'slivers'} — no AI was used.`);
+  }, [legacyAiElements, notify, setSelectedElementId, updateProject]);
+
   const addGifElement = useCallback((item: { url: string; width: number; height: number; description: string }) => {
     const start = playheadRef.current;
     const end = project.clips.length + project.elements.length + project.audio.length > 0 ? Math.min(duration, start + 3) : start + 3;
@@ -4675,6 +4699,16 @@ function VideoEditor() {
             <button onClick={addTextElement} className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-bold text-black focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
               <Type className="h-4 w-4" /> Add text at playhead
             </button>
+            {legacyAiElements.length > 0 && (
+              <button
+                onClick={cleanupLegacyAiElements}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/10 py-2.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-300/15"
+                aria-label={`Clean up ${legacyAiElements.length} legacy AI placeholder slivers`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Clean up legacy AI elements ({legacyAiElements.length})
+              </button>
+            )}
             {selectedElement && (
               <ElementInspector
                 el={selectedElement}
