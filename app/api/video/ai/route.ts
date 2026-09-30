@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAIJob, finishAIJob, runVideoAI, type AIJobInput } from '@/lib/video/ai';
+import { runExternalVideoAI } from '@/lib/video/ai-providers';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,8 @@ export async function POST(request: Request) {
     const job = await createAIJob(body);
     jobId = job.id;
 
-    const result = await runVideoAI(body);
+    const externalResult = await runExternalVideoAI(body);
+    const result = externalResult || await runVideoAI(body);
 
     /* Persist the conversation so reopening the AI panel restores chat
        history (video_ai_conversations / video_ai_messages). Best-effort:
