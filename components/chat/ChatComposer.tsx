@@ -265,7 +265,7 @@ export default function ChatComposer({ conversationId, myId, replyingTo, onCance
   const suggestionStashRef = useRef<string[] | null>(null);
 
   useEffect(() => {
-    const match = /(?:^|\s):([a-z_0-9]{2,24})$/.exec(draft);
+    const match = /(?:^|\s):([a-z_0-9]+(?: [a-z_0-9]+){0,2})$/.exec(draft);
     if (!match) {
       setEmojiSuggestions([]);
       return;
@@ -276,7 +276,7 @@ export default function ChatComposer({ conversationId, myId, replyingTo, onCance
   }, [draft]);
 
   const acceptSuggestion = (emoji: string) => {
-    persistDraft(draft.replace(/:[a-z_0-9]{2,24}$/, emoji + ' '));
+    persistDraft(draft.replace(/:[a-z_0-9]+(?: [a-z_0-9]+){0,2}$/, emoji + ' '));
     rememberEmoji(emoji);
     setEmojiSuggestions([]);
     textareaRef.current?.focus();
