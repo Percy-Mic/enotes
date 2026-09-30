@@ -148,6 +148,12 @@ export const EFFECT_PRESETS: { id: EffectType; name: string; hint: string; categ
   { id: 'cyberpunk', name: 'Cyberpunk', hint: 'Neon contrast and color split', category: 'Style Lab' },
 ];
 
+export interface TimelineMarker {
+  id: string;
+  time: number;
+  label: string;
+}
+
 export interface TimelineTrack {
   id: string;
   name: string;
@@ -410,6 +416,8 @@ export interface VideoProject {
   masterMuted: boolean;
   /** Optional project-time beat markers detected from a selected audio track. */
   beatMarkers?: number[];
+  /** User-created timeline markers used for beats, cuts, captions and review points. */
+  markers?: TimelineMarker[];
 }
 
 export const SPEED_OPTIONS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 4];
@@ -668,7 +676,17 @@ export function normalizeProject(input: unknown): VideoProject {
       ? a.track_id
       : firstAudioId,
   }));
-  return { version: 3, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted) };
+  const markers = Array.isArray(raw.markers)
+    ? raw.markers.map((value, index) => {
+        const m = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
+        return {
+          id: String(m.id || makeVideoId('marker')),
+          time: Math.max(0, Number(m.time) || 0),
+          label: String(m.label || `Marker ${index + 1}`),
+        };
+      }).filter((m) => Number.isFinite(m.time))
+    : [];
+  return { version: 3, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted), markers };
 }
 
 export function addTimelineTrack<T extends VideoClip | AudioTrack | TimelineElement>(
@@ -767,6 +785,7 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
       { id: 'track-audio', name: 'Audio', kind: 'audio', order: 2, muted: false, locked: false },
     ],
     masterMuted: false,
+    markers: [],
   };
 }
 
