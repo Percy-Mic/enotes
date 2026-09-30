@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { uploadFile } from '@/lib/storage/upload';
 import {
   AlertTriangle,
   Bot,
@@ -176,6 +177,140 @@ async function extractProjectVisionFrames(project: unknown, selectedClipId?: str
   return frames.slice(0, 18);
 }
 
+
+/**
+ * Build a small browser-local analysis proxy for large video sources.
+ * The original project clip is never modified. The proxy is intentionally
+ * short, 640px wide, and WebM-compressed so AI analysis stays lightweight.
+ */
+async function createAIVideoProxy(
+  sourceUrl: string,
+  startAt = 0,
+  maxSeconds = 18,
+): Promise<{ url: string; type: 'video' }> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Sign in is required to prepare an AI video proxy.');
+
+  const video = document.createElement('video');
+  video.crossOrigin = 'anonymous';
+  video.preload = 'auto';
+  video.muted = true;
+  video.playsInline = true;
+  video.src = sourceUrl;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onLoaded = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(new Error('The video could not be prepared for AI analysis.')); };
+      const cleanup = () => {
+        video.removeEventListener('loadedmetadata', onLoaded);
+        video.removeEventListener('error', onError);
+      };
+      video.addEventListener('loadedmetadata', onLoaded, { once: true });
+      video.addEventListener('error', onError, { once: true });
+      video.load();
+    });
+
+    const duration = Number.isFinite(video.duration) ? video.duration : maxSeconds;
+    const start = Math.max(0, Math.min(Math.max(0, duration - 0.1), startAt));
+    const end = Math.min(duration, start + maxSeconds);
+    if (!(end > start)) throw new Error('The selected video has no usable frames for AI analysis.');
+
+    const maxWidth = 640;
+    const scale = Math.min(1, maxWidth / Math.max(1, video.videoWidth || 640));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.round((video.videoWidth || 640) * scale));
+    canvas.height = Math.max(2, Math.round((video.videoHeight || 360) * scale));
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx || typeof canvas.captureStream !== 'function') {
+      throw new Error('This browser does not support local AI video proxy encoding.');
+    }
+
+    const stream = canvas.captureStream(8);
+    const mimeCandidates = [
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm',
+    ];
+    const mimeType = mimeCandidates.find((type) => MediaRecorder.isTypeSupported(type));
+    if (!mimeType) throw new Error('This browser does not support a compatible AI proxy encoder.');
+
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 900_000 });
+    const chunks: Blob[] = [];
+    const stopped = new Promise<Blob>((resolve, reject) => {
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error('AI proxy encoding failed.'));
+      recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType }));
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const onSeeked = () => { cleanup(); resolve(); };
+      const onError = () => { cleanup(); reject(new Error('The video could not seek to the AI analysis range.')); };
+      const cleanup = () => {
+        video.removeEventListener('seeked', onSeeked);
+        video.removeEventListener('error', onError);
+      };
+      video.addEventListener('seeked', onSeeked, { once: true });
+      video.addEventListener('error', onError, { once: true });
+      video.currentTime = start;
+    });
+
+    let raf = 0;
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cancelAnimationFrame(raf);
+      if (recorder.state !== 'inactive') recorder.stop();
+      stream.getTracks().forEach((track) => track.stop());
+      video.pause();
+    };
+
+    const draw = () => {
+      if (finished) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      if (video.currentTime >= end - 0.04) {
+        finish();
+        return;
+      }
+      raf = requestAnimationFrame(draw);
+    };
+
+    recorder.start(250);
+    await video.play();
+    draw();
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if (finished) resolve();
+        else window.setTimeout(check, 100);
+      };
+      check();
+    });
+
+    const blob = await stopped;
+    if (blob.size > 24 * 1024 * 1024) {
+      throw new Error('The generated AI proxy is still too large.');
+    }
+    const file = new File([blob], `enotes-ai-proxy-${Date.now()}.webm`, { type: mimeType });
+    const uploaded = await uploadFile(file, 'studio-media', user.id);
+    return { url: uploaded.url, type: 'video' };
+  } finally {
+    video.removeAttribute('src');
+    video.load();
+  }
+}
+
+async function shouldProxyVideo(url: string, duration = 0): Promise<boolean> {
+  try {
+    const response = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+    const size = Number(response.headers.get('content-length') || 0);
+    if (size > 80 * 1024 * 1024) return true;
+  } catch {
+    /* Cross-origin HEAD can be blocked; duration remains the fallback. */
+  }
+  return duration > 45;
+}
+
 type Props = {
   projectId?: string | null;
   project: unknown;
@@ -347,6 +482,22 @@ export default function VideoAIStudio({
       // are extracted from the same project clips currently visible in Studio.
       const visionFrames = await extractProjectVisionFrames(project, selectedClipId);
 
+      // Large videos are automatically reduced to a short local proxy for AI.
+      // The original clip remains untouched and continues to power the editor/export.
+      let aiMediaUrl = selectedMediaUrl;
+      let aiMediaType = selectedMediaType;
+      if (selectedMediaUrl && selectedMediaType === 'video') {
+        const rawProject = project && typeof project === 'object' ? project as { clips?: Array<{ id?: string; sourceDuration?: number; trimStart?: number }> } : {};
+        const selectedClip = Array.isArray(rawProject.clips) ? rawProject.clips.find((clip) => clip?.id === selectedClipId) : null;
+        const sourceDuration = Number(selectedClip?.sourceDuration || 0);
+        const trimStart = Number(selectedClip?.trimStart || 0);
+        if (await shouldProxyVideo(selectedMediaUrl, sourceDuration)) {
+          const proxy = await createAIVideoProxy(selectedMediaUrl, trimStart, 18);
+          aiMediaUrl = proxy.url;
+          aiMediaType = proxy.type;
+        }
+      }
+
       const response = await fetch('/api/video/ai', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -354,8 +505,8 @@ export default function VideoAIStudio({
           operation: 'assistant',
           projectId,
           project,
-          mediaUrl: selectedMediaUrl,
-          mediaType: selectedMediaType,
+          mediaUrl: aiMediaUrl,
+          mediaType: aiMediaType,
           mediaUrls: (() => {
             const raw = project && typeof project === 'object' ? project as { clips?: Array<{ src?: string }> } : {};
             const urls = Array.isArray(raw.clips)
@@ -364,7 +515,7 @@ export default function VideoAIStudio({
                   .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
                   .slice(0, 10)
               : [];
-            if (selectedMediaUrl && !urls.includes(selectedMediaUrl)) urls.unshift(selectedMediaUrl);
+            if (aiMediaUrl && !urls.includes(aiMediaUrl)) urls.unshift(aiMediaUrl);
             return urls.slice(0, 10).map((url) => ({ url, type: 'video' as const }));
           })(),
           selection: {
