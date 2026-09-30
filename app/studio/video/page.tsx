@@ -1120,6 +1120,31 @@ function VideoEditor() {
 
     const safeActions = expanded.slice(0, 64);
 
+    /* Plan horizon — the furthest point this batch of actions intends to
+       reach. On an (near-)empty timeline projectDuration() is ~0, and
+       clamping text ends to it collapsed every AI text cue into a 0.25s
+       sliver at t=0 that never shows on screen. Structural placement may
+       extend the timeline, so the clamp ceiling is the plan's own horizon. */
+    let planHorizon = 0;
+    for (const action of safeActions) {
+      const obj = action.object || {};
+      if (action.type === 'add_text_element') {
+        const s = Number(obj.start) || 0;
+        const e = Number(obj.end);
+        if (Number.isFinite(e)) planHorizon = Math.max(planHorizon, Math.min(e, s + 120));
+      }
+      if (action.type === 'add_audio_clip') {
+        const s = Number(obj.start) || 0;
+        const te = Number(obj.trimEnd);
+        const ts = Number(obj.trimStart) || 0;
+        if (Number.isFinite(te)) planHorizon = Math.max(planHorizon, Math.min(s + Math.max(0, te - ts), s + 600));
+      }
+    }
+    const planCeiling = Math.max(
+      projectDuration(docRef.current.project),
+      planHorizon,
+    );
+
     /*
      * Narration prep — ALL async work happens here, outside the sync
      * state updater: decode the synthesized WAV, measure its REAL
@@ -1181,7 +1206,7 @@ function VideoEditor() {
           const start = Number(obj.start);
           const end = Number(obj.end);
           const safeStart = Number.isFinite(start) ? Math.max(0, start) : playheadRef.current;
-          const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(projectDuration(nextProject), end)) : Math.min(projectDuration(nextProject), safeStart + 3);
+          const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(planCeiling, end)) : Math.min(planCeiling, safeStart + 3);
           const element: TimelineElement = {
             id: makeVideoId('ai-text'),
             kind: 'text',
@@ -1398,7 +1423,7 @@ function VideoEditor() {
             if (Number.isFinite(start) || Number.isFinite(end)) {
               const dur = Math.max(0.25, target.end - target.start);
               const safeStart = Number.isFinite(start) ? Math.max(0, start) : target.start;
-              const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(projectDuration(nextProject), end)) : Math.min(projectDuration(nextProject), safeStart + dur);
+              const safeEnd = Number.isFinite(end) ? Math.max(safeStart + 0.25, Math.min(planCeiling, end)) : Math.min(planCeiling, safeStart + dur);
               nextProject = {
                 ...nextProject,
                 elements: nextProject.elements.map((element) =>

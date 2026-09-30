@@ -2749,6 +2749,31 @@ ${beatsForPlan}
       return true;
     });
 
+    /*
+     * Stock-query repair — an add_stock_video without a usable query is
+     * silently skipped client-side while the UI still reports the chip as
+     * applied. Repair the query from the user's own request instead of
+     * dropping the intent.
+     */
+    const stockTopicWords = requestText
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && ![
+        'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'your', 'our',
+        'have', 'has', 'need', 'want', 'make', 'made', 'add', 'added', 'create',
+        'video', 'videos', 'clip', 'clips', 'footage', 'stock', 'timeline',
+        'project', 'please', 'some', 'get', 'use', 'using', 'now', 'can', 'you',
+        'should', 'would', 'edit', 'editing', 'apply', 'applied', 'format',
+      ].includes(w));
+    const stockTopic = stockTopicWords.slice(0, 4).join(' ') || 'cinematic b-roll';
+    for (const action of plannedActions) {
+      if (action.type !== 'add_stock_video') continue;
+      action.object = action.object && typeof action.object === 'object' ? action.object : {};
+      const q = typeof action.object.query === 'string' ? action.object.query.trim() : '';
+      if (!q) action.object.query = stockTopic;
+    }
+
     if (
       isAdvertisementRequest &&
       !useOnlyUserMedia &&

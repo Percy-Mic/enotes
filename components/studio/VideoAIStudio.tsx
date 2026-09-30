@@ -338,6 +338,7 @@ export default function VideoAIStudio({
         if (!text || /^your message$/i.test(text)) obj.text = 'YOUR STORY';
       }
 
+      const failedNotes: string[] = [];
       const narrationActions = actions.filter((action) => action.type === 'speak_narration');
       for (const action of narrationActions) {
         /* Synthesis runs server-side (real audio, real duration); the result
@@ -376,13 +377,16 @@ export default function VideoAIStudio({
           await onAddLibraryAudio(soundId);
         } catch {
           /* A missing/unavailable library item must not block the rest of the edit. */
+          failedNotes.push('A requested library sound was unavailable');
         }
       }
 
       const stockActions = actions.filter((action) => action.type === 'add_stock_video');
       for (const action of stockActions) {
-        const query = typeof action.object?.query === 'string' ? action.object.query.trim() : '';
-        if (!query || !onAddStockVideo) continue;
+        /* A missing query must not silently void the action — search with
+           the user's own request text instead of skipping it. */
+        const query = (typeof action.object?.query === 'string' ? action.object.query.trim() : '') || text.trim().slice(0, 80) || 'cinematic b-roll';
+        if (!onAddStockVideo) continue;
         try {
           const params = new URLSearchParams({
             query,
@@ -402,9 +406,12 @@ export default function VideoAIStudio({
               photographer: String(item.photographer || 'Stock footage'),
               provider: item.provider === 'pixabay' ? 'pixabay' : 'pexels',
             });
+          } else {
+            failedNotes.push(`Stock footage “${query}” unavailable`);
           }
         } catch {
           /* Stock is optional; the editor still applies the rest of the plan. */
+          failedNotes.push(`Stock footage “${query}” failed`);
         }
       }
 
@@ -429,7 +436,7 @@ export default function VideoAIStudio({
         ...items,
         {
           role: 'assistant',
-          text: String(output.message || 'I prepared the edit.'),
+          text: String(output.message || 'I prepared the edit.') + (failedNotes.length ? `\n\n⚠️ Couldn't apply: ${Array.from(new Set(failedNotes)).join(' · ')}` : ''),
           actions,
           reviewCount: Number(output.reviewCount) || 0,
         },
