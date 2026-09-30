@@ -835,11 +835,16 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   if (el.background) {
     const metrics = ctx.measureText(lines.reduce((a, b) => (a.length > b.length ? a : b), ''));
     ctx.fillStyle = el.background;
-    const padX = fontSize * 0.4;
-    const padY = fontSize * 0.25;
-    ctx.fillRect(-metrics.width / 2 - padX, -totalHeight / 2 - padY, metrics.width + padX * 2, totalHeight + padY * 2);
+    const padX = fontSize * (el.background_padding ?? 0.4);
+    const padY = fontSize * ((el.background_padding ?? 0.25) * 0.65);
+    const bx = -metrics.width / 2 - padX;
+    const by = -totalHeight / 2 - padY;
+    const bw = metrics.width + padX * 2;
+    const bh = totalHeight + padY * 2;
+    const radius = Math.max(0, el.background_radius ?? fontSize * 0.15);
+    if (radius > 0 && typeof ctx.roundRect === 'function') { ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, Math.min(radius, Math.min(bw, bh) / 2)); ctx.fill(); }
+    else ctx.fillRect(bx, by, bw, bh);
   }
-
   const isTypewriter = el.animation === 'typewriter';
   const isMaskWipe = el.animation === 'mask-wipe';
   /* Typewriter reveals characters at ~28 cps; other animations draw full text. */
@@ -870,20 +875,22 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     }
     if (el.stroke_color) {
       ctx.strokeStyle = el.stroke_color;
-      ctx.lineWidth = Math.max(2, fontSize / 12);
+      ctx.lineWidth = Math.max(1, el.stroke_width ?? fontSize / 12);
       ctx.strokeText(visibleLine, 0, y);
     }
     if (el.shadow) {
-      ctx.shadowColor = 'rgba(0,0,0,0.55)';
-      ctx.shadowBlur = fontSize / 5;
+      ctx.shadowColor = 'rgba(0,0,0,' + Math.max(0, Math.min(1, el.shadow_opacity ?? 0.55)) + ')';
+      ctx.shadowBlur = el.shadow_blur ?? fontSize / 5;
       ctx.shadowOffsetY = 2;
     } else {
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
     }
-    ctx.fillStyle = el.color || '#FFFFFF';
-    ctx.fillText(visibleLine, 0, y);
-    if (isTypewriter && i === lines.length - 1 && revealed < totalChars) {
+    if (el.text_effect === '3d') { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillText(visibleLine, 4, y + 4); }
+    if (el.text_effect === 'hollow') { ctx.strokeStyle = el.color || '#FFFFFF'; ctx.lineWidth = Math.max(1, el.stroke_width ?? 2); ctx.strokeText(visibleLine, 0, y); }
+    else if (el.text_effect === 'neon' || el.text_effect === 'glow') { ctx.shadowColor = el.color || '#FFFFFF'; ctx.shadowBlur = el.text_effect === 'neon' ? fontSize * 0.55 : fontSize * 0.35; ctx.fillStyle = el.color || '#FFFFFF'; ctx.fillText(visibleLine, 0, y); }
+    else if (el.text_effect === 'gradient') { const gradient = ctx.createLinearGradient(-fontSize * 2, y - fontSize, fontSize * 2, y + fontSize); gradient.addColorStop(0, el.color || '#FFFFFF'); gradient.addColorStop(1, '#FF8FA3'); ctx.fillStyle = gradient; ctx.fillText(visibleLine, 0, y); }
+    else { ctx.fillStyle = el.color || '#FFFFFF'; ctx.fillText(visibleLine, 0, y); }    if (isTypewriter && i === lines.length - 1 && revealed < totalChars) {
       /* Caret blinks at 2 Hz while typing. */
       if (Math.floor(timeIn * 4) % 2 === 0) {
         const caretX = ctx.measureText(visibleLine).width / 2 + 4;
