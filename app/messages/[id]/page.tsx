@@ -785,6 +785,7 @@ function ChatRoom() {
         }
       }
 
+      const oldTitle = conversation.title || '';
       const patch: Record<string, unknown> = {};
       const trimmed = editTitle.trim();
       if (trimmed && trimmed !== (conversation.title || '')) patch.title = trimmed.slice(0, 60);
@@ -804,6 +805,34 @@ function ChatRoom() {
         );
       }
 
+      /* System announcement describing exactly what changed (X changed
+
+         the group name from Old to New / X changed the group photo).
+
+         Best-effort: the edit already succeeded, so a failed
+
+         announcement must not fail the save. */
+      const changes: string[] = [];
+      if (patch.title !== undefined) {
+        changes.push(oldTitle
+          ? `changed the group name from “${oldTitle}” to “${patch.title as string}”`
+          : `set the group name to “${patch.title as string}”`);
+      }
+      if (newIcon) changes.push('changed the group photo');
+      else if (removeIcon) changes.push('removed the group photo');
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user && changes.length > 0) {
+          const { data: actor } = await supabase.from('profiles')
+            .select('full_text_name, username').eq('id', user.id).maybeSingle();
+          await supabase.from('messages').insert({
+            conversation_id: conversationId,
+            sender_id: user.id,
+            content: `${actor?.full_text_name || actor?.username || 'An admin'} ${changes.join(' and ')}`,
+            message_type: 'system',
+          });
+        }
+      } catch { /* announcement is best-effort */ }
       setConversation({ ...conversation, title: (patch.title as string) ?? conversation.title, avatar_url: iconUrl });
       setGroupNotice('Group updated.');
     } catch (e) {
