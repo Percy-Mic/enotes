@@ -2823,6 +2823,30 @@ ${beatsForPlan}
       obj.text = timelineEnd > 0 && start >= timelineEnd * 0.6 ? 'WATCH MORE' : 'YOUR STORY';
     }
 
+    /* 1b) Narration-copy guard: the live session caught Gemini emitting
+       speak_narration with an EMPTY object ({}) — the client then
+       posted a synthesis request with no text (502 "Narration text is
+       empty") and the whole narration silently vanished. Repair here,
+       server-side: derive one concise line from the user's own request
+       so the voice matches what they asked for, and give it a staggered
+       default window when the model omitted timing. */
+    for (const action of plannedActions) {
+      if (action.type !== 'speak_narration') continue;
+      const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
+      const text = typeof obj.text === 'string' ? obj.text.trim() : '';
+      if (text) continue;
+      const requestLine = String(input.prompt || '').trim();
+      const narrateMatch = requestLine.match(/narrat[^.:;\\n]*/i);
+      const derived = narrateMatch
+        ? narrateMatch[0].replace(/^narrat(?:e|ion)?[^a-z0-9]*/i, '').trim()
+        : '';
+      obj.text = (derived || 'This story unfolds one moment at a time.').slice(0, 300);
+      if (!Number.isFinite(Number(obj.start))) {
+        const priorNarrations = plannedActions.filter((a2: any) => a2.type === 'speak_narration' && Number.isFinite(Number(a2.object?.start))).length;
+        obj.start = priorNarrations * 5;
+      }
+    }
+
     /* 2) Grade guard: a plan that trims, reorders, or transitions but never
      *    grades the look ships half-finished. When the plan already shows
      *    holistic intent (2+ structural signals) and no filter/adjustment
