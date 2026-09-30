@@ -969,7 +969,7 @@ function VideoEditor() {
                       name: file.name,
                       sourceDuration: meta.duration,
                       trimStart: 0,
-                      trimEnd: Math.min(meta.duration, 30),
+                      trimEnd: meta.duration,
                       source_width: meta.w || undefined,
                       source_height: meta.h || undefined,
                     }
@@ -981,7 +981,7 @@ function VideoEditor() {
               const clip: VideoClip = {
                 id: makeVideoId('clip'), src: mediaUrl, name: file.name,
                 sourceDuration: meta.duration, trimStart: 0,
-                trimEnd: Math.min(meta.duration, 30), speed: 1, volume: 1, muted: false,
+                trimEnd: meta.duration, speed: 1, volume: 1, muted: false,
                 source_width: meta.w || undefined, source_height: meta.h || undefined,
                 transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
                 filter: 'none', effect: 'none', reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
