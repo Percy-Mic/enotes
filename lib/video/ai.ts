@@ -1095,6 +1095,7 @@ async function loadAIMemoryContext(
   >,
   userId: string,
   projectId?: string | null,
+  prompt = '',
 ) {
   const { data: settings } =
     await supabase
@@ -1129,6 +1130,9 @@ async function loadAIMemoryContext(
     };
   }
 
+  /* Pool is fetched wider than the final 16 so the semantic ranker has
+     something to work with; the embed call below is best-effort and
+     falls back to the importance order when unavailable. */
   let query = supabase
     .from(
       'video_ai_memories',
@@ -1145,18 +1149,12 @@ async function loadAIMemoryContext(
       true,
     )
     .order(
-      'importance',
+      'last_used_at',
       {
         ascending: false,
       },
     )
-    .order(
-      'confidence',
-      {
-        ascending: false,
-      },
-    )
-    .limit(16);
+    .limit(64);
 
   if (projectId) {
     query = query.or(
@@ -1187,9 +1185,52 @@ async function loadAIMemoryContext(
       ).getTime() > now,
   );
 
-  if (memories.length) {
+  /* Semantic rerank — embed the current request and order memories by
+     cosine similarity to it, blended with stored importance so a highly
+     important memory is not buried by a mild lexical match. Falls back
+     to the pool order (recency) when the embed call fails or the stored
+     embeddings are missing/stale-dimensioned. */
+  const queryEmbedding = await geminiEmbed(prompt);
+  let semanticRanked = memories;
+  if (queryEmbedding) {
+    const embeds = await Promise.all(
+      memories.map(async (memory) => ({ id: memory.id, embedding: await loadMemoryEmbedding(supabase, memory.id) }))
+    );
+    const byId = new Map(embeds.map((e2) => [e2.id, e2.embedding]));
+    const missing = memories.filter((memory) => !byId.get(memory.id));
+    if (missing.length) {
+      /* Backfill: memories stored before this feature have no vector.
+         Embed them once now so future requests are pure lookups. */
+      await Promise.all(missing.map(async (memory) => {
+        const embedding = await geminiEmbed(String(memory.content || ''));
+        if (embedding) {
+          await supabase.from('video_ai_memories').update({ embedding }).eq('id', memory.id).eq('user_id', userId);
+          byId.set(memory.id, embedding);
+        }
+      }));
+    }
+    const cosine = (a: number[], b: number[]) => {
+      let dot = 0;
+      let na = 0;
+      let nb = 0;
+      for (let i = 0; i < a.length; i += 1) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+      return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
+    };
+    const scoreOf = (memory) => {
+      const embedding = byId.get(memory.id);
+      if (!embedding || embedding.length !== queryEmbedding.length) return 0;
+      return cosine(queryEmbedding, embedding);
+    };
+    semanticRanked = [...memories].sort((a, b) => {
+      const combined = (m) => scoreOf(m) * 0.75 + Number(m.importance || 0) * 0.25;
+      return combined(b) - combined(a);
+    });
+  }
+  const topMemories = semanticRanked.slice(0, 16);
+
+  if (topMemories.length) {
     await Promise.all(
-      memories.map(
+      topMemories.map(
         (memory) =>
           supabase
             .from(
@@ -1218,8 +1259,28 @@ async function loadAIMemoryContext(
 
   return {
     enabled: true,
-    memories,
+    memories: topMemories,
   };
+}
+
+async function loadMemoryEmbedding(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  memoryId: string,
+): Promise<number[] | null> {
+  const { data } = await supabase
+    .from('video_ai_memories')
+    .select('embedding')
+    .eq('id', memoryId)
+    .maybeSingle();
+  const raw = data?.embedding;
+  /* pgvector returns a string like '[0.1,0.2,...]' over REST unless the
+     client parses it; handle both shapes. */
+  if (Array.isArray(raw)) return raw.map(Number);
+  if (typeof raw === 'string') {
+    const parsed = raw.replace(/[\\[\\]]/g, '').split(',').map(Number);
+    return parsed.length && parsed.every(Number.isFinite) ? parsed : null;
+  }
+  return null;
 }
 
 function deriveExplicitMemory(
@@ -1410,6 +1471,8 @@ async function rememberUserInstruction(
         candidate.memoryType,
       content:
         candidate.content,
+      embedding:
+        await geminiEmbed(candidate.content),
       metadata: {
         source:
           'explicit_user_instruction',
@@ -1571,6 +1634,31 @@ function pcmToWavBlob(pcm: ArrayBuffer, sampleRate = 24000): Blob {
   view.setUint32(40, pcm.byteLength, true);
   new Uint8Array(buffer, 44).set(new Uint8Array(pcm));
   return new Blob([buffer], { type: 'audio/wav' });
+}
+
+/* Embed text with Gemini (768-dim, normalized). Returns null on any
+   failure so semantic memory degrades to the recency/importance path
+   instead of failing the request. */
+async function geminiEmbed(text: string): Promise<number[] | null> {
+  const key = GEMINI_KEY();
+  if (!key || !text.trim()) return null;
+  try {
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+        body: JSON.stringify({ model: 'models/text-embedding-004', content: { parts: [{ text: text.slice(0, 4000) }] } }),
+        cache: 'no-store',
+      },
+    );
+    if (!response.ok) return null;
+    const data = await response.json();
+    const values = data?.embedding?.values;
+    return Array.isArray(values) && values.length === 768 ? values.map(Number) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function geminiSpeech(text: string, voice: string, style?: string): Promise<Blob> {
@@ -2073,7 +2161,7 @@ export async function runVideoAI(
         supabase,
         auth.user.id,
         input.projectId,
-      );
+        String(input.prompt || ''),      );
 
     const memoryText =
       memoryContext.memories.length
