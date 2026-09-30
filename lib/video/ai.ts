@@ -79,11 +79,6 @@ async function uploadGeminiFileFromUrl(
     throw new Error(`Could not read project media (${source.status}).`);
   }
 
-  const contentLength = Number(
-    source.headers.get('content-length') || 0,
-  );
-
-
   const bytes = await source.arrayBuffer();
 
 
