@@ -555,6 +555,17 @@ function effectFilterCss(clip: VideoClip, timeIn: number): string {
       case 'motion-blur': parts.push('blur(' + (1.2 * i) + 'px)'); break;
       case 'negative': parts.push('invert(' + (100 * i) + '%)'); break;
       case 'posterize': parts.push('contrast(' + (1 + 1.4 * i) + ') saturate(' + (1 + 0.4 * i) + ')'); break;
+      case 'old-film': parts.push('sepia(' + (0.38 * i) + ') contrast(' + (1 + 0.12 * i) + ') saturate(' + (1 - 0.28 * i) + ')'); break;
+      case 'crt': parts.push('contrast(' + (1 + 0.16 * i) + ') saturate(' + (1 + 0.08 * i) + ')'); break;
+      case 'flicker': parts.push('brightness(' + (1 + Math.sin(timeIn * 31) * 0.08 * i) + ')'); break;
+      case 'solarize': parts.push('contrast(' + (1 + 1.8 * i) + ') brightness(' + (1 + 0.08 * i) + ')'); break;
+      case 'threshold': parts.push('grayscale(1) contrast(' + (1 + 3.5 * i) + ')'); break;
+      case 'pixelate': parts.push('contrast(' + (1 + 0.45 * i) + ') saturate(' + (1 - 0.25 * i) + ')'); break;
+      case 'duotone': parts.push('grayscale(' + (0.85 * i) + ') contrast(' + (1 + 0.3 * i) + ')'); break;
+      case 'thermal': parts.push('saturate(' + (1 + 2.2 * i) + ') contrast(' + (1 + 0.35 * i) + ') hue-rotate(' + (210 * i) + 'deg)'); break;
+      case 'blueprint': parts.push('grayscale(' + (0.92 * i) + ') contrast(' + (1 + 0.55 * i) + ') hue-rotate(' + (165 * i) + 'deg) saturate(' + (1 + 1.5 * i) + ')'); break;
+      case 'cyberpunk': parts.push('contrast(' + (1 + 0.25 * i) + ') saturate(' + (1 + 0.8 * i) + ') hue-rotate(' + (Math.sin(timeIn * 1.7) * 14 * i) + 'deg)'); break;
+      case 'dreamy-glow': parts.push('brightness(' + (1 + 0.1 * i) + ') saturate(' + (1 + 0.16 * i) + ') blur(' + (0.9 * i) + 'px)'); break;
       default: break;
     }
   }
@@ -598,6 +609,100 @@ function drawEffectOverlay(ctx: CanvasRenderingContext2D, clip: VideoClip, timeI
         const fy = (n2 - Math.floor(n2)) * H;
         ctx.fillStyle = n > 0.5 ? '#fff' : '#000'; ctx.fillRect(fx, fy, Math.max(1, W / 480), Math.max(1, H / 480));
       }
+      ctx.restore();
+    } else if (effect === 'crt') {
+      ctx.save();
+      ctx.globalAlpha = 0.13 * i;
+      ctx.fillStyle = '#00ffcc';
+      const scan = Math.max(3, H / 110);
+      for (let y = 0; y < H; y += scan) ctx.fillRect(0, y, W, 1);
+      ctx.globalAlpha = 0.08 * i;
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = Math.max(1, W / 900);
+      ctx.strokeRect(W * 0.01, H * 0.01, W * 0.98, H * 0.98);
+      ctx.restore();
+    } else if (effect === 'old-film') {
+      ctx.save();
+      ctx.globalAlpha = 0.16 * i;
+      const seed = Math.floor(timeIn * 18);
+      for (let n = 0; n < 18; n += 1) {
+        const x = Math.abs(Math.sin(seed * 12.73 + n * 41.17)) * W;
+        const y = Math.abs(Math.sin(seed * 7.91 + n * 19.31)) * H;
+        ctx.fillStyle = n % 3 === 0 ? '#fff' : '#111';
+        ctx.fillRect(x, y, Math.max(1, W / 360), Math.max(1, H / 360));
+      }
+      ctx.globalAlpha = (0.035 + Math.abs(Math.sin(timeIn * 29)) * 0.035) * i;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    } else if (effect === 'flicker') {
+      const alpha = Math.max(0, Math.sin(timeIn * 31)) * 0.08 * i;
+      if (alpha > 0.005) { ctx.save(); ctx.fillStyle = 'rgba(255,244,210,' + alpha + ')'; ctx.fillRect(0, 0, W, H); ctx.restore(); }
+    } else if (effect === 'film-burn') {
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      const t = timeIn * 0.8;
+      const x = W * (0.2 + 0.8 * ((Math.sin(t) + 1) / 2));
+      const burn = ctx.createRadialGradient(x, H * 0.45, 0, x, H * 0.45, Math.max(W, H) * 0.8);
+      burn.addColorStop(0, 'rgba(255,210,80,' + (0.18 * i) + ')');
+      burn.addColorStop(0.35, 'rgba(255,90,30,' + (0.1 * i) + ')');
+      burn.addColorStop(1, 'rgba(255,30,0,0)');
+      ctx.fillStyle = burn; ctx.fillRect(0, 0, W, H); ctx.restore();
+    } else if (effect === 'halftone') {
+      ctx.save();
+      ctx.globalAlpha = 0.18 * i;
+      ctx.fillStyle = '#fff';
+      const step = Math.max(5, Math.min(13, W / 90));
+      for (let y = step / 2; y < H; y += step) {
+        for (let x = step / 2; x < W; x += step) {
+          const r = step * (0.08 + 0.22 * (0.5 + 0.5 * Math.sin(x * 0.031 + y * 0.017)));
+          ctx.beginPath(); ctx.arc(x, y, r * i, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      ctx.restore();
+    } else if (effect === 'pixelate') {
+      ctx.save();
+      ctx.globalAlpha = 0.12 * i;
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1;
+      const step = Math.max(8, W / 80);
+      for (let x = 0; x < W; x += step) ctx.strokeRect(x, 0, step, H);
+      ctx.restore();
+    } else if (effect === 'duotone') {
+      ctx.save();
+      ctx.globalAlpha = 0.28 * i;
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = '#ff2f92';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = '#132c7a';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    } else if (effect === 'thermal') {
+      ctx.save();
+      ctx.globalAlpha = 0.22 * i;
+      ctx.globalCompositeOperation = 'screen';
+      const grad = ctx.createLinearGradient(0, H, W, 0);
+      grad.addColorStop(0, '#062bff'); grad.addColorStop(0.3, '#00e5ff'); grad.addColorStop(0.55, '#35ff58');
+      grad.addColorStop(0.75, '#ffe500'); grad.addColorStop(1, '#ff2b00');
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    } else if (effect === 'blueprint') {
+      ctx.save();
+      ctx.globalAlpha = 0.18 * i;
+      ctx.strokeStyle = '#8cecff';
+      ctx.lineWidth = Math.max(1, W / 900);
+      const step = Math.max(18, W / 35);
+      for (let x = 0; x < W; x += step) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y < H; y += step) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+    } else if (effect === 'cyberpunk') {
+      ctx.save();
+      ctx.globalAlpha = 0.13 * i;
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = '#00e5ff'; ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = 'multiply';
+      ctx.fillStyle = '#ff2bd6'; ctx.fillRect(0, 0, W, H);
       ctx.restore();
     } else if (effect === 'rgb-split') {
       ctx.save(); ctx.globalAlpha = 0.13 * i; ctx.globalCompositeOperation = 'screen';
