@@ -25,6 +25,16 @@ export interface CropRect {
   left: number;
 }
 
+export type MaskShape = 'none' | 'split' | 'shutter' | 'ellipse' | 'rectangle';
+
+export interface MaskSpec {
+  shape: MaskShape;
+  amount: number;
+  feather: number;
+  invert: boolean;
+  rotation: number;
+}
+
 export interface ClipTransform {
   scale: number;       // 1 = fit (uniform user zoom)
   scale_x: number;     // axis fit factor: rendered width = cover-fit width × scale × scale_x
@@ -35,6 +45,7 @@ export interface ClipTransform {
   flip_h: boolean;
   flip_v: boolean;
   crop: CropRect | null; // 0-1 fractions of the source frame
+  mask?: MaskSpec;
 }
 
 export interface ClipAdjustments {
@@ -117,6 +128,7 @@ export interface VideoClip {
   transitionIn: { type: TransitionType; duration: number };
   /** Optional transform/audio keyframes for professional motion control. */
   keyframes?: ElementKeyframeMap;
+  mask?: MaskSpec;
 }
 
 /** Extensible effect ids — new effects append here; renderer switches on id. */
