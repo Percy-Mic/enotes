@@ -73,6 +73,26 @@ export default function GifPicker({ onPick, className = '' }: GifPickerProps) {
     void load(activeQuery);
   }, [activeQuery, load]);
 
+  /* Infinite scroll — observe the end-of-grid sentinel and fetch the next
+     page when it becomes visible. Re-observes on every gifs/next change so
+     freshly appended pages can trigger the next load when scrolled to. */
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || next === null) return;
+    if (typeof IntersectionObserver === 'undefined') return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting) && !loadingMore && next) {
+          void load(activeQuery, Number(next), true);
+        }
+      },
+      { root: el.closest('.overflow-y-auto'), rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [gifs, next, loadingMore, activeQuery, load]);
+
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setActiveQuery(query.trim().slice(0, 80));
@@ -155,16 +175,17 @@ export default function GifPicker({ onPick, className = '' }: GifPickerProps) {
                 ))}
               </div>
 
+              {/* Infinite scroll: a sentinel at the end of the grid fetches
+                  the next page when it scrolls into view. The loader doubles
+                  as the sentinel so no extra node is needed. */}
               {next && (
-                <button
-                  type="button"
-                  disabled={loadingMore}
-                  onClick={() => void load(activeQuery, Number(next), true)}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-[#eadfe2] py-2.5 text-xs font-bold text-[#5d4b51] disabled:opacity-50"
+                <div
+                  ref={sentinelRef}
+                  className="mt-3 flex items-center justify-center py-2 text-xs font-semibold text-[#927d83]"
+                  aria-hidden={!loadingMore}
                 >
                   {loadingMore && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {loadingMore ? 'Loading…' : 'Load more'}
-                </button>
+                </div>
               )}
             </div>
           </>
