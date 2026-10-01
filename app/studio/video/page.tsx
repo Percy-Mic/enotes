@@ -325,6 +325,104 @@ function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
   );
 }
 
+
+function EffectRecipePreviewCard({ project, clipId, name, layers, active, onApply }: {
+  project: VideoProject; clipId: string; name: string; layers: string[]; active: boolean; onApply: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<VideoRenderer | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const renderAt = useCallback(async (t: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+    const previewProject: VideoProject = {
+      ...project,
+      clips: project.clips.map((clip) => clip.id === clipId
+        ? {
+            ...clip,
+            effect: (layers[0] || 'none') as VideoClip['effect'],
+            effects: layers.map((type) => ({ type: type as VideoClip['effect'], intensity: 0.75, blendMode: 'normal' as const })),
+          }
+        : clip),
+    };
+    try { await rendererRef.current.drawFrame(canvas, previewProject, t, { previewing: true, playing: false }); } catch {}
+  }, [project, clipId, layers]);
+
+  useEffect(() => {
+    const clip = project.clips.find((item) => item.id === clipId);
+    const d = Math.max(0.2, clip ? clipDuration(clip) : 1);
+    void renderAt(Math.min(d - 0.05, Math.max(0.05, d * 0.35)));
+    const started = performance.now();
+    const tick = () => {
+      void renderAt(((performance.now() - started) / 1000) % Math.min(d, 3));
+      timerRef.current = window.setTimeout(tick, 125);
+    };
+    tick();
+    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
+  }, [renderAt, project.clips, clipId]);
+
+  return (
+    <button type="button" onClick={onApply} className={\`group overflow-hidden rounded-xl border p-1 text-left transition \${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}\`}>
+      <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
+        <canvas ref={canvasRef} className="block h-full w-full object-cover" />
+        <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white">{name}</span>
+      </div>
+    </button>
+  );
+}
+
+function AudioWaveformPreview({ src, duration, start, onSeek }: { src: string; duration: number; start: number; onSeek?: (offset: number) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const draw = async () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      const w = Math.max(240, Math.floor(canvas.clientWidth * 2));
+      const h = 54;
+      canvas.width = w; canvas.height = h;
+      ctx.clearRect(0, 0, w, h);
+      try {
+        const response = await fetch(src, { mode: 'cors' });
+        if (!response.ok) throw new Error();
+        const buffer = await new AudioContext().decodeAudioData(await response.arrayBuffer());
+        if (cancelled) return;
+        const data = buffer.getChannelData(0);
+        const step = Math.max(1, Math.floor(data.length / w));
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle = '#ffffff';
+        for (let x = 0; x < w; x++) {
+          let peak = 0;
+          const from = x * step;
+          const to = Math.min(data.length, from + step);
+          for (let i = from; i < to; i += Math.max(1, Math.floor(step / 8))) peak = Math.max(peak, Math.abs(data[i]));
+          const bar = Math.max(2, peak * (h - 8));
+          ctx.fillRect(x, (h - bar) / 2, 1, bar);
+        }
+      } catch {
+        if (!cancelled) {
+          ctx.fillStyle = 'rgba(255,255,255,.12)';
+          ctx.fillRect(0, h / 2 - 1, w, 2);
+        }
+      }
+    };
+    void draw();
+    return () => { cancelled = true; };
+  }, [src, duration]);
+  return (
+    <div className="relative mt-2 h-14 overflow-hidden rounded-lg border border-white/10 bg-black/30" onClick={(e) => {
+      if (!onSeek) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      onSeek(Math.max(0, Math.min(duration, ((e.clientX - rect.left) / Math.max(1, rect.width)) * duration)) + start);
+    }}>
+      <canvas ref={canvasRef} className="h-full w-full" />
+    </div>
+  );
+}
+
 async function detectBeatMarkers(audio: AudioTrack): Promise<number[]> {
   if (!audio.src) return [];
   const response = await fetch(audio.src, { mode: 'cors' });
@@ -6371,9 +6469,12 @@ function VideoEditor() {
                       {a.creator && <span className="rounded bg-white/5 px-1.5 py-1">{a.creator}</span>}
                       {a.license && <span className="rounded bg-white/5 px-1.5 py-1">{a.license}</span>}
                     </div>
+                    <AudioWaveformPreview src={a.src} duration={Math.max(0.1, a.trimEnd - a.trimStart)} start={a.start} onSeek={(time) => seekTo(time)} />
+                    <div className="mt-2 flex items-center justify-between text-[9px] text-white/35">
+                      <span>Click waveform to move the playhead</span>
+                      <span>{Math.round(a.volume * 100)}% volume</span>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="space-y-1">
-                        <span className="text-white/60">Volume</span>
                         <Slider label="Volume" min={0} max={1} step={0.05} value={a.volume}
                           onChange={(v) => updateAudio(a.id, { volume: v }, 'Audio volume', `vol-${a.id}`)} />
                       </label>
@@ -6857,24 +6958,27 @@ function VideoEditor() {
                         ['Dreamy Cinema', ['glow','bloom','bokeh','film-grain']],
                         ['Digital Impact', ['glitch','glitch-blocks','chromatic-aberration','motion-blur']],
                         ['Prism Night', ['prism','lens-flare','bokeh','colorize']],
-                      ].map(([name, layers]) => (
-                        <button
-                          key={String(name)}
-                          type="button"
-                          onClick={() => {
-                            const ids = layers as string[];
-                            const current = selectedClip.effects || [];
-                            const next = [...current];
-                            for (const id of ids) {
-                              if (!next.some((layer) => layer.type === id)) next.push({ type: id as VideoClip['effect'], intensity: 0.75, blendMode: id === 'film-grain' || id === 'bokeh' ? 'screen' as const : 'normal' as const });
-                            }
-                            updateClip(selectedClip.id, { effect: (ids[0] as VideoClip['effect']) || 'none', effects: next, effect_intensity: 0.75 }, `Apply ${String(name)} recipe`);
-                          }}
-                          className="rounded-lg bg-white/10 px-2.5 py-1.5 text-[9px] font-semibold text-white/70 hover:bg-white/15"
-                        >
-                          {String(name)}
-                        </button>
-                      ))}
+                      ].map(([name, layers]) => {
+                        const ids = layers as string[];
+                        return (
+                          <EffectRecipePreviewCard
+                            key={String(name)}
+                            project={project}
+                            clipId={selectedClip.id}
+                            name={String(name)}
+                            layers={ids}
+                            active={ids.every((id) => (selectedClip.effects || []).some((layer) => layer.type === id))}
+                            onApply={() => {
+                              const current = selectedClip.effects || [];
+                              const next = [...current];
+                              for (const id of ids) {
+                                if (!next.some((layer) => layer.type === id)) next.push({ type: id as VideoClip['effect'], intensity: 0.75, blendMode: id === 'film-grain' || id === 'bokeh' ? 'screen' as const : 'normal' as const });
+                              }
+                              updateClip(selectedClip.id, { effect: (ids[0] as VideoClip['effect']) || 'none', effects: next, effect_intensity: 0.75 }, `Apply ${String(name)} recipe`);
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
