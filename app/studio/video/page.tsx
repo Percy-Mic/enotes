@@ -386,7 +386,11 @@ function SoundPreviewPlayer({
   onSeek: (time: number) => void;
 }) {
   const duration = Math.max(0.1, Number(sound.duration_seconds) || 0.1);
-  const pct = Math.max(0, Math.min(100, (currentTime / duration) * 100));
+  const pct = Math.max(0, Math.min(1, currentTime / duration));
+  const seekFromPointer = (clientX: number, rect: DOMRect) => {
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
+    onSeek(ratio * duration);
+  };
   const jump = (fraction: number) => onSeek(Math.max(0, Math.min(duration - 0.05, duration * fraction)));
 
   return (
@@ -405,21 +409,54 @@ function SoundPreviewPlayer({
             <span className="tabular-nums">{fmt(currentTime)}</span>
             <span className="tabular-nums text-white/35">{fmt(duration)}</span>
           </div>
-          <input
-            type="range"
-            min={0}
-            max={duration}
-            step={0.01}
-            value={Math.min(duration, currentTime)}
-            onChange={(e) => onSeek(Number(e.target.value))}
-            aria-label={`Seek preview of ${sound.title}`}
-            className="mt-0.5 h-3 w-full cursor-pointer accent-[#E5798F]"
-            style={{ background: `linear-gradient(to right, #E5798F 0%, #E5798F ${pct}%, rgba(255,255,255,.12) ${pct}%, rgba(255,255,255,.12) 100%)` }}
-          />
         </div>
       </div>
 
-      <div className="mb-2 flex gap-1.5">
+      <div
+        role="slider"
+        tabIndex={0}
+        aria-label={`Seek preview of ${sound.title}`}
+        aria-valuemin={0}
+        aria-valuemax={duration}
+        aria-valuenow={Math.min(duration, currentTime)}
+        className="group relative h-10 cursor-pointer touch-none select-none overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          seekFromPointer(e.clientX, e.currentTarget.getBoundingClientRect());
+        }}
+        onPointerMove={(e) => {
+          if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+            seekFromPointer(e.clientX, e.currentTarget.getBoundingClientRect());
+          }
+        }}
+        onKeyDown={(e) => {
+          const step = duration / 100;
+          if (e.key === 'ArrowLeft') { e.preventDefault(); onSeek(Math.max(0, currentTime - step)); }
+          if (e.key === 'ArrowRight') { e.preventDefault(); onSeek(Math.min(duration, currentTime + step)); }
+          if (e.key === 'Home') { e.preventDefault(); onSeek(0); }
+          if (e.key === 'End') { e.preventDefault(); onSeek(duration - 0.05); }
+        }}
+      >
+        <div className="absolute inset-y-0 left-0 bg-[#E5798F]/25" style={{ width: `${pct * 100}%` }} />
+        <div className="absolute inset-0 flex items-center justify-between gap-[2px] px-1.5">
+          {Array.from({ length: 64 }, (_, i) => {
+            const wave = 4 + Math.abs(Math.sin(i * 1.71) * 9 + Math.sin(i * 0.37) * 5);
+            return (
+              <span
+                key={i}
+                className="w-[2px] shrink-0 rounded-full bg-white/25"
+                style={{ height: `${Math.min(28, wave)}px`, opacity: i / 64 <= pct ? 0.9 : 0.28 }}
+              />
+            );
+          })}
+        </div>
+        <div
+          className="pointer-events-none absolute inset-y-0 w-0.5 bg-white shadow-[0_0_8px_rgba(255,255,255,.7)]"
+          style={{ left: `calc(${pct * 100}% - 1px)` }}
+        />
+      </div>
+
+      <div className="mt-2 flex gap-1.5">
         {[
           ['Start', 0],
           ['25%', 0.25],
@@ -437,22 +474,10 @@ function SoundPreviewPlayer({
           </button>
         ))}
       </div>
-
-      <div className="relative h-7 overflow-hidden rounded-md bg-white/[0.035]" aria-hidden="true">
-        <div className="absolute inset-y-0 left-0 bg-[#E5798F]/20" style={{ width: `${pct}%` }} />
-        <div className="absolute inset-0 flex items-center gap-[2px] px-1">
-          {Array.from({ length: 48 }, (_, i) => {
-            const wave = 3 + Math.abs(Math.sin(i * 1.71) * 8 + Math.sin(i * 0.37) * 4);
-            return <span key={i} className="w-[2px] shrink-0 rounded-full bg-white/25" style={{ height: `${Math.min(22, wave)}px` }} />;
-          })}
-        </div>
-        <div className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_6px_rgba(255,255,255,.6)]" style={{ left: `${pct}%` }} />
-      </div>
-      <p className="mt-1 text-[8px] text-white/30">Drag the timeline or choose a point to hear that exact part of the track.</p>
+      <p className="mt-1 text-[8px] text-white/30">Drag anywhere on the waveform to hear that exact part.</p>
     </div>
   );
 }
-
 function AudioWaveformPreview({ src, duration, start, onSeek }: { src: string; duration: number; start: number; onSeek?: (offset: number) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -6805,15 +6830,18 @@ function VideoEditor() {
                           <p className="truncate text-xs font-semibold">{s.title}</p>
                           <p className="truncate text-[10px] text-white/50">{s.artist} · {s.category}</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => toggleSoundPreview(s)}
-                          className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.06] px-2.5 text-[9px] font-semibold text-white/75 transition hover:bg-white/10"
-                          aria-label={`${previewingSoundId === s.id ? 'Pause' : 'Preview'} ${s.title}`}
-                        >
-                          {previewingSoundId === s.id ? <Pause className="h-3 w-3 fill-current" /> : <Play className="h-3 w-3 fill-current" />}
-                          {previewingSoundId === s.id ? 'Pause' : 'Preview'}
-                        </button>
+                        <div className="w-full">
+                          <SoundPreviewPlayer
+                            sound={s}
+                            playing={previewingSoundId === s.id}
+                            currentTime={previewingSoundId === s.id ? previewSoundTime : 0}
+                            onToggle={() => toggleSoundPreview(s)}
+                            onSeek={(time) => {
+                              if (previewingSoundId !== s.id) toggleSoundPreview(s);
+                              window.setTimeout(() => seekSoundPreview(time), 0);
+                            }}
+                          />
+                        </div>
                         <button onClick={() => addSoundTrack(s, 'music')} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white">
                           Add
                         </button>
