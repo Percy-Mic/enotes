@@ -500,7 +500,8 @@ async function groqStructured(
   if(!hasOnlyGroqSafeMedia(media)) throw new Error('Groq fallback supports image inputs, but not video/audio inputs.');
 
   const images=(media || []).filter((item)=>item?.url && (item.type === 'image' || item.url.startsWith('data:image/'))).slice(0,5);
-  const content:Array<Record<string,unknown>>=[{type:'text',text:prompt}];
+  const jsonPrompt = prompt + '\n\nOUTPUT FORMAT: Return ONLY a valid JSON object. Do not wrap the JSON in markdown fences or prose.';
+   const content:Array<Record<string,unknown>>=[{type:'text',text:jsonPrompt}];
   for(const image of images) content.push({type:'image_url',image_url:{url:String(image.url)}});
 
   const model=images.length
@@ -629,7 +630,7 @@ async function groqPlannerJsonOnce(
     headers:{'content-type':'application/json',authorization:'Bearer '+key},
     body:JSON.stringify({
       model,
-      messages:[{role:'user',content:images.length?content:prompt}],
+      messages:[{role:'user',content:images.length?content:jsonPrompt}],
       temperature:0.2,
       max_completion_tokens:12000,
       response_format:{type:'json_object'},
