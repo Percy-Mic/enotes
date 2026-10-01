@@ -4353,6 +4353,20 @@ function VideoEditor() {
     setPreviewSoundTime(0);
   }, []);
 
+  // Audio picker previews are ephemeral: closing the tool drawer must always
+  // stop and reset the active preview so audio never keeps playing behind the editor.
+  useEffect(() => {
+    if (toolDrawerOpen) return;
+    const audio = soundPreviewRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+      soundPreviewRef.current = null;
+    }
+    setPreviewingSoundId(null);
+    setPreviewSoundTime(0);
+  }, [toolDrawerOpen]);
+
   const soundCategories = [
     'Cinematic', 'Ambient', 'Nature', 'City', 'Footsteps',
     'Whoosh', 'Impact', 'Foley', 'UI', 'Crowd',
