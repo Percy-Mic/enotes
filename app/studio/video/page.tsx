@@ -514,83 +514,227 @@ function VideoEditor() {
   );
 
   const runQuickAI = useCallback(async (operation: string) => {
-    const source = selectedClip?.src || selectedElement?.src || null;
-    const mediaType = selectedClip?.media_type === 'image' || selectedElement?.kind === 'image' ? 'image' : selectedClip || selectedElement?.kind === 'video' ? 'video' : null;
-    if (!source && !['generate-image', 'generate-video'].includes(operation)) {
-      notify('Select a video or image first.');
+    const selectedAudio = project.audio.find((track) => track.id === selectedAudioId) || null;
+    const source =
+      selectedClip?.src ||
+      selectedElement?.src ||
+      selectedAudio?.src ||
+      null;
+
+    const mediaType =
+      selectedAudio?.src === source
+        ? 'audio'
+        : selectedClip?.media_type === 'image' || selectedElement?.kind === 'image'
+          ? 'image'
+          : selectedClip || selectedElement?.kind === 'video'
+            ? 'video'
+            : null;
+
+    const requiresSource = ![
+      'generate-image',
+      'generate-video',
+      'generate-voice',
+      'generate-music',
+    ].includes(operation);
+
+    if (requiresSource && !source) {
+      notify(
+        operation === 'clone-voice' || operation === 'convert-voice'
+          ? 'Select an audio clip first.'
+          : 'Select a video or image first.',
+      );
       return;
     }
+
     setAiQuickBusy(operation);
+
     try {
       const response = await fetch('/api/video/ai', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ operation, projectId, project, mediaUrl: source, mediaType }),
+        body: JSON.stringify({
+          operation,
+          projectId,
+          project,
+          mediaUrl: source,
+          mediaType,
+        }),
       });
+
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data?.error || 'The AI operation failed.');
+      if (!response.ok) {
+        throw new Error(data?.error || 'The AI operation failed.');
+      }
+
       const findUrl = (root: unknown): string | null => {
         const pending: unknown[] = [root];
+
         while (pending.length > 0) {
           const value = pending.pop();
+
           if (typeof value === 'string' && /^https?:\/\//i.test(value)) {
             return value;
           }
+
           if (Array.isArray(value)) {
             pending.push(...value);
             continue;
           }
+
           if (value && typeof value === 'object') {
             pending.push(...Object.values(value as Record<string, unknown>));
           }
         }
+
         return null;
       };
+
       let url = findUrl(data?.output);
-      const binary = data?.output && typeof data.output === 'object'
-        ? data.output as { bytesBase64?: unknown; contentType?: unknown }
-        : null;
+
+      const binary =
+        data?.output && typeof data.output === 'object'
+          ? (data.output as { bytesBase64?: unknown; contentType?: unknown })
+          : null;
+
       if (!url && typeof binary?.bytesBase64 === 'string' && meId) {
         const raw = atob(binary.bytesBase64);
         const bytes = new Uint8Array(raw.length);
-        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-        const blob = new Blob([bytes], { type: String(binary.contentType || 'image/png') });
-        const extension = String(binary.contentType || 'image/png').split('/')[1]?.split(';')[0] || 'png';
-        const uploaded = await uploadFile(new File([blob], 'ai-result.' + extension, { type: blob.type }), 'studio-media', meId);
+
+        for (let i = 0; i < raw.length; i += 1) {
+          bytes[i] = raw.charCodeAt(i);
+        }
+
+        const blob = new Blob([bytes], {
+          type: String(binary.contentType || 'image/png'),
+        });
+
+        const extension =
+          String(binary.contentType || 'image/png')
+            .split('/')[1]
+            ?.split(';')[0] || 'png';
+
+        const uploaded = await uploadFile(
+          new File([blob], 'ai-result.' + extension, { type: blob.type }),
+          'studio-media',
+          meId,
+        );
+
         url = uploaded.url;
       }
+
       if (!url) {
-        notify('AI finished, but the provider returned no directly importable media URL.');
+        notify(
+          'AI finished, but the provider returned no directly importable media URL.',
+        );
         return;
       }
-      if (operation === 'generate-image' || operation === 'remove-background' || operation === 'style-transfer' || operation === 'relight') {
+
+      const imageOperations = [
+        'generate-image',
+        'remove-object',
+        'style-transfer',
+        'relight',
+      ];
+
+      const videoOperations = [
+        'generate-video',
+        'remove-background',
+        'track-object',
+      ];
+
+      if (imageOperations.includes(operation)) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.src = url;
         await img.decode().catch(() => undefined);
+
         const w = img.naturalWidth || project.canvas.width;
         const h = img.naturalHeight || project.canvas.height;
+
         const clip: VideoClip = {
-          id: makeVideoId('ai-clip'), src: url, name: 'AI · ' + operation, sourceDuration: 4, trimStart: 0, trimEnd: 4,
-          speed: 1, volume: 0, muted: true, media_type: 'image', source_width: w, source_height: h,
-          transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none',
-          effect_intensity: 1, reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
+          id: makeVideoId('ai-clip'),
+          src: url,
+          name: 'AI · ' + operation,
+          sourceDuration: 4,
+          trimStart: 0,
+          trimEnd: 4,
+          speed: 1,
+          volume: 0,
+          muted: true,
+          media_type: 'image',
+          source_width: w,
+          source_height: h,
+          transform: { ...DEFAULT_TRANSFORM },
+          adjustments: { ...DEFAULT_ADJUSTMENTS },
+          filter: 'none',
+          effect: 'none',
+          effect_intensity: 1,
+          reverse: false,
+          audioProcessing: { ...DEFAULT_AUDIO_PROCESSING },
+          transitionIn: { type: 'none', duration: 0.5 },
         };
-        updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add AI media');
-        setSelectedClipId(clip.id); setSelectedElementId(null);
+
+        updateProject(
+          (p) => ({ ...p, clips: [...p.clips, clip] }),
+          'Add AI media',
+        );
+
+        setSelectedClipId(clip.id);
+        setSelectedElementId(null);
         notify('AI result added to the main track.');
-      } else if (operation === 'generate-video' || operation === 'remove-object' || operation === 'track-object') {
-        if (!selectedClip) { notify('Select a main-track clip to apply this AI video result.'); return; }
-        updateClip(selectedClip.id, { src: url, media_type: 'video', name: 'AI · ' + operation, reverse: false }, 'Apply AI video result');
+      } else if (videoOperations.includes(operation)) {
+        if (!selectedClip) {
+          notify('Select a main-track video clip to apply this AI result.');
+          return;
+        }
+
+        const outputIsVideo =
+          operation === 'generate-video' ||
+          mediaType === 'video';
+
+        if (!outputIsVideo) {
+          notify('This AI result is not a video output.');
+          return;
+        }
+
+        updateClip(
+          selectedClip.id,
+          {
+            src: url,
+            media_type: 'video',
+            name: 'AI · ' + operation,
+            reverse: false,
+          },
+          'Apply AI video result',
+        );
+
         notify('AI video result applied to the selected clip.');
-      } else if (operation === 'clone-voice' || operation === 'convert-voice' || operation === 'generate-voice' || operation === 'generate-music') {
+      } else if (
+        operation === 'clone-voice' ||
+        operation === 'convert-voice' ||
+        operation === 'generate-voice' ||
+        operation === 'generate-music'
+      ) {
         const track: AudioTrack = {
-          id: makeVideoId('ai-aud'), name: 'AI · ' + operation, src: url,
-          track_id: project.tracks.find((t) => t.kind === 'audio')?.id, start: playheadRef.current, sourceDuration: 15,
-          trimStart: 0, trimEnd: 15, volume: 1, fadeIn: 0, fadeOut: 0,
+          id: makeVideoId('ai-aud'),
+          name: 'AI · ' + operation,
+          src: url,
+          track_id: project.tracks.find((t) => t.kind === 'audio')?.id,
+          start: playheadRef.current,
+          sourceDuration: 15,
+          trimStart: 0,
+          trimEnd: 15,
+          volume: 1,
+          fadeIn: 0,
+          fadeOut: 0,
           kind: operation === 'generate-music' ? 'music' : 'voiceover',
         };
-        updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'Add AI audio');
+
+        updateProject(
+          (p) => ({ ...p, audio: [...p.audio, track] }),
+          'Add AI audio',
+        );
+
         setSelectedAudioId(track.id);
         notify('AI audio added to the timeline.');
       }
@@ -599,8 +743,17 @@ function VideoEditor() {
     } finally {
       setAiQuickBusy(null);
     }
-  }, [projectId, project, selectedClip, selectedElement, meId, notify, updateProject, updateClip]);
-
+  }, [
+    projectId,
+    project,
+    selectedClip,
+    selectedElement,
+    selectedAudioId,
+    meId,
+    notify,
+    updateProject,
+    updateClip,
+  ]);
   /* ---------- auth ---------- */
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
