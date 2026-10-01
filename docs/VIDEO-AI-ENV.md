@@ -13,9 +13,7 @@ HUGGINGFACE_API_KEY=
 # HF_TOKEN=  # alias accepted
 
 # Optional model overrides
-HF_BACKGROUND_MODEL=briaai/RMBG-2.0
 HF_ENHANCE_MODEL=caidas/swin2SR-classical-sr-x2-64
-HF_VIDEO_MODEL=facebook/detr-resnet-50
 ```
 
 Hugging Face's free allowance is limited and can change. It is not an unlimited free API.
@@ -55,7 +53,7 @@ The existing enotes AI assistant remains separate from the media-processing prov
 
 - Never use `NEXT_PUBLIC_` for secret provider keys.
 - Keep Cloudinary and Hugging Face secrets server-side.
-- You do **not** need `FAL_KEY` or `REPLICATE_API_TOKEN` for the free-tier implementation above.
+- The editor's media-generation/removal features use fal.ai when `FAL_KEY` is configured.
 - Cloudinary's free plan and Hugging Face's free allowance have usage limits; this implementation does not assume unlimited usage.
 - Supabase storage/RLS remains the source of truth for user-owned Studio uploads.
 
@@ -83,9 +81,29 @@ FAL_STYLE_MODEL=
 FAL_RELIGHT_MODEL=
 FAL_VOICE_CLONE_MODEL=
 FAL_VOICE_CONVERT_MODEL=
+FAL_BACKGROUND_IMAGE_MODEL=
+FAL_BACKGROUND_VIDEO_MODEL=
 
 Existing variables remain supported: FAL_KEY, FAL_IMAGE_MODEL, FAL_VOICE_MODEL and FAL_MUSIC_MODEL.
 
 The AI layer also recognizes auto-edit and recommend-effects through the existing Gemini editing planner. generate-captions and transcribe continue using the existing speech providers.
 
 AI model processing is optional: the local editor, timeline, effects, keyframes, audio processing and export continue to work without these providers.
+
+
+### Built-in fal.ai defaults
+
+When only `FAL_KEY` is configured, the editor now uses dedicated fal.ai endpoints instead of routing these operations through Hugging Face:
+
+- Remove background — Bria RMBG 2.0 for images; Bria VRMBG 3.0 for video.
+- Remove object — fal-ai/object-removal for images.
+- Style transfer — fal-ai/image-apps-v2/style-transfer for images.
+- AI relight — bria/fibo-edit/relight for images.
+- Generate image — fal-ai/flux/schnell.
+- Generate video — fal-ai/kling-video/v1/standard/text-to-video.
+- Clone voice — fal-ai/minimax/voice-clone.
+- Voice convert — fal-ai/elevenlabs/voice-changer.
+- Generate voice — fal-ai/elevenlabs/tts/turbo-v2.5.
+- Generate music — fal-ai/stable-audio.
+
+Some operations intentionally require a matching media type. For example, object removal/style transfer/relight currently operate on images, while video background removal requires a video. The UI reports that requirement instead of sending an incompatible request.
