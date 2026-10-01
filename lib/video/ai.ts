@@ -3658,8 +3658,24 @@ ${project}
     };
   }
 
+  if (
+    operation === 'remove-object' ||
+    operation === 'track-object' ||
+    operation === 'generate-image' ||
+    operation === 'generate-video' ||
+    operation === 'clone-voice' ||
+    operation === 'convert-voice' ||
+    operation === 'style-transfer' ||
+    operation === 'relight' ||
+    operation === 'generate-music'
+  ) {
+    throw new Error(
+      `${operation} needs an optional media-generation provider. ENOTES remains fully usable without it; add FAL_KEY later (or another supported provider) when you want this cloud AI operation.`,
+    );
+  }
+
   throw new Error(
-    `${operation} is ready in the AI provider layer, but no execution adapter is configured yet. Set AI_DEFAULT_PROVIDER and the matching provider key to enable it.`,
+    `${operation} does not have a free execution adapter yet. The manual editor and Gemini editing assistant remain available.`,
   );
 }
 
