@@ -9,6 +9,8 @@ function clean(value: string | null, max = 120) {
   return String(value || '').trim().slice(0, max);
 }
 
+type SearchMode = 'all' | 'title' | 'artist' | 'album' | 'genre';
+
 export async function GET(request: Request) {
   try {
     const clientId = String(process.env.JAMENDO_CLIENT_ID || '').trim();
@@ -21,7 +23,9 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const query = clean(searchParams.get('q'));
-    const category = clean(searchParams.get('category'), 40).toLowerCase();
+    const category = clean(searchParams.get('category'), 80).toLowerCase();
+    const mode = (clean(searchParams.get('mode'), 20).toLowerCase() || 'all') as SearchMode;
+    const searchMode: SearchMode = ['all', 'title', 'artist', 'album', 'genre'].includes(mode) ? mode : 'all';
     const page = Math.max(1, Number(searchParams.get('page') || 1) || 1);
     const limit = Math.min(30, Math.max(6, Number(searchParams.get('limit') || 24) || 24));
 
@@ -37,11 +41,19 @@ export async function GET(request: Request) {
     api.searchParams.set('audiodlformat', 'mp32');
     api.searchParams.set('order', 'relevance');
 
-    // Search covers track, album, artist and tag text. Category browsing uses
-    // Jamendo's relevance-aware fuzzy tag matching.
     if (query) {
-      api.searchParams.set('search', query);
-      if (category && category !== 'all') api.searchParams.set('fuzzytags', category);
+      if (searchMode === 'title') {
+        api.searchParams.set('namesearch', query);
+      } else if (searchMode === 'artist') {
+        api.searchParams.set('artist_name', query);
+      } else if (searchMode === 'album') {
+        api.searchParams.set('album_name', query);
+      } else if (searchMode === 'genre') {
+        api.searchParams.set('fuzzytags', query);
+      } else {
+        // Jamendo's free-text search covers track, album, artist and tags.
+        api.searchParams.set('search', query);
+      }
     } else if (category && category !== 'all') {
       api.searchParams.set('fuzzytags', category);
     } else {
@@ -85,7 +97,7 @@ export async function GET(request: Request) {
           artist: String(track.artist_name || 'Jamendo artist'),
           url: String(track.audio || ''),
           duration_seconds: Number(track.duration || 0),
-          category: category || 'Jamendo',
+          category: category || (searchMode === 'genre' ? query : 'Jamendo'),
           license: String(track.license_ccurl || track.license_name || 'Creative Commons'),
           licenseUrl: track.license_ccurl || null,
           source: track.shareurl || ('https://www.jamendo.com/track/' + track.id),
@@ -103,6 +115,9 @@ export async function GET(request: Request) {
         provider: 'jamendo',
         page,
         limit,
+        mode: searchMode,
+        query,
+        category,
         count: Number(json?.headers?.results_count || results.length),
         results,
       },
