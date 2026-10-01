@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     const query = clean(searchParams.get('q'));
     const category = clean(searchParams.get('category'), 80).toLowerCase();
     const mode = (clean(searchParams.get('mode'), 20).toLowerCase() || 'all') as SearchMode;
+    const feed = clean(searchParams.get('feed'), 20).toLowerCase();
     const searchMode: SearchMode = ['all', 'title', 'artist', 'album', 'genre'].includes(mode) ? mode : 'all';
     const page = Math.max(1, Number(searchParams.get('page') || 1) || 1);
     const limit = Math.min(30, Math.max(6, Number(searchParams.get('limit') || 24) || 24));
@@ -39,7 +40,10 @@ export async function GET(request: Request) {
     api.searchParams.set('imagesize', '200');
     api.searchParams.set('include', 'licenses musicinfo');
     api.searchParams.set('audiodlformat', 'mp32');
-    api.searchParams.set('order', 'relevance');
+    api.searchParams.set(
+      'order',
+      feed === 'latest' ? 'releasedate_desc' : feed === 'trending' ? 'popularity_week_desc' : 'relevance'
+    );
 
     if (query) {
       if (searchMode === 'title') {
@@ -118,6 +122,7 @@ export async function GET(request: Request) {
         mode: searchMode,
         query,
         category,
+        feed: feed === 'latest' || feed === 'trending' ? feed : 'search',
         count: Number(json?.headers?.results_count || results.length),
         results,
       },
