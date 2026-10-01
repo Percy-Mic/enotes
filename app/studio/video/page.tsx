@@ -4168,6 +4168,9 @@ function VideoEditor() {
     tags?: string[];
     description?: string;
     provider?: 'library' | 'freesound' | 'jamendo';
+    image?: string;
+    licenseUrl?: string;
+    audiodownload_allowed?: boolean;
   };
 
   const [sounds, setSounds] = useState<SoundBrowserItem[]>([]);
@@ -6325,7 +6328,8 @@ function VideoEditor() {
                   type="button"
                   onClick={() => {
                     setSoundProvider('freesound');
-                    if (sounds.length === 0) void searchFreesound('', 1, false, soundCategory);
+                    setSoundCategory('Cinematic');
+                    if (sounds.length === 0) void searchFreesound('', 1, false, 'Cinematic');
                   }}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'freesound' ? 'bg-white/15 text-white' : 'text-white/45'}`}
                 >
@@ -6335,7 +6339,8 @@ function VideoEditor() {
                   type="button"
                   onClick={() => {
                     setSoundProvider('jamendo');
-                    void searchJamendo(soundQuery, 1, false, soundCategory);
+                    setSoundCategory('cinematic');
+                    void searchJamendo(soundQuery, 1, false, 'cinematic');
                   }}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'jamendo' ? 'bg-white/15 text-white' : 'text-white/45'}`}
                 >
