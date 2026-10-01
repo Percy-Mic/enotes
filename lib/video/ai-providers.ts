@@ -2,21 +2,63 @@ import type { AIJobInput, AIResult, VideoAIOperation } from '@/lib/video/ai';
 
 type Provider = 'huggingface' | 'fal' | 'replicate' | 'cloudinary';
 
-function providerFor(operation: VideoAIOperation): Provider | null {
-  if (
-    operation === 'remove-object' ||
-    operation === 'track-object' ||
-    operation === 'generate-image' ||
-    operation === 'generate-video' ||
-    operation === 'generate-voice' ||
-    operation === 'clone-voice' ||
-    operation === 'convert-voice' ||
-    operation === 'style-transfer' ||
-    operation === 'relight' ||
-    operation === 'generate-music'
-  ) return 'fal';
+type AIDefaultProvider = 'free' | 'auto' | Provider;
 
-  if (operation === 'enhance') return 'huggingface';
+function defaultProvider(): AIDefaultProvider {
+  const value = String(process.env.AI_DEFAULT_PROVIDER || 'auto').trim().toLowerCase();
+  if (value === 'free' || value === 'auto' || value === 'huggingface' || value === 'fal' || value === 'replicate' || value === 'cloudinary') {
+    return value;
+  }
+  return 'auto';
+}
+
+function providerFor(operation: VideoAIOperation): Provider | null {
+  const preferred = defaultProvider();
+
+  /* "free" is a real execution mode: the API route sends these operations
+     through ENOTES' built-in/local/Gemini/HF-capable path instead of trying
+     to silently use a paid cloud media provider. */
+  if (preferred === 'free') return null;
+
+  if (preferred === 'fal') {
+    return operation === 'remove-object' ||
+      operation === 'track-object' ||
+      operation === 'generate-image' ||
+      operation === 'generate-video' ||
+      operation === 'generate-voice' ||
+      operation === 'clone-voice' ||
+      operation === 'convert-voice' ||
+      operation === 'style-transfer' ||
+      operation === 'relight' ||
+      operation === 'generate-music' ||
+      operation === 'remove-background'
+      ? 'fal'
+      : null;
+  }
+
+  if (preferred === 'huggingface') {
+    return operation === 'enhance' || operation === 'remove-background'
+      ? 'huggingface'
+      : null;
+  }
+
+  if (preferred === 'auto') {
+    if (
+      operation === 'remove-object' ||
+      operation === 'track-object' ||
+      operation === 'generate-image' ||
+      operation === 'generate-video' ||
+      operation === 'generate-voice' ||
+      operation === 'clone-voice' ||
+      operation === 'convert-voice' ||
+      operation === 'style-transfer' ||
+      operation === 'relight' ||
+      operation === 'generate-music'
+    ) return 'fal';
+
+    if (operation === 'enhance') return 'huggingface';
+  }
+
   return null;
 }
 
@@ -275,6 +317,7 @@ export async function runExternalVideoAI(input: AIJobInput): Promise<AIResult | 
 
 export function configuredExternalProviders() {
   return {
+    default: defaultProvider(),
     huggingface: hasKey('huggingface'),
     fal: hasKey('fal'),
     replicate: hasKey('replicate'),
