@@ -558,7 +558,16 @@ async function geminiPlannerStructured(
        * the model produces anything. JSON mode + our server sanitizer is the
        * authoritative contract for executable actions.
        */
-      return await geminiPlannerJsonOnce(prompt, model, media);
+      try {
+        return await geminiPlannerJsonOnce(prompt, model, media);
+      } catch (visualError) {
+        console.error(
+          '[video-ai] Gemini planner visual request failed; retrying text-only:',
+          model,
+          visualError instanceof Error ? visualError.message : String(visualError),
+        );
+        return await geminiPlannerJsonOnce(prompt, model);
+      }
     } catch (error) {
       lastError = error;
       console.error(
@@ -2874,7 +2883,7 @@ ${beatsForPlan}
      * video through a Vercel function can exceed the serverless execution
      * window. Frames are the intended visual-grounding path here.
      */
-    const mediaInputs = (visionInputs.length ? visionInputs : sourceInputs).slice(0, 18);
+    const mediaInputs = (visionInputs.length ? visionInputs : sourceInputs).slice(0, 6);
 
     let critiqueHint: string | null = null;
     let plannerError: string | null = null;
