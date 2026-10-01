@@ -1,4 +1,6 @@
 import type { MaskSpec } from '@/lib/video/project';
+import { connectAudioEffects } from '@/lib/video/audio-effects';
+
 import { drawAdvancedEffectStack } from '@/lib/video/advanced-effects';
 /* ============================================================
    Video export renderer — the part that makes the editor REAL.
@@ -1941,7 +1943,7 @@ export class VideoRenderer {
       if (!audioRunnable) {
         void audioCtx.close().catch(() => undefined);
       }
-      const connectTrack = async (track: { src: string; volume: number; trimStart: number; fadeOutSec: number; fadeInSec: number; startAt: number; trackDuration: number }) => {
+      const connectTrack = async (track: { src: string; volume: number; trimStart: number; fadeOutSec: number; fadeInSec: number; startAt: number; trackDuration: number; effects?: import('@/lib/video/project').AudioEffect[] }) => {
         try {
           const res = await fetch(track.src);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1966,7 +1968,8 @@ export class VideoRenderer {
             gain.gain.exponentialRampToValueAtTime(0.0001, t0 + track.trackDuration);
           }
 
-          source.connect(gain).connect(destination);
+          const processed = connectAudioEffects(audioCtx, source, track.effects, gain);
+          processed.connect(destination);
           source.start(t0, track.trimStart, Math.max(0.1, track.trackDuration));
         } catch {
           /* audio decode failure shouldn't kill the video export */
@@ -1999,7 +2002,8 @@ export class VideoRenderer {
                   lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
                   compressor: clip.audioProcessing?.compressor || false,
                 });
-                processed.connect(destination);
+                const effected = connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
+                if (effected !== destination) { /* already connected by helper */ }
                 source.start(audioCtx.currentTime + startDelay + clipStart, 0, trimLength);
               } else {
                 source.buffer = decoded;
@@ -2010,7 +2014,8 @@ export class VideoRenderer {
                   lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
                   compressor: clip.audioProcessing?.compressor || false,
                 });
-                processed.connect(destination);
+                const effected = connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
+                if (effected !== destination) { /* already connected by helper */ }
                 source.start(audioCtx.currentTime + startDelay + clipStart, clip.trimStart, trimLength);
               }
             } catch {
@@ -2035,6 +2040,7 @@ export class VideoRenderer {
           fadeOutSec: audio.fadeOut,
           startAt: startDelay + audio.start,
           trackDuration: Math.max(0.1, audio.trimEnd - audio.trimStart),
+          effects: audio.audioProcessing?.effects,
         });
       }
 
