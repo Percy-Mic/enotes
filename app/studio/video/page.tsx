@@ -4805,11 +4805,9 @@ function VideoEditor() {
   // Main editor shell. Keep this expression deliberately simple for the JSX parser.
   return (
     <main
-      className={[
-        'flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200',
-        toolDrawerOpen ? 'pb-[42dvh] md:pb-0 md:pr-[min(430px,32vw)]' : '',
-      ].join(' ')}
+      className="flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200"
       data-history-scoped="true"
+      style={toolDrawerOpen ? { paddingBottom: '42dvh', paddingRight: 'min(430px, 32vw)' } : undefined}
     >
       {/* fullscreen preview overlay (renders above everything when active) */}
       {fullscreen && (
