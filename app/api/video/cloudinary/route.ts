@@ -30,6 +30,8 @@ export async function POST(request: Request) {
     const result = await cloudinaryProcessUrl({ url, userId: auth.user.id, mediaType, mode });
     return NextResponse.json({ configured: true, ...result });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Cloudinary processing failed.' }, { status: 502 });
+    const message = error instanceof Error ? error.message : 'Cloudinary processing failed.';
+    const status = /credentials|unauthorized|authentication|invalid.*api|not configured/i.test(message) ? 503 : 424;
+    return NextResponse.json({ configured: cloudinaryConfigured(), error: message, provider: 'cloudinary' }, { status });
   }
 }
