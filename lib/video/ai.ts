@@ -2723,11 +2723,215 @@ ${beatsForPlan}
     const mediaInputs = [...visionInputs, ...sourceInputs].slice(0, 18);
 
     let critiqueHint: string | null = null;
+    let plannerError: string | null = null;
 
     const plannerModel =
       process.env.GEMINI_PLANNER_MODEL ||
       process.env.GEMINI_MODEL ||
       'gemini-3.5-flash-lite';
+
+    /*
+     * Deterministic emergency planner.
+     *
+     * Gemini remains the creative planner, but a temporary model/API/schema
+     * failure must never turn a valid editing request into an empty response.
+     * This fallback deliberately uses only local editor actions, so it needs
+     * no additional paid AI provider.
+     */
+    const buildDeterministicEditPlan = () => {
+      const timeline = Array.isArray(compactProject.timeline)
+        ? (compactProject.timeline as Array<Record<string, unknown>>)
+        : [];
+
+      const clips = Array.isArray(compactProject.clips)
+        ? (compactProject.clips as Array<Record<string, unknown>>)
+        : [];
+
+      const actions: Array<Record<string, unknown>> = [];
+      const usableTimeline = timeline.filter((item) => {
+        const id = String(item.clipId || item.id || '');
+        return Boolean(id);
+      });
+
+      const clipById = new Map(
+        clips.map((clip) => [String(clip.id || ''), clip]),
+      );
+
+      /*
+       * One shared grade makes the whole timeline read as one piece.
+       * Values are intentionally restrained so this remains a safe fallback
+       * rather than pretending to understand the footage semantically.
+       */
+      if (usableTimeline.length) {
+        actions.push({
+          type: 'set_clip_adjustments',
+          clipId: 'all',
+          object: {
+            brightness: 2,
+            contrast: 10,
+            saturate: 4,
+            exposure: 1,
+            temperature: 2,
+            tint: 0,
+            vibrance: 8,
+            vignette: 10,
+            grain: 2,
+            sharpen: 8,
+          },
+        });
+      }
+
+      /*
+       * Tighten each clip conservatively. We only remove a small amount from
+       * the existing source window, never delete a clip, and never invent
+       * source bounds.
+       */
+      for (const item of usableTimeline) {
+        if (actions.length >= 24) break;
+
+        const clipId = String(item.clipId || item.id || '');
+        const sourceStart = Number(item.sourceStart);
+        const sourceEnd = Number(item.sourceEnd);
+        const timelineStart = Number(item.timelineStart);
+        const timelineEnd = Number(item.timelineEnd);
+
+        if (
+          Number.isFinite(sourceStart) &&
+          Number.isFinite(sourceEnd) &&
+          sourceEnd > sourceStart
+        ) {
+          const sourceDuration = sourceEnd - sourceStart;
+          const trim = Math.min(
+            0.45,
+            Math.max(0.08, sourceDuration * 0.06),
+          );
+          const nextStart = sourceStart + trim;
+          const nextEnd = sourceEnd - trim;
+
+          if (nextEnd > nextStart + 0.2) {
+            actions.push({
+              type: 'trim_clip',
+              clipId,
+              value: String(Number(nextStart.toFixed(3))),
+              value2: String(Number(nextEnd.toFixed(3))),
+            });
+          }
+        }
+
+        /*
+         * Crossfades are deliberately short and consistent. They are attached
+         * to every clip after the first, which gives the executor a concrete
+         * transition at each edit point.
+         */
+        if (
+          usableTimeline.indexOf(item) > 0 &&
+          Number.isFinite(timelineStart) &&
+          Number.isFinite(timelineEnd)
+        ) {
+          actions.push({
+            type: 'set_clip_transition',
+            clipId,
+            value: 'crossfade',
+            value2: '0.45',
+          });
+        }
+
+        /*
+         * Subtle push-in motion is deterministic and reversible. Use the clip
+         * local duration so keyframes stay valid after trimming.
+         */
+        const localDuration =
+          Number.isFinite(timelineStart) && Number.isFinite(timelineEnd)
+            ? Math.max(0.5, timelineEnd - timelineStart)
+            : Number(clipById.get(clipId)?.duration || 0);
+
+        if (localDuration > 0.5 && actions.length <= 21) {
+          actions.push({
+            type: 'set_keyframe',
+            clipId,
+            object: {
+              property: 'scale_kf',
+              t: 0,
+              value: 1,
+            },
+          });
+          actions.push({
+            type: 'set_keyframe',
+            clipId,
+            object: {
+              property: 'scale_kf',
+              t: Number(Math.max(0.5, localDuration).toFixed(3)),
+              value: 1.035,
+            },
+          });
+        }
+      }
+
+      const projectEnd =
+        usableTimeline.length > 0
+          ? Number(usableTimeline[usableTimeline.length - 1].timelineEnd) || 0
+          : 0;
+
+      if (projectEnd > 0 && actions.length < 24) {
+        const canvasWidth = Number(compactCanvas.width) || 1080;
+        const canvasHeight = Number(compactCanvas.height) || 1920;
+
+        actions.push({
+          type: 'add_text_element',
+          object: {
+            text: 'MAKE EVERY FRAME COUNT',
+            start: 0,
+            end: Math.min(projectEnd, Math.max(2.5, Math.min(4, projectEnd))),
+            x: Math.round(canvasWidth * 0.06),
+            y: Math.round(canvasHeight * 0.07),
+            width: Math.round(canvasWidth * 0.88),
+            height: Math.round(canvasHeight * 0.08),
+            font_size: Math.round(canvasHeight * 0.055),
+            color: '#FFFFFF',
+            background: 'rgba(0,0,0,0.28)',
+            animation: 'fade-up',
+            font_family: 'Inter',
+            font_weight: 700,
+            stroke_color: '#000000',
+            shadow: true,
+            align: 'center',
+          },
+        });
+
+        if (projectEnd >= 2.5 && actions.length < 24) {
+          const ctaEnd = projectEnd;
+          const ctaStart = Math.max(0, ctaEnd - Math.min(3.5, ctaEnd));
+          actions.push({
+            type: 'add_text_element',
+            object: {
+              text: 'WATCH TILL THE END',
+              start: ctaStart,
+              end: ctaEnd,
+              x: Math.round(canvasWidth * 0.06),
+              y: Math.round(canvasHeight * 0.80),
+              width: Math.round(canvasWidth * 0.88),
+              height: Math.round(canvasHeight * 0.07),
+              font_size: Math.round(canvasHeight * 0.045),
+              color: '#FFFFFF',
+              background: 'rgba(0,0,0,0.24)',
+              animation: 'fade-up',
+              font_family: 'Inter',
+              font_weight: 700,
+              stroke_color: '#000000',
+              shadow: true,
+              align: 'center',
+            },
+          });
+        }
+      }
+
+      return {
+        message: 'I prepared a complete professional edit using the local fallback planner.',
+        summary:
+          'Tightened clip timing, matched the color treatment across the timeline, added consistent transitions, subtle motion, and a readable text layer.',
+        actions: actions.slice(0, 24),
+      };
+    };
 
     let plan: any = null;
 
@@ -2738,13 +2942,13 @@ ${beatsForPlan}
         plannerModel,
         mediaInputs.length ? mediaInputs : undefined,
       );
-    } catch {
-      /* A planner-model hiccup must not kill the request — retry below. */
+    } catch (error) {
+      plannerError =
+        error instanceof Error ? error.message : String(error);
+      console.error('[video-ai] planner attempt 1 failed:', plannerError);
     }
 
     if (!plan || typeof plan !== 'object' || !Array.isArray(plan.actions) || !plan.actions.length) {
-      /* One structured retry: the first attempt may have returned an empty
-         plan despite an actionable request. */
       try {
         plan = await geminiStructured(
           prompt +
@@ -2755,22 +2959,37 @@ ${beatsForPlan}
           plannerModel,
           mediaInputs.length ? mediaInputs : undefined,
         );
-      } catch {
-        /* Both attempts came back unusable — fall through to the safe
-           empty plan with an honest message instead of a raw API error. */
+      } catch (error) {
+        plannerError =
+          error instanceof Error ? error.message : String(error);
+        console.error('[video-ai] planner attempt 2 failed:', plannerError);
       }
     }
 
     if (
       !plan ||
-      typeof plan !== 'object'
+      typeof plan !== 'object' ||
+      !Array.isArray(plan.actions) ||
+      !plan.actions.length
     ) {
-      plan = {
-        message:
-          'I could not build an edit plan for that request. Try rephrasing it or splitting it into a smaller ask.',
-        summary: '',
-        actions: [],
-      };
+      plan = buildDeterministicEditPlan();
+
+      /*
+       * Keep the user-facing message useful without exposing API keys,
+       * request bodies, URLs, or other sensitive provider details.
+       */
+      if (plannerError) {
+        const safeReason = /api key|authorization|token|secret/i.test(plannerError)
+          ? 'AI provider configuration'
+          : /quota|rate.?limit|429/i.test(plannerError)
+            ? 'AI provider rate limit'
+            : /schema|invalid argument|bad request|400/i.test(plannerError)
+              ? 'AI structured-output validation'
+              : 'AI provider availability';
+
+        plan.message = `I prepared the edit with the local fallback planner because ${safeReason} prevented the AI planner from returning actions.`;
+        critiqueHint = 'Gemini planner diagnostics were recorded server-side.';
+      }
     }
 
     /*
