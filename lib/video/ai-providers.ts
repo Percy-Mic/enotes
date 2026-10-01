@@ -4,7 +4,6 @@ type Provider = 'huggingface' | 'fal' | 'replicate' | 'cloudinary';
 
 function providerFor(operation: VideoAIOperation): Provider | null {
   if (
-    operation === 'remove-background' ||
     operation === 'remove-object' ||
     operation === 'track-object' ||
     operation === 'generate-image' ||
@@ -158,7 +157,7 @@ function falInputFor(input: AIJobInput): Record<string, unknown> {
       }
       return {
         image_url: input.mediaUrl,
-        target_style: (() => { const requested = String(input.prompt || '').trim().toLowerCase().replace(/\s+/g, '_'); const allowed = new Set(['anime_character','cartoon_3d','hand_drawn_animation','cyberpunk_future','anime_game_style','comic_book_animation','animated_series','cartoon_animation','lofi_aesthetic','cottagecore','dark_academia','y2k','vaporwave','liminal_space','weirdcore','dreamcore','synthwave','outrun','photorealistic','hyperrealistic','digital_art','concept_art','impressionist','anime','pixel_art','claymation']); return allowed.has(requested) ? requested : 'cinematic'; })(),
+        target_style: (() => { const requested = String(input.prompt || '').trim().toLowerCase().replace(/\s+/g, '_'); const allowed = new Set(['anime_character','cartoon_3d','hand_drawn_animation','cyberpunk_future','anime_game_style','comic_book_animation','animated_series','cartoon_animation','lofi_aesthetic','cottagecore','dark_academia','y2k','vaporwave','liminal_space','weirdcore','dreamcore','synthwave','outrun','photorealistic','hyperrealistic','digital_art','concept_art','impressionist','anime','pixel_art','claymation']); return allowed.has(requested) ? requested : 'impressionist'; })(),
       };
 
     case 'relight':
