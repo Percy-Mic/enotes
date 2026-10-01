@@ -70,7 +70,7 @@ export interface AIResult {
 const GEMINI_KEY = () =>
   process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
 
-function normalizeGeminiModel(value: string | undefined, fallback = 'gemini-3.1-flash-lite') {
+function normalizeGeminiModel(value: string | undefined, fallback = 'gemini-3.8-flash') {
   const model = String(value || '').trim().replace(/^models\//, '');
   if (!model) return fallback;
   const retired = new Set([
@@ -239,8 +239,7 @@ async function geminiStructuredOnce(
   prompt: string,
   schema: Record<string, unknown>,
   model =
-    process.env.GEMINI_MODEL ||
-    'gemini-3.1-flash-lite',
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   media?: Array<{
     url?: string | null;
     type?: 'video' | 'image' | 'audio' | null;
@@ -452,8 +451,7 @@ async function geminiStructured(
   prompt: string,
   schema: Record<string, unknown>,
   model =
-    process.env.GEMINI_MODEL ||
-    'gemini-3.1-flash-lite',
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
   media?: Array<{
     url?: string | null;
     type?: 'video' | 'image' | 'audio' | null;
@@ -530,9 +528,7 @@ async function geminiPlannerJsonOnce(
   return parsed;
 }
 const GEMINI_PLANNER_FALLBACK_MODELS = [
-  'gemini-3.1-flash-lite',
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
+  'gemini-3.8-flash',
 ] as const;
 
 async function geminiPlannerStructured(
@@ -588,8 +584,7 @@ async function geminiPlannerStructured(
 async function geminiText(
   prompt: string,
   model =
-    process.env.GEMINI_MODEL ||
-    'gemini-3.1-flash-lite',
+    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
 ) {
   const key = GEMINI_KEY();
 
@@ -1693,7 +1688,7 @@ async function updateProjectVisionIndex(supabase: Awaited<ReturnType<typeof crea
     'Classify shotType with editing terminology. subjects must be concrete visible subjects. visualTags must be concise searchable concepts. textVisible must contain readable on-screen text or be empty.\n' +
     'composition describes framing/layout. qualityNotes mention visible blur, shake, exposure, focus, lighting, obstruction, etc. suggestedUse describes a possible editing role based only on visible content.\n\n' +
     'Frame manifest:\n' + JSON.stringify(analysisFrames.map((frame) => ({clipId:frame.clipId,time:frame.time,label:frame.label || ''})));
-  const result = await geminiStructured(prompt, schema, process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite', analysisFrames.map((frame) => ({url:frame.dataUrl,type:'image' as const}))) as any;
+  const result = await geminiStructured(prompt, schema, process.env.GEMINI_MODEL || 'gemini-3.8-flash', analysisFrames.map((frame) => ({url:frame.dataUrl,type:'image' as const}))) as any;
   const analyzed = Array.isArray(result?.clips) ? result.clips : [];
   const now = new Date().toISOString();
   for (const item of stale) {
@@ -1711,7 +1706,7 @@ async function updateProjectVisionIndex(supabase: Awaited<ReturnType<typeof crea
       composition:String(visual.composition || '').slice(0,1000),
       quality_notes:Array.isArray(visual.qualityNotes)?visual.qualityNotes.map(String).slice(0,20):[],
       suggested_use:String(visual.suggestedUse || '').slice(0,500), frame_times:frameTimes, analyzed_at:now,
-      model:process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite', updated_at:now
+      model:process.env.GEMINI_MODEL || 'gemini-3.8-flash', updated_at:now
     }, {onConflict:'project_id,clip_id'});
   }
   return loadProjectVisionIndex(supabase,userId,projectId);
@@ -2890,8 +2885,7 @@ ${beatsForPlan}
 
     const plannerModel = normalizeGeminiModel(
       process.env.GEMINI_PLANNER_MODEL ||
-      process.env.GEMINI_MODEL ||
-      'gemini-3.1-flash-lite',
+      process.env.GEMINI_MODEL || 'gemini-3.8-flash',
     );
 
     /*
@@ -3735,7 +3729,7 @@ Return {"add": [...], "fixes": [{"index": <0-based index into the plan>, "action
           `Cues needing copy (index refers to the actions array): ${JSON.stringify(cueContext)}\n\n` +
           `Rules: max 6 words per cue (8 for a CTA), UPPERCASE for openers/CTAs, sentence case for captions; copy must match what the footage actually shows and the user's request; no quotes, no emojis, no hashtags. Return one entry per cue index.`,
           copySchema,
-          process.env.GEMINI_TEXT_MODEL || 'gemini-3.1-flash-lite',
+          process.env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash',
         );
         const copies = Array.isArray((copy as any)?.copies) ? (copy as any).copies : [];
         for (const c of copies) {
