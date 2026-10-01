@@ -388,19 +388,26 @@ function AudioWaveformPreview({ src, duration, start, onSeek }: { src: string; d
       try {
         const response = await fetch(src, { mode: 'cors' });
         if (!response.ok) throw new Error();
-        const buffer = await new AudioContext().decodeAudioData(await response.arrayBuffer());
-        if (cancelled) return;
-        const data = buffer.getChannelData(0);
+        const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextCtor) throw new Error();
+        const audioContext = new AudioContextCtor();
+        try {
+          const buffer = await audioContext.decodeAudioData(await response.arrayBuffer());
+          if (cancelled) return;
+          const data = buffer.getChannelData(0);
         const step = Math.max(1, Math.floor(data.length / w));
         ctx.globalAlpha = 0.65;
         ctx.fillStyle = '#ffffff';
-        for (let x = 0; x < w; x++) {
-          let peak = 0;
-          const from = x * step;
-          const to = Math.min(data.length, from + step);
-          for (let i = from; i < to; i += Math.max(1, Math.floor(step / 8))) peak = Math.max(peak, Math.abs(data[i]));
-          const bar = Math.max(2, peak * (h - 8));
-          ctx.fillRect(x, (h - bar) / 2, 1, bar);
+          for (let x = 0; x < w; x++) {
+            let peak = 0;
+            const from = x * step;
+            const to = Math.min(data.length, from + step);
+            for (let i = from; i < to; i += Math.max(1, Math.floor(step / 8))) peak = Math.max(peak, Math.abs(data[i]));
+            const bar = Math.max(2, peak * (h - 8));
+            ctx.fillRect(x, (h - bar) / 2, 1, bar);
+          }
+        } finally {
+          void audioContext.close();
         }
       } catch {
         if (!cancelled) {
