@@ -6480,6 +6480,8 @@ function VideoEditor() {
                       <span>{Math.round(a.volume * 100)}% volume</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
+                      <label className="space-y-1">
+                        <span className="text-white/60">Volume</span>
                         <Slider label="Volume" min={0} max={1} step={0.05} value={a.volume}
                           onChange={(v) => updateAudio(a.id, { volume: v }, 'Audio volume', `vol-${a.id}`)} />
                       </label>
