@@ -379,7 +379,7 @@ function SoundPreviewPlayer({
   onToggle,
   onSeek,
 }: {
-  sound: SoundBrowserItem;
+  sound: { title: string; duration_seconds: number };
   playing: boolean;
   currentTime: number;
   onToggle: () => void;
