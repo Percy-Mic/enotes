@@ -2782,32 +2782,21 @@ ${beatsForPlan}
       }
 
       /*
-       * Tighten each clip conservatively. We only remove a small amount from
-       * the existing source window, never delete a clip, and never invent
-       * source bounds.
+       * Mandatory finishing pass first: trims for every usable clip, then a
+       * consistent transition at every edit point. Keeping these in separate
+       * passes guarantees that the 24-action safety budget cannot starve the
+       * later clips of their core treatment.
        */
       for (const item of usableTimeline) {
         if (actions.length >= 24) break;
-
         const clipId = String(item.clipId || item.id || '');
         const sourceStart = Number(item.sourceStart);
         const sourceEnd = Number(item.sourceEnd);
-        const timelineStart = Number(item.timelineStart);
-        const timelineEnd = Number(item.timelineEnd);
-
-        if (
-          Number.isFinite(sourceStart) &&
-          Number.isFinite(sourceEnd) &&
-          sourceEnd > sourceStart
-        ) {
+        if (Number.isFinite(sourceStart) && Number.isFinite(sourceEnd) && sourceEnd > sourceStart) {
           const sourceDuration = sourceEnd - sourceStart;
-          const trim = Math.min(
-            0.45,
-            Math.max(0.08, sourceDuration * 0.06),
-          );
+          const trim = Math.min(0.45, Math.max(0.08, sourceDuration * 0.06));
           const nextStart = sourceStart + trim;
           const nextEnd = sourceEnd - trim;
-
           if (nextEnd > nextStart + 0.2) {
             actions.push({
               type: 'trim_clip',
@@ -2817,54 +2806,52 @@ ${beatsForPlan}
             });
           }
         }
+      }
 
-        /*
-         * Crossfades are deliberately short and consistent. They are attached
-         * to every clip after the first, which gives the executor a concrete
-         * transition at each edit point.
-         */
-        if (
-          usableTimeline.indexOf(item) > 0 &&
-          Number.isFinite(timelineStart) &&
-          Number.isFinite(timelineEnd)
-        ) {
-          actions.push({
-            type: 'set_clip_transition',
-            clipId,
-            value: 'crossfade',
-            value2: '0.45',
-          });
-        }
+      for (let index = 1; index < usableTimeline.length && actions.length < 24; index += 1) {
+        const item = usableTimeline[index];
+        const clipId = String(item.clipId || item.id || '');
+        actions.push({
+          type: 'set_clip_transition',
+          clipId,
+          value: 'crossfade',
+          value2: '0.45',
+        });
+      }
 
-        /*
-         * Subtle push-in motion is deterministic and reversible. Use the clip
-         * local duration so keyframes stay valid after trimming.
-         */
+      /*
+       * Motion is an enhancement after the mandatory edit grammar is covered.
+       * Apply subtle push-ins to as many early clips as the remaining budget
+       * allows, using two keyframes per clip as required by the executor.
+       */
+      for (const item of usableTimeline) {
+        if (actions.length + 2 > 21) break;
+        const clipId = String(item.clipId || item.id || '');
+        const timelineStart = Number(item.timelineStart);
+        const timelineEnd = Number(item.timelineEnd);
         const localDuration =
           Number.isFinite(timelineStart) && Number.isFinite(timelineEnd)
             ? Math.max(0.5, timelineEnd - timelineStart)
             : Number(clipById.get(clipId)?.duration || 0);
-
-        if (localDuration > 0.5 && actions.length <= 21) {
-          actions.push({
-            type: 'set_keyframe',
-            clipId,
-            object: {
-              property: 'scale_kf',
-              t: 0,
-              value: 1,
-            },
-          });
-          actions.push({
-            type: 'set_keyframe',
-            clipId,
-            object: {
-              property: 'scale_kf',
-              t: Number(Math.max(0.5, localDuration).toFixed(3)),
-              value: 1.035,
-            },
-          });
-        }
+        if (localDuration <= 0.5) continue;
+        actions.push({
+          type: 'set_keyframe',
+          clipId,
+          object: {
+            property: 'scale_kf',
+            t: 0,
+            value: 1,
+          },
+        });
+        actions.push({
+          type: 'set_keyframe',
+          clipId,
+          object: {
+            property: 'scale_kf',
+            t: Number(localDuration.toFixed(3)),
+            value: 1.035,
+          },
+        });
       }
 
       const projectEnd =
