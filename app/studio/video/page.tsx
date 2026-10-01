@@ -4167,13 +4167,13 @@ function VideoEditor() {
     source?: string;
     tags?: string[];
     description?: string;
-    provider?: 'library' | 'freesound';
+    provider?: 'library' | 'freesound' | 'jamendo';
   };
 
   const [sounds, setSounds] = useState<SoundBrowserItem[]>([]);
   const [soundQuery, setSoundQuery] = useState('');
   const [soundCategory, setSoundCategory] = useState('Cinematic');
-  const [soundProvider, setSoundProvider] = useState<'library' | 'freesound'>('library');
+  const [soundProvider, setSoundProvider] = useState<'library' | 'freesound' | 'jamendo'>('library');
   const [soundPage, setSoundPage] = useState(1);
   const [soundPages, setSoundPages] = useState(1);
   const [soundCount, setSoundCount] = useState(0);
@@ -4285,6 +4285,52 @@ function VideoEditor() {
       setSoundCount(Number(json.count) || mapped.length);
     } catch (e) {
       notify(e instanceof Error ? e.message : 'Could not load Freesound results.');
+    } finally {
+      setSoundBusy(false);
+    }
+  };
+
+  const searchJamendo = async (
+    query = soundQuery,
+    page = 1,
+    append = false,
+    category = soundCategory
+  ) => {
+    setSoundBusy(true);
+    try {
+      const params = new URLSearchParams({
+        q: query.trim(),
+        page: String(page),
+        limit: '24',
+        category: category === 'All' ? '' : category,
+      });
+      const res = await fetch('/api/studio/jamendo?' + params.toString(), { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not load Jamendo results.');
+
+      const mapped: SoundBrowserItem[] = (json.results || []).map((s: any) => ({
+        id: `jamendo-${s.id}`,
+        title: s.title,
+        artist: s.artist || 'Jamendo artist',
+        url: s.url,
+        duration_seconds: Number(s.duration_seconds || 15),
+        category: category || 'Jamendo',
+        license: s.license || 'Creative Commons',
+        source: s.source,
+        tags: Array.isArray(s.tags) ? s.tags : [],
+        description: s.album ? `Album: ${s.album}` : '',
+        provider: 'jamendo',
+        image: s.image,
+        licenseUrl: s.licenseUrl,
+        audiodownload_allowed: Boolean(s.audiodownload_allowed),
+      })) as SoundBrowserItem[];
+
+      setSounds((prev) => append ? [...prev, ...mapped] : mapped);
+      setSoundPage(Number(json.page) || page);
+      setSoundPages(Math.max(1, Math.ceil(Number(json.count || mapped.length) / 24)));
+      setSoundCount(Number(json.count) || mapped.length);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Could not load Jamendo results.');
     } finally {
       setSoundBusy(false);
     }
@@ -6285,6 +6331,16 @@ function VideoEditor() {
                 >
                   Freesound
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSoundProvider('jamendo');
+                    void searchJamendo(soundQuery, 1, false, soundCategory);
+                  }}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'jamendo' ? 'bg-white/15 text-white' : 'text-white/45'}`}
+                >
+                  Jamendo
+                </button>
               </div>
 
               {soundProvider === 'freesound' ? (
@@ -6424,6 +6480,150 @@ function VideoEditor() {
 
                   <p className="text-center text-[9px] leading-4 text-white/30">
                     Freesound results here are filtered to Creative Commons 0. Preview files are used directly; the original Freesound file is not downloaded.
+                  </p>
+                </div>
+              ) : soundProvider === 'jamendo' ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-bold">Jamendo Music</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-white/45">
+                      Independent music for edits. Search Filipino, OPM, Tagalog, cinematic, lo-fi, pop and more, then preview or add tracks to the timeline.
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void searchJamendo(soundQuery, 1, false, soundCategory);
+                    }}
+                    className="flex gap-2"
+                  >
+                    <div className="relative min-w-0 flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                      <input
+                        value={soundQuery}
+                        onChange={(e) => setSoundQuery(e.target.value)}
+                        placeholder="Search OPM, Filipino, cinematic, lo-fi…"
+                        aria-label="Search Jamendo music"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]"
+                      />
+                    </div>
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
+                      Search
+                    </button>
+                  </form>
+
+                  <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Jamendo music categories">
+                    {['All', 'Filipino / OPM', 'Pop', 'Cinematic', 'Lo-fi', 'Acoustic', 'Electronic', 'Sad', 'Happy', 'Romantic', 'Horror', 'World'].map((category) => {
+                      const queryCategory =
+                        category === 'Filipino / OPM' ? 'filipino opm tagalog philippines' :
+                        category === 'Lo-fi' ? 'lofi chill' :
+                        category.toLowerCase();
+                      return (
+                        <button
+                          key={category}
+                          type="button"
+                          role="tab"
+                          aria-selected={soundCategory === queryCategory}
+                          onClick={() => {
+                            setSoundCategory(queryCategory);
+                            void searchJamendo(soundQuery, 1, false, queryCategory);
+                          }}
+                          className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold transition ${soundCategory === queryCategory ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
+                        >
+                          {category}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[9px] text-white/35">
+                    <span>{soundCount ? `${soundCount.toLocaleString()} Jamendo tracks` : 'Jamendo music'}</span>
+                    {soundPage > 1 && <span>Page {soundPage} / {soundPages}</span>}
+                  </div>
+
+                  {soundBusy && sounds.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-xs text-white/45">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Searching Jamendo…
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sounds.map((s) => (
+                        <div key={s.id} className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
+                          <div className="flex items-start gap-2">
+                            {s.image && (
+                              <img src={s.image} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" loading="lazy" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold">{s.title}</p>
+                              <p className="mt-0.5 truncate text-[10px] text-white/45">
+                                {s.artist} · {fmt(s.duration_seconds)}
+                              </p>
+                              <p className="mt-0.5 truncate text-[9px] text-white/30">{s.license || 'Creative Commons'}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => addSoundTrack({
+                                title: s.title,
+                                url: s.url,
+                                duration_seconds: s.duration_seconds,
+                                provider: 'jamendo',
+                                sourceUrl: s.source,
+                                license: s.license,
+                                creator: s.artist,
+                              }, 'music')}
+                              className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold focus-visible:ring-2 focus-visible:ring-white"
+                            >
+                              Add
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => toggleSoundPreview(s)}
+                            className="mt-2 flex w-full items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left text-[10px] font-semibold text-white/75 transition hover:bg-white/[0.08] active:scale-[0.99]"
+                            aria-label={`${previewingSoundId === s.id ? 'Pause' : 'Preview'} ${s.title}`}
+                          >
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E5798F] text-white">
+                              {previewingSoundId === s.id ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
+                            </span>
+                            <span>{previewingSoundId === s.id ? 'Previewing…' : 'Preview track'}</span>
+                          </button>
+
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <div className="min-w-0 truncate text-[9px] text-white/35">
+                              {s.tags?.slice(0, 4).join(' · ') || 'Jamendo'}
+                            </div>
+                            {s.source && (
+                              <a href={s.source} target="_blank" rel="noreferrer" className="shrink-0 text-[9px] font-semibold text-[#FFB6C1] hover:underline">
+                                View source
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {!soundBusy && sounds.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-white/15 px-3 py-5 text-center text-xs text-white/50">
+                          No Jamendo tracks found. Try “Filipino”, “OPM”, “Tagalog”, “cinematic”, or another search.
+                        </div>
+                      )}
+
+                      {soundPage < soundPages && (
+                        <button
+                          type="button"
+                          onClick={() => void searchJamendo(soundQuery, soundPage + 1, true, soundCategory)}
+                          disabled={soundBusy}
+                          className="w-full rounded-lg border border-white/15 py-2.5 text-[10px] font-semibold disabled:opacity-40"
+                        >
+                          {soundBusy ? 'Loading…' : 'Load more music'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-center text-[9px] leading-4 text-white/30">
+                    Jamendo tracks are independent music. Check each track’s license before using exported videos commercially.
                   </p>
                 </div>
               ) : (
