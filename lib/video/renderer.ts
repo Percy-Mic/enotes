@@ -482,6 +482,11 @@ function nearestReverseFrame(entry: ReverseCacheEntry, t: number): ReverseFrame 
 }
 
 const imageCache = new Map<string, HTMLImageElement>();
+const imageLoading = new Map<string, Promise<HTMLImageElement>>();
+
+function imageSourceError(src: string, reason = 'The image could not be decoded') {
+  return new Error(`${reason}: ${src.slice(0, 100)}…`);
+}
 
 function clipMaskPath(ctx: CanvasRenderingContext2D, mask: MaskSpec, W: number, H: number) {
   const amount = Math.max(0, Math.min(1, mask.amount ?? 0.5));
@@ -538,16 +543,48 @@ function applyMaskClip(ctx: CanvasRenderingContext2D, mask: MaskSpec | undefined
 }
 function loadImage(src: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(src);
-  if (cached && cached.complete) return Promise.resolve(cached);
-  return new Promise((resolve, reject) => {
+  if (cached && cached.complete && cached.naturalWidth > 0 && cached.naturalHeight > 0) {
+    return Promise.resolve(cached);
+  }
+
+  const pending = imageLoading.get(src);
+  if (pending) return pending;
+
+  const promise = new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
+    /* Set CORS before src. This is required for Supabase/Cloudinary images
+       that will later be painted into a canvas and exported. */
     img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      imageCache.set(src, img);
-      resolve(img);
+    img.decoding = 'async';
+    img.onload = async () => {
+      try {
+        /* onload means the resource arrived, not necessarily that a decoded
+           frame is ready for drawImage. Explicitly decode before caching it.
+           This prevents the first main-track image frame from becoming a
+           black canvas on slower devices. */
+        if (typeof img.decode === 'function') {
+          try { await img.decode(); } catch { /* onload is still a valid fallback */ }
+        }
+        if (!img.naturalWidth || !img.naturalHeight) {
+          throw imageSourceError(src, 'The image loaded but has no decoded pixels');
+        }
+        imageCache.set(src, img);
+        resolve(img);
+      } catch (error) {
+        reject(error instanceof Error ? error : imageSourceError(src));
+      } finally {
+        imageLoading.delete(src);
+      }
     };
-    img.onerror = () => reject(new Error(`Could not load image: ${src.slice(0, 60)}…`));
+    img.onerror = () => {
+      imageLoading.delete(src);
+      reject(imageSourceError(src, 'Could not load image'));
+    };
+    img.src = src;
   });
+
+  imageLoading.set(src, promise);
+  return promise;
 }
 
 /* ---------- motion effects (rendered into the export, not just preview) ---------- */
