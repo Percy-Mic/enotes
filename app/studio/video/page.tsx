@@ -1089,9 +1089,13 @@ function VideoEditor() {
         let audio = previewAudioRef.current.get(clipId);
         if (!audio || audio.src !== clip.src) {
           audio?.pause();
-          audio = new Audio(clip.src);
-          audio.preload = 'auto';
-                    previewAudioRef.current.set(clipId, audio);
+          const videoAudio = document.createElement('video');
+          videoAudio.preload = 'auto';
+          videoAudio.playsInline = true;
+          videoAudio.setAttribute('playsinline', '');
+          audio = videoAudio;
+          audio.src = clip.src;
+          previewAudioRef.current.set(clipId, audio);
         }
 
         const local = Math.max(0, time - clipStart);
@@ -1171,7 +1175,6 @@ function VideoEditor() {
         audio?.pause();
         audio = new Audio(track.src);
         audio.preload = 'auto';
-        audio.crossOrigin = 'anonymous';
         previewAudioRef.current.set(key, audio);
       }
 
