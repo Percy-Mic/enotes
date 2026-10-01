@@ -14,8 +14,17 @@ export async function POST(request: Request) {
     const job = await createAIJob(body);
     jobId = job.id;
 
-    const externalResult = await runExternalVideoAI(body);
-    const result = externalResult || await runVideoAI(body);
+    const selectedProvider = String(process.env.AI_DEFAULT_PROVIDER || 'auto').trim().toLowerCase();
+
+    /*
+     * Free mode is intentionally first-party: use ENOTES' existing Gemini,
+     * speech, caption, planning, renderer/action and other non-fal paths.
+     * It must never silently fall back to a paid media provider.
+     */
+    const result =
+      selectedProvider === 'free'
+        ? await runVideoAI(body)
+        : (await runExternalVideoAI(body)) || await runVideoAI(body);
 
     /* Persist the conversation so reopening the AI panel restores chat
        history (video_ai_conversations / video_ai_messages). Best-effort:
