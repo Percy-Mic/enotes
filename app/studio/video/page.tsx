@@ -4727,7 +4727,7 @@ function VideoEditor() {
                 onClick={() => setFullscreen(true)}
                 aria-label="Fullscreen preview"
                 title="Fullscreen preview (Esc to exit)"
-                className="absolute -top-9 right-0 z-30 flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-2 sm:-top-11 sm:h-9 sm:px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                className="absolute top-2 right-2 z-30 flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-2 sm:-top-11 sm:h-9 sm:px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
               >
                 <Maximize2 className="h-4 w-4" /><span className="hidden sm:inline">Fullscreen</span>
               </button>
@@ -4755,25 +4755,25 @@ function VideoEditor() {
                 >
                   {/* Real touch targets: the visible dots are only visual. */}
                   {([
-                    { gesture: 'resize-nw' as Gesture, cls: '-left-6 -top-6', label: 'Resize video top-left' },
-                    { gesture: 'resize-ne' as Gesture, cls: '-right-6 -top-6', label: 'Resize video top-right' },
-                    { gesture: 'resize-sw' as Gesture, cls: '-left-6 -bottom-6', label: 'Resize video bottom-left' },
-                    { gesture: 'resize-se' as Gesture, cls: '-right-6 -bottom-6', label: 'Resize video bottom-right' },
-                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 -top-6 -translate-x-1/2', label: 'Stretch video top' },
-                    { gesture: 'resize-s' as Gesture, cls: 'bottom-[-24px] left-1/2 -translate-x-1/2', label: 'Stretch video bottom' },
-                    { gesture: 'resize-w' as Gesture, cls: '-left-6 top-1/2 -translate-y-1/2', label: 'Stretch video left' },
-                    { gesture: 'resize-e' as Gesture, cls: 'right-[-24px] top-1/2 -translate-y-1/2', label: 'Stretch video right' },
+                    { gesture: 'resize-nw' as Gesture, cls: 'left-2 top-2', label: 'Resize video top-left' },
+                    { gesture: 'resize-ne' as Gesture, cls: 'right-2 top-2', label: 'Resize video top-right' },
+                    { gesture: 'resize-sw' as Gesture, cls: 'left-2 bottom-2', label: 'Resize video bottom-left' },
+                    { gesture: 'resize-se' as Gesture, cls: 'right-2 bottom-2', label: 'Resize video bottom-right' },
+                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 top-2 -translate-x-1/2', label: 'Stretch video top' },
+                    { gesture: 'resize-s' as Gesture, cls: 'bottom-2 left-1/2 -translate-x-1/2', label: 'Stretch video bottom' },
+                    { gesture: 'resize-w' as Gesture, cls: 'left-2 top-1/2 -translate-y-1/2', label: 'Stretch video left' },
+                    { gesture: 'resize-e' as Gesture, cls: 'right-2 top-1/2 -translate-y-1/2', label: 'Stretch video right' },
                   ]).map((h) => (
                     <span
                       key={h.gesture}
-                      className={'pointer-events-auto absolute z-40 h-12 w-12 touch-none ' + h.cls}
+                      className={'pointer-events-auto absolute z-40 h-9 w-9 touch-none ' + h.cls}
                       onPointerDown={(e) => beginClipGesture(selectedClip, h.gesture, e)}
                       aria-label={h.label}
                       role="button"
                     />
                   ))}
                   <span
-                    className="pointer-events-auto absolute z-40 left-1/2 -top-[58px] h-12 w-12 -translate-x-1/2 touch-none"
+                    className="pointer-events-auto absolute z-40 left-1/2 top-2 h-9 w-9 -translate-x-1/2 touch-none"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'rotate', e)}
                     aria-label="Rotate video"
                     role="button"
@@ -4825,25 +4825,25 @@ function VideoEditor() {
                   }}
                 >
                   {([
-                    { gesture: 'resize-nw' as Gesture, cls: '-left-6 -top-6', label: 'Resize overlay top-left' },
-                    { gesture: 'resize-ne' as Gesture, cls: '-right-6 -top-6', label: 'Resize overlay top-right' },
-                    { gesture: 'resize-sw' as Gesture, cls: '-left-6 -bottom-6', label: 'Resize overlay bottom-left' },
-                    { gesture: 'resize-se' as Gesture, cls: '-right-6 -bottom-6', label: 'Resize overlay bottom-right' },
-                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 -top-6 -translate-x-1/2', label: 'Stretch overlay top' },
-                    { gesture: 'resize-s' as Gesture, cls: 'bottom-[-24px] left-1/2 -translate-x-1/2', label: 'Stretch overlay bottom' },
-                    { gesture: 'resize-w' as Gesture, cls: '-left-6 top-1/2 -translate-y-1/2', label: 'Stretch overlay left' },
-                    { gesture: 'resize-e' as Gesture, cls: 'right-[-24px] top-1/2 -translate-y-1/2', label: 'Stretch overlay right' },
+                    { gesture: 'resize-nw' as Gesture, cls: 'left-2 top-2', label: 'Resize overlay top-left' },
+                    { gesture: 'resize-ne' as Gesture, cls: 'right-2 top-2', label: 'Resize overlay top-right' },
+                    { gesture: 'resize-sw' as Gesture, cls: 'left-2 bottom-2', label: 'Resize overlay bottom-left' },
+                    { gesture: 'resize-se' as Gesture, cls: 'right-2 bottom-2', label: 'Resize overlay bottom-right' },
+                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 top-2 -translate-x-1/2', label: 'Stretch overlay top' },
+                    { gesture: 'resize-s' as Gesture, cls: 'bottom-2 left-1/2 -translate-x-1/2', label: 'Stretch overlay bottom' },
+                    { gesture: 'resize-w' as Gesture, cls: 'left-2 top-1/2 -translate-y-1/2', label: 'Stretch overlay left' },
+                    { gesture: 'resize-e' as Gesture, cls: 'right-2 top-1/2 -translate-y-1/2', label: 'Stretch overlay right' },
                   ]).map((h) => (
                     <span
                       key={h.gesture}
-                      className={'pointer-events-auto absolute z-40 h-12 w-12 touch-none ' + h.cls}
+                      className={'pointer-events-auto absolute z-40 h-9 w-9 touch-none ' + h.cls}
                       onPointerDown={(e) => beginElementGesture(selectedElement, h.gesture, e)}
                       aria-label={h.label}
                       role="button"
                     />
                   ))}
                   <span
-                    className="pointer-events-auto absolute z-40 left-1/2 -top-[58px] h-12 w-12 -translate-x-1/2 touch-none"
+                    className="pointer-events-auto absolute z-40 left-1/2 top-2 h-9 w-9 -translate-x-1/2 touch-none"
                     onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
                     aria-label="Rotate overlay"
                     role="button"
