@@ -278,7 +278,7 @@ function TransitionPreviewCard({ project, clipId, transition, duration, active, 
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
   }, [active, renderAt]);
   return (
-    <button type="button" onClick={onApply} className={\`group overflow-hidden rounded-xl border p-1 text-left transition \${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}\`}>
+    <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
         <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white">{transition}</span>
         {active && <span className="absolute right-1 top-1 rounded-md bg-[#E5798F] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
@@ -363,7 +363,7 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, onAppl
   }, [renderAt, project.clips, clipId]);
 
   return (
-    <button type="button" onClick={onApply} className={\`group overflow-hidden rounded-xl border p-1 text-left transition \${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}\`}>
+    <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
         <canvas ref={canvasRef} className="block h-full w-full object-cover" />
         <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white">{name}</span>
