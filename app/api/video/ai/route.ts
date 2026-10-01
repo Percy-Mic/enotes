@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     const job = await createAIJob(body);
     jobId = job.id;
 
-    const selectedProvider = String(process.env.AI_DEFAULT_PROVIDER || 'auto').trim().toLowerCase();
+    const selectedProvider = String(process.env.AI_DEFAULT_PROVIDER || 'free').trim().toLowerCase();
 
     /*
      * Free mode is intentionally first-party: use ENOTES' existing Gemini,
