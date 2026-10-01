@@ -250,6 +250,81 @@ function EffectPreviewCard({
   );
 }
 
+
+function TransitionPreviewCard({ project, clipId, transition, duration, active, onApply }: {
+  project: VideoProject; clipId: string; transition: VideoClip['transitionIn']['type'];
+  duration: number; active: boolean; onApply: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<VideoRenderer | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const index = project.clips.findIndex((clip) => clip.id === clipId);
+  const cut = index > 0 ? project.clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0) : 0;
+  const renderAt = useCallback(async (phase: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas || index < 0) return;
+    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+    const safeDuration = Math.max(0.2, Math.min(duration, project.clips[index]?.transitionIn?.duration || duration));
+    const t = index > 0 ? cut - safeDuration * 0.55 + phase * safeDuration * 1.1 : phase * safeDuration;
+    const previewProject: VideoProject = { ...project, clips: project.clips.map((clip) => clip.id === clipId ? { ...clip, transitionIn: { type: transition, duration: safeDuration } } : clip) };
+    try { await rendererRef.current.drawFrame(canvas, previewProject, Math.max(0, Math.min(projectDuration(previewProject) - 0.01, t)), { previewing: true, playing: false }); } catch {}
+  }, [project, clipId, transition, duration, index, cut]);
+  useEffect(() => {
+    void renderAt(0.5);
+    if (!active) return;
+    const started = performance.now();
+    const tick = () => { void renderAt(((performance.now() - started) / 1000) % 1.4 / 1.4); timerRef.current = window.setTimeout(tick, 110); };
+    tick();
+    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
+  }, [active, renderAt]);
+  return (
+    <button type="button" onClick={onApply} className={\`group overflow-hidden rounded-xl border p-1 text-left transition \${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}\`}>
+      <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
+        <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white">{transition}</span>
+        {active && <span className="absolute right-1 top-1 rounded-md bg-[#E5798F] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
+      </div>
+    </button>
+  );
+}
+
+function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
+  project: VideoProject; clipId: string; preset: 'zoom-in' | 'zoom-out' | 'spin' | 'float' | 'pop' | 'shake'; onApply: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<VideoRenderer | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const renderAt = useCallback(async (phase: number) => {
+    const canvas = canvasRef.current;
+    const source = project.clips.find((clip) => clip.id === clipId);
+    if (!canvas || !source) return;
+    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+    const u = phase;
+    const transform = { ...source.transform };
+    if (preset === 'zoom-in') transform.scale = source.transform.scale * (1 + 0.35 * u);
+    if (preset === 'zoom-out') transform.scale = source.transform.scale * (1.35 - 0.35 * u);
+    if (preset === 'spin') transform.rotation = source.transform.rotation + 360 * u;
+    if (preset === 'float') transform.offset_y = source.transform.offset_y + Math.sin(u * Math.PI * 2) * 22;
+    if (preset === 'pop') transform.scale = source.transform.scale * (u < 0.2 ? 0.82 + u * 1.3 : 1.08 - (u - 0.2) * 0.1);
+    if (preset === 'shake') { transform.offset_x = source.transform.offset_x + Math.sin(u * Math.PI * 10) * 14; transform.rotation = source.transform.rotation + Math.sin(u * Math.PI * 8) * 2; }
+    const previewProject: VideoProject = { ...project, clips: project.clips.map((clip) => clip.id === clipId ? { ...clip, transform } : clip) };
+    try { await rendererRef.current.drawFrame(canvas, previewProject, u * Math.max(0.2, clipDuration(source)), { previewing: true, playing: false }); } catch {}
+  }, [project, clipId, preset]);
+  useEffect(() => {
+    void renderAt(0.5);
+    const started = performance.now();
+    const tick = () => { void renderAt(((performance.now() - started) / 1000) % 1.5 / 1.5); timerRef.current = window.setTimeout(tick, 110); };
+    tick();
+    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
+  }, [renderAt]);
+  return (
+    <button type="button" onClick={onApply} className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1 text-left transition hover:border-white/25">
+      <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
+        <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold capitalize text-white">{preset.replace('-', ' ')}</span>
+      </div>
+    </button>
+  );
+}
+
 async function detectBeatMarkers(audio: AudioTrack): Promise<number[]> {
   if (!audio.src) return [];
   const response = await fetch(audio.src, { mode: 'cors' });
@@ -6419,15 +6494,12 @@ function VideoEditor() {
                     </div>
                     <span className="text-[10px] text-[#FFB6C1]">No API</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                     {([
                       ['zoom-in','Zoom in'],['zoom-out','Zoom out'],['spin','Spin'],
                       ['float','Float'],['pop','Pop'],['shake','Shake'],
-                    ] as const).map(([id,label]) => (
-                      <button key={id} type="button" onClick={() => applyMotionPreset(id)}
-                        className="rounded-xl bg-white/[0.07] px-2 py-2.5 text-[10px] font-semibold text-white/75 active:bg-[#E5798F]/25">
-                        {label}
-                      </button>
+                    ] as const).map(([id]) => (
+                      <MotionPresetPreviewCard key={id} project={project} clipId={selectedClip.id} preset={id} onApply={() => applyMotionPreset(id)} />
                     ))}
                   </div>
                 </div>
@@ -6821,16 +6893,10 @@ function VideoEditor() {
                     )}
                   </div>
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Transition in</p>
-                  <div className="flex flex-wrap gap-1.5">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {(['none', 'fade', 'crossfade', 'slide', 'push', 'zoom', 'zoom-blur', 'whip-pan', 'spin', 'wipe', 'luma-wipe', 'dip-black', 'blur', 'glitch-cut', 'film-burn'] as const).map((t) => (
-                      <button
-                        key={t}
-                        onClick={() => updateClip(selectedClip.id, { transitionIn: { type: t, duration: selectedClip.transitionIn.duration } }, 'Transition')}
-                        aria-pressed={selectedClip.transitionIn.type === t}
-                        className={`rounded-lg px-3 py-2 text-xs capitalize focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${selectedClip.transitionIn.type === t ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
-                      >
-                        {t}
-                      </button>
+                      <TransitionPreviewCard key={t} project={project} clipId={selectedClip.id} transition={t} duration={selectedClip.transitionIn.duration} active={selectedClip.transitionIn.type === t}
+                        onApply={() => updateClip(selectedClip.id, { transitionIn: { type: t, duration: selectedClip.transitionIn.duration } }, 'Transition')} />
                     ))}
                   </div>
                   {selectedClip.transitionIn.type !== 'none' && (
