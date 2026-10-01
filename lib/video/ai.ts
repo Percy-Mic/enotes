@@ -2657,6 +2657,23 @@ Current request:
 
 ${input.prompt || 'Suggest a useful improvement'}
 
+AVAILABLE AUDIO LIBRARY:
+${JSON.stringify(
+  Array.isArray(input.audioLibrary)
+    ? input.audioLibrary.slice(0, 120).map((sound) => ({
+        id: sound.id,
+        title: sound.title,
+        artist: sound.artist || null,
+        category: sound.category || null,
+        duration_seconds: sound.duration_seconds || null,
+        commercial_use: sound.commercial_use !== false,
+        premium: sound.premium === true,
+      }))
+    : [],
+)}
+
+Use ONLY these supplied library items for add_library_audio. Never invent a soundId. If the user requests music/SFX/audio, select a suitable item from this list based on its actual title, artist, category, duration, and licensing metadata.
+
 Selection:
 
 ${JSON.stringify(
