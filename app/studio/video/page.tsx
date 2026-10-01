@@ -6507,6 +6507,45 @@ function VideoEditor() {
 
         {tool === 'audio' && (
           <div className="space-y-4">
+            {selectedClip && selectedClip.media_type !== 'image' && (
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold">Clip audio effects</p>
+                    <p className="text-[9px] text-white/35">{selectedClip.name} · live preview + export</p>
+                  </div>
+                  <Volume2 className="h-4 w-4 text-white/40" />
+                </div>
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                  {AUDIO_EFFECT_PRESETS.filter((preset) => preset.id !== 'none').map((preset) => {
+                    const effects = selectedClip.audioProcessing?.effects || [];
+                    const active = effects.some((effect) => effect.type === preset.id);
+                    return (
+                      <button key={preset.id} type="button" title={preset.hint} aria-pressed={active}
+                        onClick={() => {
+                          const next = active
+                            ? effects.filter((effect) => effect.type !== preset.id)
+                            : [...effects, { id: makeVideoId('ae'), type: preset.id, amount: 0.8, mix: 0.8 } as AudioEffect];
+                          updateClip(selectedClip.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(selectedClip.audioProcessing || {}), effects: next } }, active ? 'Remove audio effect' : 'Add audio effect');
+                        }}
+                        className={`min-h-12 rounded-lg border px-1.5 py-2 text-center text-[9px] font-bold transition ${active ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.035] text-white/60 hover:text-white'}`}>
+                        {preset.name}
+                        <span className="mt-0.5 block text-[7px] font-normal text-white/35">{active ? 'ON' : preset.hint}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {(selectedClip.audioProcessing?.effects || []).map((effect) => (
+                  <div key={effect.id} className="mt-2 grid grid-cols-2 gap-2 rounded-lg bg-black/20 p-2">
+                    <Slider label={audioEffectName(effect.type) + ' amount'} min={0} max={1} step={0.05} value={effect.amount}
+                      onChange={(v) => updateClip(selectedClip.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(selectedClip.audioProcessing || {}), effects: (selectedClip.audioProcessing?.effects || []).map((item) => item.id === effect.id ? { ...item, amount: v } : item) } }, 'Adjust audio effect', `clip-ae-${effect.id}`)} />
+                    <Slider label="Mix" min={0} max={1} step={0.05} value={effect.mix}
+                      onChange={(v) => updateClip(selectedClip.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(selectedClip.audioProcessing || {}), effects: (selectedClip.audioProcessing?.effects || []).map((item) => item.id === effect.id ? { ...item, mix: v } : item) } }, 'Adjust effect mix', `clip-aem-${effect.id}`)} />
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex gap-2">
               <button
                 onClick={recording ? stopVoiceover : startVoiceover}
