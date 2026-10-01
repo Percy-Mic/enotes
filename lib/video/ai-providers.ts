@@ -5,7 +5,7 @@ type Provider = 'huggingface' | 'fal' | 'replicate' | 'cloudinary';
 type AIDefaultProvider = 'free' | 'auto' | Provider;
 
 function defaultProvider(): AIDefaultProvider {
-  const value = String(process.env.AI_DEFAULT_PROVIDER || 'auto').trim().toLowerCase();
+  const value = String(process.env.AI_DEFAULT_PROVIDER || 'free').trim().toLowerCase();
   if (value === 'free' || value === 'auto' || value === 'huggingface' || value === 'fal' || value === 'replicate' || value === 'cloudinary') {
     return value;
   }
@@ -318,6 +318,7 @@ export async function runExternalVideoAI(input: AIJobInput): Promise<AIResult | 
 export function configuredExternalProviders() {
   return {
     default: defaultProvider(),
+    free: true,
     huggingface: hasKey('huggingface'),
     fal: hasKey('fal'),
     replicate: hasKey('replicate'),
