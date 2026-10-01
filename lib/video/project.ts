@@ -65,11 +65,25 @@ export interface ClipAdjustments {
   sharpen: number;     // 0-100 (preview/export approximation)
 }
 
+export type AudioEffectType =
+  | 'none' | 'deep' | 'high' | 'robot' | 'monster' | 'chipmunk'
+  | 'telephone' | 'radio' | 'megaphone' | 'cave' | 'hall' | 'cathedral'
+  | 'echo' | 'lofi' | 'distortion' | 'chorus' | 'flanger' | 'phaser'
+  | 'tremolo' | 'vibrato' | 'underwater' | 'vinyl' | 'bass' | 'treble';
+
+export interface AudioEffect {
+  id: string;
+  type: AudioEffectType;
+  amount: number;
+  mix: number;
+}
+
 export interface AudioProcessing {
   noiseReduction: number;
   highPassHz: number;
   lowPassHz: number;
   compressor: boolean;
+  effects?: AudioEffect[];
 }
 
 export type EffectBlendMode = 'normal' | 'screen' | 'overlay' | 'multiply' | 'soft-light' | 'difference' | 'lighter';
@@ -473,6 +487,7 @@ export interface AudioTrack {
   trimStart: number;
   trimEnd: number;
   volume: number;       // 0-1
+  audioProcessing?: AudioProcessing;
   fadeIn: number;       // seconds
   fadeOut: number;      // seconds
   kind: 'music' | 'voiceover';
@@ -716,6 +731,18 @@ export function normalizeProject(input: unknown): VideoProject {
           trimStart,
           trimEnd,
           volume: Math.max(0, Math.min(1, Number(track.volume) || 0)),
+          audioProcessing: track.audioProcessing && typeof track.audioProcessing === 'object'
+            ? {
+                ...DEFAULT_AUDIO_PROCESSING,
+                ...(track.audioProcessing as object),
+                effects: Array.isArray((track.audioProcessing as Record<string, unknown>).effects)
+                  ? ((track.audioProcessing as Record<string, unknown>).effects as unknown[]).map((e) => {
+                      const x = (e && typeof e === 'object' ? e : {}) as Record<string, unknown>;
+                      return { id: String(x.id || makeVideoId('ae')), type: String(x.type || 'none') as AudioEffectType, amount: Math.max(0, Math.min(1, Number(x.amount) || 1)), mix: Math.max(0, Math.min(1, Number(x.mix) || 1)) };
+                    }).filter((e) => e.type !== 'none')
+                  : undefined,
+              }
+            : undefined,
           fadeIn: Math.max(0, Number(track.fadeIn) || 0),
           fadeOut: Math.max(0, Number(track.fadeOut) || 0),
           kind: track.kind === 'voiceover' ? 'voiceover' : 'music',
