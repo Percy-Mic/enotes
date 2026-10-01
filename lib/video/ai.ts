@@ -483,6 +483,52 @@ async function geminiStructured(
   }
 }
 
+async function geminiPlannerJsonOnce(
+  prompt: string,
+  model: string,
+  media?: Array<{
+    url?: string | null;
+    type?: 'video' | 'image' | 'audio' | null;
+  }>,
+) {
+  const key = GEMINI_KEY();
+  if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
+  const mediaParts: Array<Record<string, unknown>> = [];
+  for (const item of (media || []).slice(0, 18)) {
+    if (!item?.url) continue;
+    const type = item.type || 'video';
+    if (item.url.startsWith('data:image/')) {
+      const match = item.url.match(/^data:(image\\/[^;]+);base64,(.+)$/);
+      if (match) { mediaParts.push({ inline_data: { mime_type: match[1], data: match[2] } }); continue; }
+    }
+    const mimeType = type === 'image' ? 'image/jpeg' : type === 'audio' ? 'audio/mpeg' : 'video/mp4';
+    const uploaded = await uploadGeminiFileFromUrl(item.url, key, mimeType);
+    mediaParts.push({ file_data: { file_uri: uploaded.uri, mime_type: uploaded.mimeType } });
+  }
+  const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' +
+    encodeURIComponent(model.replace(/^models\\//, '')) + ':generateContent';
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
+    body: JSON.stringify({
+      contents: [{ role: 'user', parts: [
+        ...mediaParts.map((part) => part.inline_data ? { inline_data: part.inline_data } : { file_data: part.file_data }),
+        { text: prompt },
+      ] }],
+      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+    }),
+    cache: 'no-store',
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error?.message || ('Gemini request failed (' + response.status + ').'));
+  const text = data?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('') || '';
+  if (!text) throw new Error('Gemini returned an empty planner response.');
+  const parsed = parseJson(text);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray((parsed as any).actions)) {
+    throw new Error('Gemini returned invalid planner JSON.');
+  }
+  return parsed;
+}
 const GEMINI_PLANNER_FALLBACK_MODELS = [
   'gemini-3.1-flash-lite',
   'gemini-2.5-flash-lite',
@@ -506,7 +552,13 @@ async function geminiPlannerStructured(
   let lastError: unknown = null;
   for (const model of models) {
     try {
-      return await geminiStructured(prompt, schema, model, media);
+      /*
+       * Do not send the planner's open-ended action `object` payload through
+       * Gemini responseSchema validation. That schema can be rejected before
+       * the model produces anything. JSON mode + our server sanitizer is the
+       * authoritative contract for executable actions.
+       */
+      return await geminiPlannerJsonOnce(prompt, model, media);
     } catch (error) {
       lastError = error;
       console.error(
