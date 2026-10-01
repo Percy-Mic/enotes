@@ -498,7 +498,7 @@ async function geminiPlannerJsonOnce(
     if (!item?.url) continue;
     const type = item.type || 'video';
     if (item.url.startsWith('data:image/')) {
-      const match = item.url.match(/^data:(image\\/[^;]+);base64,(.+)$/);
+      const match = item.url.match(/^data:(image\/[^;]+);base64,(.+)$/);
       if (match) { mediaParts.push({ inline_data: { mime_type: match[1], data: match[2] } }); continue; }
     }
     const mimeType = type === 'image' ? 'image/jpeg' : type === 'audio' ? 'audio/mpeg' : 'video/mp4';
@@ -506,7 +506,7 @@ async function geminiPlannerJsonOnce(
     mediaParts.push({ file_data: { file_uri: uploaded.uri, mime_type: uploaded.mimeType } });
   }
   const endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/' +
-    encodeURIComponent(model.replace(/^models\\//, '')) + ':generateContent';
+    encodeURIComponent(model.replace(/^models\//, '')) + ':generateContent';
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': key },
