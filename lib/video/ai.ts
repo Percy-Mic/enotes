@@ -2827,10 +2827,11 @@ ${beatsForPlan}
     let critiqueHint: string | null = null;
     let plannerError: string | null = null;
 
-    const plannerModel =
+    const plannerModel = normalizeGeminiModel(
       process.env.GEMINI_PLANNER_MODEL ||
       process.env.GEMINI_MODEL ||
-      'gemini-3.1-flash-lite';
+      'gemini-3.1-flash-lite',
+    );
 
     /*
      * Deterministic emergency planner.
@@ -3025,7 +3026,7 @@ ${beatsForPlan}
     let plan: any = null;
 
     try {
-      plan = await geminiStructured(
+      plan = await geminiPlannerStructured(
         prompt,
         schema,
         plannerModel,
@@ -3039,7 +3040,7 @@ ${beatsForPlan}
 
     if (!plan || typeof plan !== 'object' || !Array.isArray(plan.actions) || !plan.actions.length) {
       try {
-        plan = await geminiStructured(
+        plan = await geminiPlannerStructured(
           prompt +
             '\n\nCRITICAL: Your previous response contained no usable actions. ' +
             'Inspect the project timeline and emit concrete actions now. ' +
