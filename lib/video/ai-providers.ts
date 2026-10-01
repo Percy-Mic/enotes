@@ -3,12 +3,8 @@ import type { AIJobInput, AIResult, VideoAIOperation } from '@/lib/video/ai';
 type Provider = 'huggingface' | 'fal' | 'replicate' | 'cloudinary';
 
 function providerFor(operation: VideoAIOperation): Provider | null {
-  // Background removal is a specialized media operation. Do not route it
-  // through generic hf-inference: RMBG-2.0 is exposed as image segmentation
-  // and video background removal needs a video-capable endpoint.
-  if (operation === 'remove-background') return 'fal';
-  if (operation === 'enhance') return 'huggingface';
   if (
+    operation === 'remove-background' ||
     operation === 'remove-object' ||
     operation === 'track-object' ||
     operation === 'generate-image' ||
@@ -20,25 +16,27 @@ function providerFor(operation: VideoAIOperation): Provider | null {
     operation === 'relight' ||
     operation === 'generate-music'
   ) return 'fal';
+
+  if (operation === 'enhance') return 'huggingface';
   return null;
 }
 
-function falModelFor(operation: VideoAIOperation) {
+function falModelFor(operation: VideoAIOperation, mediaType?: AIJobInput['mediaType']) {
   const models: Partial<Record<VideoAIOperation, string | undefined>> = {
     'generate-image': process.env.FAL_IMAGE_MODEL || 'fal-ai/flux/schnell',
-    'generate-video': process.env.FAL_VIDEO_MODEL,
+    'generate-video': process.env.FAL_VIDEO_MODEL || 'fal-ai/kling-video/v1/standard/text-to-video',
     'generate-voice': process.env.FAL_VOICE_MODEL || 'fal-ai/elevenlabs/tts/turbo-v2.5',
-    'clone-voice': process.env.FAL_VOICE_CLONE_MODEL,
-    'convert-voice': process.env.FAL_VOICE_CONVERT_MODEL,
+    'clone-voice': process.env.FAL_VOICE_CLONE_MODEL || 'fal-ai/minimax/voice-clone',
+    'convert-voice': process.env.FAL_VOICE_CONVERT_MODEL || 'fal-ai/elevenlabs/voice-changer',
     'generate-music': process.env.FAL_MUSIC_MODEL || 'fal-ai/stable-audio',
     'remove-background':
-      process.env.FAL_BACKGROUND_MODEL ||
-      process.env.FAL_BACKGROUND_IMAGE_MODEL ||
-      'fal-ai/bria/background/remove',
-    'remove-object': process.env.FAL_OBJECT_REMOVE_MODEL,
+      mediaType === 'video'
+        ? process.env.FAL_BACKGROUND_VIDEO_MODEL || 'bria/video/background-removal/v3'
+        : process.env.FAL_BACKGROUND_IMAGE_MODEL || process.env.FAL_BACKGROUND_MODEL || 'fal-ai/bria/background/remove',
+    'remove-object': process.env.FAL_OBJECT_REMOVE_MODEL || 'fal-ai/object-removal',
     'track-object': process.env.FAL_OBJECT_TRACK_MODEL,
-    'style-transfer': process.env.FAL_STYLE_MODEL,
-    'relight': process.env.FAL_RELIGHT_MODEL,
+    'style-transfer': process.env.FAL_STYLE_MODEL || 'fal-ai/image-apps-v2/style-transfer',
+    'relight': process.env.FAL_RELIGHT_MODEL || 'bria/fibo-edit/relight',
   };
   return models[operation];
 }
@@ -113,61 +111,154 @@ async function huggingFace(input: AIJobInput): Promise<AIResult> {
   };
 }
 
+function falInputFor(input: AIJobInput): Record<string, unknown> {
+  const prompt = String(input.prompt || '').trim() || 'Create a professional creative asset for a video edit.';
+
+  switch (input.operation) {
+    case 'generate-image':
+      return { prompt };
+
+    case 'generate-video':
+      return {
+        prompt,
+        ...(input.mediaType === 'image' && input.mediaUrl ? { image_url: input.mediaUrl } : {}),
+        ...(input.mediaType === 'video' && input.mediaUrl ? { video_url: input.mediaUrl } : {}),
+      };
+
+    case 'remove-background':
+      if (!input.mediaUrl) throw new Error('Select an image or video before removing its background.');
+      if (input.mediaType === 'video') {
+        return {
+          video_url: input.mediaUrl,
+          background_color: 'Transparent',
+          output_container_and_codec: 'webm_vp9',
+          preserve_audio: true,
+        };
+      }
+      return { image_url: input.mediaUrl };
+
+    case 'remove-object':
+      if (!input.mediaUrl || input.mediaType !== 'image') {
+        throw new Error('Remove Object currently requires an image. Select an image first.');
+      }
+      return {
+        image_url: input.mediaUrl,
+        prompt: String(input.prompt || '').trim() || 'Remove the unwanted object from this image.',
+      };
+
+    case 'style-transfer':
+      if (!input.mediaUrl || input.mediaType !== 'image') {
+        throw new Error('Style Transfer currently works on images. Select an image first.');
+      }
+      return {
+        image_url: input.mediaUrl,
+        target_style: String(input.prompt || '').trim() || 'cinematic',
+      };
+
+    case 'relight':
+      if (!input.mediaUrl || input.mediaType !== 'image') {
+        throw new Error('AI Relight currently works on images. Select an image first.');
+      }
+      return {
+        image_url: input.mediaUrl,
+        light_direction: 'front',
+        light_type: String(input.prompt || '').trim() || 'soft overcast daylight lighting',
+      };
+
+    case 'generate-voice':
+      return { text: prompt };
+
+    case 'clone-voice':
+      if (!input.mediaUrl || input.mediaType === 'video') {
+        throw new Error('Clone Voice needs an audio sample. Select an audio source first.');
+      }
+      return {
+        audio_url: input.mediaUrl,
+        text: String(input.prompt || '').trim() || 'Hello, this is a preview of the cloned voice.',
+      };
+
+    case 'convert-voice':
+      if (!input.mediaUrl || input.mediaType === 'video') {
+        throw new Error('Voice Convert needs an audio source. Select an audio clip first.');
+      }
+      return {
+        audio_url: input.mediaUrl,
+        voice: String(input.prompt || '').trim() || 'Aria',
+        output_format: 'mp3_44100_128',
+      };
+
+    case 'generate-music':
+      return { prompt };
+
+    default:
+      throw new Error('No fal.ai media adapter is implemented for "' + input.operation + '" yet.');
+  }
+}
+
 async function fal(input: AIJobInput): Promise<AIResult> {
   const key = process.env.FAL_KEY;
-  if (!key) throw new Error(`fal.ai is not configured. Add ${requiredKey('fal')} to Vercel.`);
+  if (!key) throw new Error('fal.ai is not configured. Add FAL_KEY to Vercel.');
 
-  const endpoint =
-    input.operation === 'remove-background'
-      ? (
-          input.mediaType === 'video'
-            ? process.env.FAL_BACKGROUND_VIDEO_MODEL || 'bria/video/background-removal/v3'
-            : process.env.FAL_BACKGROUND_IMAGE_MODEL ||
-              process.env.FAL_BACKGROUND_MODEL ||
-              'fal-ai/bria/background/remove'
-        )
-      : falModelFor(input.operation);
-
+  const endpoint = falModelFor(input.operation, input.mediaType);
   if (!endpoint) {
-    throw new Error(`No fal.ai model is configured for "${input.operation}". Add the matching FAL_*_MODEL environment variable in Vercel.`);
+    throw new Error(
+      'No fal.ai model is configured for "' + input.operation +
+      '". Add the matching FAL_*_MODEL environment variable in Vercel.',
+    );
   }
 
-  const payload: Record<string, unknown> = {
-    prompt: input.prompt || 'Create a professional creative asset for a video edit.',
-  };
-  if (input.mediaUrl) {
-    if (input.mediaType === 'image') payload.image_url = input.mediaUrl;
-    else if (input.mediaType === 'video') payload.video_url = input.mediaUrl;
-    else if (input.mediaType === 'audio') payload.audio_url = input.mediaUrl;
-  }
-  if (input.mediaUrls?.length) payload.media_urls = input.mediaUrls;
+  const payload = falInputFor(input);
 
-  const output = await jsonFetch(`https://queue.fal.run/${endpoint}`, {
+  const output = await jsonFetch('https://queue.fal.run/' + endpoint, {
     method: 'POST',
-    headers: { Authorization: `Key ${key}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: 'Key ' + key,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(payload),
   });
 
   const requestId = String(output?.request_id || output?.requestId || '');
-  if (!requestId) return { operation: input.operation, provider: 'fal', output: { ...output, model: endpoint } };
+  if (!requestId) {
+    return { operation: input.operation, provider: 'fal', output: { ...output, model: endpoint } };
+  }
 
-  const statusUrl = `https://queue.fal.run/${endpoint}/requests/${encodeURIComponent(requestId)}/status`;
-  const resultUrl = `https://queue.fal.run/${endpoint}/requests/${encodeURIComponent(requestId)}`;
-  for (let attempt = 0; attempt < 90; attempt += 1) {
+  const statusUrl =
+    'https://queue.fal.run/' + endpoint + '/requests/' + encodeURIComponent(requestId) + '/status';
+  const resultUrl =
+    'https://queue.fal.run/' + endpoint + '/requests/' + encodeURIComponent(requestId);
+
+  for (let attempt = 0; attempt < 120; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, Math.min(3000, 700 + attempt * 40)));
-    const status = await jsonFetch(statusUrl, { method: 'GET', headers: { Authorization: `Key ${key}` } });
+
+    const status = await jsonFetch(statusUrl, {
+      method: 'GET',
+      headers: { Authorization: 'Key ' + key },
+    });
+
     const state = String(status?.status || status?.state || '').toUpperCase();
+
     if (state === 'COMPLETED' || state === 'SUCCEEDED') {
-      const result = await jsonFetch(resultUrl, { method: 'GET', headers: { Authorization: `Key ${key}` } });
-      return { operation: input.operation, provider: 'fal', output: { ...result, model: endpoint, requestId } };
+      const result = await jsonFetch(resultUrl, {
+        method: 'GET',
+        headers: { Authorization: 'Key ' + key },
+      });
+      return {
+        operation: input.operation,
+        provider: 'fal',
+        output: { ...result, model: endpoint, requestId },
+      };
     }
+
     if (state === 'FAILED' || state === 'ERROR' || state === 'CANCELLED') {
-      throw new Error(String(status?.error || status?.message || `fal.ai job ${state.toLowerCase()}.`));
+      throw new Error(
+        String(status?.error?.message || status?.error || status?.message || ('fal.ai job ' + state.toLowerCase() + '.')),
+      );
     }
   }
+
   throw new Error('The AI operation is still processing. Please try again shortly.');
 }
-
 export async function runExternalVideoAI(input: AIJobInput): Promise<AIResult | null> {
   const provider = providerFor(input.operation);
   if (!provider || !hasKey(provider)) return null;
