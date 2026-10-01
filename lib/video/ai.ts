@@ -303,79 +303,49 @@ async function geminiStructuredOnce(
    * }
    */
 
-  const response = mediaParts.length
-    ? await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-          model.replace(/^models\//, ''),
-        )}:generateContent`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-goog-api-key': key,
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  ...mediaParts.map((part) => {
-                    if (part.inline_data) {
-                      return {
-                        inline_data: part.inline_data,
-                      };
-                    }
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      model.replace(/^models\//, ''),
+    )}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': key,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              ...mediaParts.map((part) => {
+                if (part.inline_data) {
+                  return {
+                    inline_data: part.inline_data,
+                  };
+                }
 
-                    return {
-                      file_data: {
-                        file_uri: String(
-                          part.uri,
-                        ),
-                        mime_type: String(
-                          part.mime_type,
-                        ),
-                      },
-                    };
-                  }),
-                  {
-                    text: prompt,
+                return {
+                  file_data: {
+                    file_uri: String(part.uri),
+                    mime_type: String(part.mime_type),
                   },
-                ],
+                };
+              }),
+              {
+                text: prompt,
               },
             ],
-            generationConfig: {
-              responseMimeType:
-                'application/json',
-              responseSchema: schema,
-            },
-          }),
-          cache: 'no-store',
-        },
-      )
-    : await fetch(
-        'https://generativelanguage.googleapis.com/v1/interactions',
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            'x-goog-api-key': key,
           },
-          body: JSON.stringify({
-            model: model.replace(
-              /^models\//,
-              '',
-            ),
-            input: prompt,
-            store: false,
-            response_format: {
-              type: 'text',
-              mime_type: 'application/json',
-              schema,
-            },
-          }),
-          cache: 'no-store',
+        ],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: schema,
         },
-      );
+      }),
+      cache: 'no-store',
+    },
+  );
 
   const data = await response
     .json()
