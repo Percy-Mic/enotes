@@ -3869,92 +3869,67 @@ ${project}
   );
 }
 
-export async function createAIJob(
-  input: AIJobInput,
-) {
-  const supabase =
-    await createClient();
+export async function createAIJob(input: AIJobInput) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error('You must be signed in.');
 
-  const { data: auth } =
-    await supabase.auth.getUser();
-
-  if (!auth.user) {
-    throw new Error(
-      'You must be signed in.',
-    );
-  }
-
-  const { data, error } =
-    await supabase
+  /* Job persistence is observability only. AI editing must continue when
+     the video_ai_jobs table/quota is unavailable. */
+  try {
+    const { data, error } = await supabase
       .from('video_ai_jobs')
       .insert({
-        user_id:
-          auth.user.id,
-
-        project_id:
-          input.projectId ||
-          null,
-
-        operation:
-          input.operation,
-
-        provider:
-          process.env
-            .AI_DEFAULT_PROVIDER ||
-          'auto',
-
-        status:
-          'processing',
-
+        user_id: auth.user.id,
+        project_id: input.projectId || null,
+        operation: input.operation,
+        provider: process.env.AI_DEFAULT_PROVIDER || 'auto',
+        status: 'processing',
         input: {
-          mediaUrl:
-            input.mediaUrl ||
-            null,
-
-          prompt:
-            input.prompt ||
-            null,
-
-          language:
-            input.language ||
-            null,
-
-          mediaType:
-            input.mediaType ||
-            null,
-
-          selection:
-            input.selection ||
-            null,
+          mediaUrl: input.mediaUrl || null,
+          prompt: input.prompt || null,
+          language: input.language || null,
+          mediaType: input.mediaType || null,
+          selection: input.selection || null,
         },
       })
       .select('id')
       .single();
 
-  if (error) {
-    throw new Error(
-      error.message,
-    );
+    if (!error && data?.id) {
+      return { id: String(data.id), userId: auth.user.id };
+    }
+  } catch {
+    /* Continue without a persisted job. */
   }
 
-  return {
-    id: data.id,
-    userId:
-      auth.user.id,
-  };
+  return { id: null as string | null, userId: auth.user.id };
 }
 
 export async function finishAIJob(
-  id: string,
+  id: string | null,
   patch: {
-  if (!id) return;
     status: string;
     output?: unknown;
     error?: string | null;
   },
 ) {
-  const supabase =
-    await createClient();
+  if (!id) return;
+  const supabase = await createClient();
+  await supabase
+    .from('video_ai_jobs')
+    .update({
+      status: patch.status,
+      output: patch.output ?? null,
+      error: patch.error ?? null,
+      completed_at:
+        patch.status === 'completed' || patch.status === 'failed'
+          ? new Date().toISOString()
+          : null,
+    })
+    .eq('id', id);
+}
+
 
   await supabase
     .from(
