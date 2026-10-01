@@ -6972,6 +6972,38 @@ function VideoEditor() {
                       <span>Click waveform to move the playhead</span>
                       <span>{Math.round(a.volume * 100)}% volume</span>
                     </div>
+
+                    <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-2.5">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div><p className="text-[11px] font-bold text-white">Audio effects</p><p className="text-[9px] text-white/35">Live preview · stacks · no AI/API required</p></div>
+                        <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[8px] font-bold text-[#FFB6C1]">{a.audioProcessing?.effects?.length || 0} active</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
+                        {AUDIO_EFFECT_PRESETS.filter((preset) => preset.id !== 'none').map((preset) => {
+                          const effects = a.audioProcessing?.effects || [];
+                          const active = effects.some((effect) => effect.type === preset.id);
+                          return (
+                            <button key={preset.id} type="button" onClick={() => {
+                              const next = active ? effects.filter((effect) => effect.type !== preset.id) : [...effects, { id: makeVideoId('ae'), type: preset.id, amount: 0.8, mix: 0.8 } as AudioEffect];
+                              updateAudio(a.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(a.audioProcessing || {}), effects: next } }, active ? `Remove ${preset.name}` : `Add ${preset.name}`);
+                            }}
+                              className={`min-h-12 rounded-lg border px-1.5 py-2 text-center transition ${active ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.035] text-white/60 hover:border-white/25 hover:text-white'}`}
+                              title={preset.hint} aria-pressed={active}>
+                              <span className="block text-[9px] font-bold">{preset.name}</span>
+                              <span className="mt-0.5 block text-[7px] text-white/35">{active ? 'ON' : preset.hint}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {(a.audioProcessing?.effects || []).map((effect) => (
+                        <div key={effect.id} className="mt-2 flex items-center gap-2 rounded-lg bg-white/[0.035] px-2 py-1.5">
+                          <span className="w-20 shrink-0 truncate text-[9px] font-semibold">{audioEffectName(effect.type)}</span>
+                          <div className="min-w-0 flex-1"><Slider label="Amount" min={0} max={1} step={0.05} value={effect.amount} onChange={(v) => updateAudio(a.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(a.audioProcessing || {}), effects: (a.audioProcessing?.effects || []).map((item) => item.id === effect.id ? { ...item, amount: v } : item) } }, `Adjust ${audioEffectName(effect.type)}`, `ae-${effect.id}`)} /></div>
+                          <div className="min-w-0 flex-1"><Slider label="Mix" min={0} max={1} step={0.05} value={effect.mix} onChange={(v) => updateAudio(a.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(a.audioProcessing || {}), effects: (a.audioProcessing?.effects || []).map((item) => item.id === effect.id ? { ...item, mix: v } : item) } }, `Adjust ${audioEffectName(effect.type)} mix`, `aem-${effect.id}`)} /></div>
+                        </div>
+                      ))}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-2">
                       <label className="space-y-1">
                         <span className="text-white/60">Volume</span>
