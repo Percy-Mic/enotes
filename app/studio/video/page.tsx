@@ -17,11 +17,12 @@ import { uploadFile } from '@/lib/storage/upload';
 import { normalizeVideoDuration, ExportCancelledError } from '@/lib/video/renderer';
 import SharePostPicker from '@/components/community/SharePostPicker';
 import VideoAIStudio, { type VideoAIEditAction } from '@/components/studio/VideoAIStudio';
+import { AUDIO_EFFECT_PRESETS, audioEffectName, connectAudioEffects } from '@/lib/video/audio-effects';
 import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
   placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipAdjustments, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
-  type AspectRatio, type AudioTrack, type CropRect, type KeyframeProperty, type MaskShape, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject,
+  type AspectRatio, type AudioEffect, type AudioEffectType, type AudioTrack, type CropRect, type KeyframeProperty, type MaskShape, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject,
 } from '@/lib/video/project';
 import {
   EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
@@ -1060,6 +1061,36 @@ function VideoEditor() {
      playback. This is preview-only; export mixing remains in renderer.ts. */
   const previewAudioRef = useRef<Map<string, HTMLMediaElement>>(new Map());
   const previewAudioUnlockedRef = useRef(false);
+  const previewAudioContextRef = useRef<AudioContext | null>(null);
+  const previewAudioSourcesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
+  const previewAudioGraphRef = useRef<Map<string, { signature: string; output: GainNode }>>(new Map());
+
+  const ensurePreviewAudioGraph = useCallback((key: string, media: HTMLMediaElement, effects: AudioEffect[] | undefined) => {
+    if (typeof window === 'undefined') return;
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    let ctx = previewAudioContextRef.current;
+    if (!ctx) {
+      ctx = new AudioContextCtor();
+      previewAudioContextRef.current = ctx;
+    }
+    if (ctx.state === 'suspended') void ctx.resume();
+    let source = previewAudioSourcesRef.current.get(key);
+    if (!source) {
+      try {
+        source = ctx.createMediaElementSource(media);
+        previewAudioSourcesRef.current.set(key, source);
+      } catch {
+        return;
+      }
+    }
+    const signature = JSON.stringify((effects || []).map((e) => [e.id, e.type, e.amount, e.mix]));
+    const existing = previewAudioGraphRef.current.get(key);
+    if (existing?.signature === signature) return;
+    try { source.disconnect(); } catch {}
+    const output = connectAudioEffects(ctx, source, effects, ctx.destination) as GainNode;
+    previewAudioGraphRef.current.set(key, { signature, output });
+  }, []);
 
   const syncPreviewAudio = useCallback(async (time: number, shouldPlay: boolean) => {
     const p = docRef.current.project;
@@ -1107,7 +1138,8 @@ function VideoEditor() {
           )
         );
         audio.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
-        audio.volume = Math.max(0, Math.min(1, clip.volume));
+        ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
+        audio.volume = 1;
         if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
           try { audio.currentTime = target; } catch { /* wait for metadata */ }
         }
@@ -1185,6 +1217,7 @@ function VideoEditor() {
       const fadeIn = track.fadeIn > 0 ? Math.min(1, local / track.fadeIn) : 1;
       const fadeOut = track.fadeOut > 0 ? Math.min(1, (duration - local) / track.fadeOut) : 1;
       const volume = Math.max(0, Math.min(1, track.volume * Math.min(fadeIn, fadeOut)));
+      ensurePreviewAudioGraph(key, audio, track.audioProcessing?.effects);
       audio.volume = volume;
 
       if (!inRange || !shouldPlay) {
@@ -1211,7 +1244,7 @@ function VideoEditor() {
     previewAudioRef.current.forEach((audio, id) => {
       if (!activeIds.has(id)) audio.pause();
     });
-  }, []);
+  }, [ensurePreviewAudioGraph]);
 
   useEffect(() => () => {
     previewAudioRef.current.forEach((audio) => {
@@ -1219,6 +1252,11 @@ function VideoEditor() {
       audio.src = '';
     });
     previewAudioRef.current.clear();
+    previewAudioSourcesRef.current.clear();
+    previewAudioGraphRef.current.clear();
+    const ctx = previewAudioContextRef.current;
+    previewAudioContextRef.current = null;
+    if (ctx) void ctx.close();
   }, []);
 
   const drawOnce = useCallback(async (t: number) => {
