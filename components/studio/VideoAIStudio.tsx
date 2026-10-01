@@ -555,17 +555,18 @@ export default function VideoAIStudio({
       if (typeof data?.conversationId === 'string') setConversationId(data.conversationId);
 
       const output = data?.output || {};
-      const actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
+      let actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
       const captions: VideoAICaption[] = Array.isArray(output.captions) ? output.captions : [];
 
-      /* Last-line guard: the server repairs blank/placeholder text cues, but
-         any plan that slips past it must not render the editor's fallback. */
-      for (const action of actions) {
-        if (action.type !== 'add_text_element') continue;
-        const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
+      /* Never invent placeholder copy on the client. If the server somehow
+         returns an empty text action, discard that action rather than silently
+         turning it into a generic "YOUR STORY" overlay. */
+      actions = actions.filter((action) => {
+        if (action.type !== 'add_text_element') return true;
+        const obj = action.object && typeof action.object === 'object' ? action.object : {};
         const text = typeof obj.text === 'string' ? obj.text.trim() : '';
-        if (!text || /^your message$/i.test(text)) obj.text = 'YOUR STORY';
-      }
+        return Boolean(text) && !/^your message$/i.test(text) && !/^your story$/i.test(text);
+      });
 
       const failedNotes: string[] = [];
       const narrationActions = actions.filter((action) => action.type === 'speak_narration');
