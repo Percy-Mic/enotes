@@ -1058,7 +1058,7 @@ function VideoEditor() {
      audio tracks cannot be heard from the canvas itself. Keep a small set of
      real HTMLAudioElements synchronized with the project clock for editing
      playback. This is preview-only; export mixing remains in renderer.ts. */
-  const previewAudioRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const previewAudioRef = useRef<Map<string, HTMLMediaElement>>(new Map());
   const previewAudioUnlockedRef = useRef(false);
 
   const syncPreviewAudio = useCallback(async (time: number, shouldPlay: boolean) => {
@@ -1121,6 +1121,43 @@ function VideoEditor() {
       }
 
       clipStart += clipProjectDuration;
+    }
+
+    /* Video overlays can also carry their own soundtrack. The canvas
+       compositor keeps its video element muted, so this is the audible
+       copy synchronized to the same project clock. */
+    for (const el of p.elements) {
+      if (el.kind !== 'video' || !el.src || isPlaceholder(el.src)) continue;
+      const key = `element-audio:${el.id}`;
+      const local = time - el.start;
+      const duration = Math.max(0.05, el.end - el.start);
+      const inRange = !p.masterMuted && !el.muted && (el.volume ?? 1) > 0 && local >= 0 && local < duration;
+      if (!inRange) continue;
+      activeIds.add(key);
+
+      let audio = previewAudioRef.current.get(key);
+      if (!audio || audio.src !== el.src) {
+        audio?.pause();
+        const videoAudio = document.createElement('video');
+        videoAudio.preload = 'auto';
+        videoAudio.playsInline = true;
+        videoAudio.setAttribute('playsinline', '');
+        audio = videoAudio;
+        audio.src = el.src;
+        previewAudioRef.current.set(key, audio);
+      }
+
+      const speed = Math.max(0.0625, Math.min(16, el.speed || 1));
+      const target = Math.max(0, Math.min(Math.max(0, (el.trim_end || el.source_duration || duration) - 0.01), (el.trim_start || 0) + local * speed));
+      audio.playbackRate = speed;
+      audio.volume = Math.max(0, Math.min(1, resolveElementValues(el, local).volume));
+      if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
+        try { audio.currentTime = target; } catch { /* wait for metadata */ }
+      }
+      if (shouldPlay && audio.paused) {
+        try { await audio.play(); previewAudioUnlockedRef.current = true; }
+        catch { /* retried on the next user-initiated synchronization pass */ }
+      }
     }
 
     /* Separate music/voiceover lanes continue to play simultaneously. */
@@ -1227,8 +1264,10 @@ function VideoEditor() {
       playheadRef.current = 0;
       setPlayhead(0);
     }
+    if (!wasPlaying) void syncPreviewAudio(playheadRef.current, true);
+    else void syncPreviewAudio(playheadRef.current, false);
     setPlaying((p) => !p);
-  }, [playing]);
+  }, [playing, syncPreviewAudio]);
   /* latest togglePlay for the fullscreen Space handler (declared before it) */
   useEffect(() => {
     togglePlayRef.current = togglePlay;
@@ -3495,7 +3534,7 @@ function VideoEditor() {
       const height = width * ((meta.h || 360) / Math.max(1, meta.w || 640));
       const el: TimelineElement = {
         id: makeVideoId('el'), kind: 'video', content: file.name, src: mediaUrl, media_type: 'video', track_id: project.tracks[0]?.id,
-        source_duration: meta.duration, trim_start: 0, trim_end: Math.min(meta.duration, durationForLayer), speed: 1, volume: 1, muted: true, object_fit: 'contain',
+        source_duration: meta.duration, trim_start: 0, trim_end: Math.min(meta.duration, durationForLayer), speed: 1, volume: 1, muted: false, object_fit: 'contain',
         start: playheadRef.current, end: Math.min(duration, playheadRef.current + durationForLayer),
         x: (project.canvas.width - width) / 2, y: (project.canvas.height - height) / 2, width, height, rotation: 0, opacity: 1, z: project.elements.length + 1, animation: 'fade',
       };
