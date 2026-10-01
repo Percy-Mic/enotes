@@ -1,5 +1,4 @@
 /* Browser-native audio effect graph used by the video editor preview/export. */
-import type { AudioEffect, AudioEffectType } from '@/lib/video/project';
 
 export const AUDIO_EFFECT_PRESETS: { id: AudioEffectType; name: string; hint: string }[] = [
   { id: 'none', name: 'Original', hint: 'No processing' },
@@ -71,14 +70,6 @@ function makeDistortion(ctx: BaseAudioContext, amount: number) {
   return node;
 }
 
-function addPitchLikeFilter(ctx: BaseAudioContext, input: AudioNode, type: AudioEffectType, amount: number, output: AudioNode) {
-  const filter = ctx.createBiquadFilter();
-  filter.type = type === 'bass' ? 'lowshelf' : 'highshelf';
-  filter.frequency.value = type === 'bass' ? 180 : 4200;
-  filter.gain.value = (type === 'bass' ? 18 : 10) * amount;
-  connectWetDry(ctx, input, filter, amount, output);
-}
-
 export function connectAudioEffects(
   ctx: BaseAudioContext,
   input: AudioNode,
@@ -135,22 +126,23 @@ export function connectAudioEffects(
       const feedback = ctx.createGain();
       feedback.gain.value = 0.12 + amount * 0.48;
       delay.connect(feedback).connect(delay);
+      const mixNode = ctx.createGain();
       const wet = ctx.createGain(); wet.gain.value = mix * 0.7;
-      current.connect(delay).connect(wet);
-      current.connect(finish);
-      wet.connect(finish);
-      current = finish;
+      const dry = ctx.createGain(); dry.gain.value = 1 - mix * 0.35;
+      current.connect(dry).connect(mixNode);
+      current.connect(delay).connect(wet).connect(mixNode);
+      current = mixNode;
       continue;
     }
     if (type === 'cave' || type === 'hall' || type === 'cathedral') {
       const conv = ctx.createConvolver();
       conv.buffer = makeImpulse(ctx, type === 'cave' ? 1.3 : type === 'hall' ? 2.4 : 4.2, type === 'cave' ? 2.8 : 2.2);
+      const mixNode = ctx.createGain();
       const wet = ctx.createGain(); wet.gain.value = mix * (type === 'cathedral' ? 0.7 : 0.5);
       const dry = ctx.createGain(); dry.gain.value = 1 - mix * 0.45;
-      current.connect(dry);
-      current.connect(conv).connect(wet);
-      dry.connect(finish); wet.connect(finish);
-      current = finish;
+      current.connect(dry).connect(mixNode);
+      current.connect(conv).connect(wet).connect(mixNode);
+      current = mixNode;
       continue;
     }
     if (type === 'distortion' || type === 'monster' || type === 'lofi') {
@@ -164,11 +156,12 @@ export function connectAudioEffects(
     if (type === 'robot' || type === 'flanger' || type === 'phaser' || type === 'chorus') {
       const delay = ctx.createDelay(0.08);
       delay.delayTime.value = type === 'robot' ? 0.018 : type === 'chorus' ? 0.025 : 0.008;
+      const mixNode = ctx.createGain();
       const wet = ctx.createGain(); wet.gain.value = mix * 0.65;
-      current.connect(delay).connect(wet);
-      current.connect(finish);
-      wet.connect(finish);
-      current = finish;
+      const dry = ctx.createGain(); dry.gain.value = 1 - mix * 0.35;
+      current.connect(dry).connect(mixNode);
+      current.connect(delay).connect(wet).connect(mixNode);
+      current = mixNode;
       continue;
     }
     if (type === 'tremolo' || type === 'vibrato') {
