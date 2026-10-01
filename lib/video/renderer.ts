@@ -1549,70 +1549,77 @@ export class VideoRenderer {
              on first sight of the reversed clip; while it builds (one fast
              forward pass) frames fall back to the seek path, then playback
              is pure memory hits at full frame rate. */
-          let paintedFromCache = false;
-          if (clip.reverse) {
-            const key = reverseCacheKey(clip.src, clip.trimStart, clip.trimEnd);
-            let entry = reverseCache.get(key);
-            if (!entry && !this.reverseCacheBuilding.has(key)) {
-              this.reverseCacheBuilding.add(key);
-              loadDetachedVideo(clip.src)
-                .then((builder) => buildReverseFrames(builder, clip.trimStart, clip.trimEnd))
-                .then((frames) => {
-                  if (frames.length) {
-                    evictReverseCache();
-                    reverseCache.set(key, {
-                      frames,
-                      builtAt: Date.now(),
-                      src: clip.src,
-                      trimStart: clip.trimStart,
-                      trimEnd: clip.trimEnd,
-                    });
-                  }
-                })
-                .catch(() => {})
-                .finally(() => this.reverseCacheBuilding.delete(key));
-            }
-            entry = reverseCache.get(key);
-            const frame = entry ? nearestReverseFrame(entry, sourceTime) : null;
-            if (frame) {
-              ctx.save();
-              ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
-              ctx.rotate((animated.rotation * Math.PI) / 180);
-              ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
-              ctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
-              // cache frames keep the source's aspect — dest rect already matches
-              ctx.drawImage(frame.bmp as CanvasImageSource, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
-              ctx.filter = 'none';
-              ctx.restore();
-              paintedFromCache = true;
-            }
-          }
+           /*
+            * Clip-local compositor: filters, effects and masks are rendered
+            * into the media's actual resized surface first. This prevents a
+            * resized/moved clip from leaving its effects behind on the full
+            * project canvas.
+            */
+           const surface = document.createElement('canvas');
+           surface.width = Math.max(1, Math.ceil(t.dw));
+           surface.height = Math.max(1, Math.ceil(t.dh));
+           const sctx = surface.getContext('2d');
+           if (!sctx) return;
 
-          if (!paintedFromCache) {
-            if (video) {
-              await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
-              if (!isCurrent()) return;
-            }
-            ctx.save();
-            ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
-            ctx.rotate((animated.rotation * Math.PI) / 180);
-            ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
-            ctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
-            const maskSaved = applyMaskClip(ctx, clip.transform.mask, W, H);
-            if (image) {
-              ctx.drawImage(image, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
-            } else {
-              ctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, -t.dw / 2, -t.dh / 2, t.dw, t.dh);
-            }
-            if (maskSaved) ctx.restore();
-            ctx.filter = 'none';
-            ctx.restore();
-          }
+           let paintedFromCache = false;
+           if (clip.reverse) {
+             const key = reverseCacheKey(clip.src, clip.trimStart, clip.trimEnd);
+             let entry = reverseCache.get(key);
+             if (!entry && !this.reverseCacheBuilding.has(key)) {
+               this.reverseCacheBuilding.add(key);
+               loadDetachedVideo(clip.src)
+                 .then((builder) => buildReverseFrames(builder, clip.trimStart, clip.trimEnd))
+                 .then((frames) => {
+                   if (frames.length) {
+                     evictReverseCache();
+                     reverseCache.set(key, { frames, builtAt: Date.now(), src: clip.src, trimStart: clip.trimStart, trimEnd: clip.trimEnd });
+                   }
+                 })
+                 .catch(() => {})
+                 .finally(() => this.reverseCacheBuilding.delete(key));
+             }
+             entry = reverseCache.get(key);
+             const frame = entry ? nearestReverseFrame(entry, sourceTime) : null;
+             if (frame) {
+               sctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
+               sctx.drawImage(frame.bmp as CanvasImageSource, 0, 0, surface.width, surface.height);
+               sctx.filter = 'none';
+               paintedFromCache = true;
+             }
+           }
 
-          drawEffectOverlay(ctx, clip, timeIn, W, H);
-          if (clip.effects?.length) {
-            drawAdvancedEffectStack(ctx, clip.effects, timeIn, W, H);
-          }
+           if (!paintedFromCache) {
+             if (video) {
+               await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+               if (!isCurrent()) return;
+             }
+             sctx.save();
+             sctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
+             const maskSaved = applyMaskClip(sctx, clip.transform.mask, surface.width, surface.height);
+             if (image) {
+               sctx.drawImage(image, t.sx, t.sy, t.sw, t.sh, 0, 0, surface.width, surface.height);
+             } else {
+               sctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, 0, 0, surface.width, surface.height);
+             }
+             if (maskSaved) sctx.restore();
+             sctx.filter = 'none';
+             sctx.restore();
+           }
+
+           // Legacy and advanced effects are clipped to the media surface.
+           drawEffectOverlay(sctx, clip, timeIn, surface.width, surface.height);
+           if (clip.effects?.length) {
+             drawAdvancedEffectStack(sctx, clip.effects, timeIn, surface.width, surface.height);
+           }
+
+           // The finished clip surface is now transformed into project space.
+           ctx.save();
+           ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
+           ctx.rotate((animated.rotation * Math.PI) / 180);
+           ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
+           ctx.globalAlpha = Math.max(0, Math.min(1, animatedClip.opacity ?? 1));
+           ctx.drawImage(surface, -surface.width / 2, -surface.height / 2);
+           ctx.restore();
 
           // transition INTO this clip; motion transitions transform the
           // freshly painted frame before overlays render
