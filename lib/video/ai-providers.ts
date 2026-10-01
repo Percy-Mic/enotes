@@ -111,7 +111,7 @@ async function huggingFace(input: AIJobInput): Promise<AIResult> {
   };
 }
 
-function falInputFor(input: AIJobInput, endpoint: string): Record<string, unknown> {
+function falInputFor(input: AIJobInput): Record<string, unknown> {
   const prompt = String(input.prompt || '').trim() || 'Create a professional creative asset for a video edit.';
 
   switch (input.operation) {
@@ -213,7 +213,7 @@ async function fal(input: AIJobInput): Promise<AIResult> {
     );
   }
 
-  const payload = falInputFor(input, endpoint);
+  const payload = falInputFor(input);
 
   const output = await jsonFetch('https://queue.fal.run/' + endpoint, {
     method: 'POST',
