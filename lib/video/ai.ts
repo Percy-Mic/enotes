@@ -568,7 +568,6 @@ async function geminiStructured(
 }
 
 async function geminiPlannerJsonOnce(
-async function geminiPlannerJsonOnce(
   prompt: string,
   model: string,
   media?: Array<{
@@ -614,6 +613,40 @@ async function geminiPlannerJsonOnce(
   }
   return parsed;
 }
+async function groqPlannerJsonOnce(
+  prompt: string,
+  media?: Array<{ url?: string | null; type?: 'video' | 'image' | 'audio' | null }>,
+) {
+  const key=GROQ_KEY();
+  if(!key) throw new Error('Groq is not configured. Add GROQ_API_KEY to Vercel.');
+  if(!hasOnlyGroqSafeMedia(media)) throw new Error('Groq planner fallback supports image frames, but not video/audio media.');
+  const images=(media || []).filter((item)=>item?.url && (item.type==='image' || item.url.startsWith('data:image/'))).slice(0,5);
+  const content:Array<Record<string,unknown>>=[{type:'text',text:prompt}];
+  for(const image of images) content.push({type:'image_url',image_url:{url:String(image.url)}});
+  const model=process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b';
+  const response=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+key},
+    body:JSON.stringify({
+      model,
+      messages:[{role:'user',content:images.length?content:prompt}],
+      temperature:0.2,
+      max_completion_tokens:12000,
+      response_format:{type:'json_object'},
+    }),
+    cache:'no-store',
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data?.error?.message || ('Groq planner request failed ('+response.status+').'));
+  const text=String(data?.choices?.[0]?.message?.content || '').trim();
+  if(!text) throw new Error('Groq returned an empty planner response.');
+  const parsed=parseJson(text);
+  if(!parsed || typeof parsed!=='object' || Array.isArray(parsed) || !Array.isArray((parsed as any).actions)) {
+    throw new Error('Groq returned invalid planner JSON.');
+  }
+  return parsed;
+}
+
 const GEMINI_PLANNER_FALLBACK_MODELS = [
   'gemini-3.8-flash',
 ] as const;
@@ -622,49 +655,49 @@ async function geminiPlannerStructured(
   prompt: string,
   schema: Record<string, unknown>,
   preferredModel: string,
-  media?: Array<{
-    url?: string | null;
-    type?: 'video' | 'image' | 'audio' | null;
-  }>,
+  media?: Array<{ url?: string | null; type?: 'video' | 'image' | 'audio' | null }>,
 ) {
-  const requested = normalizeGeminiModel(preferredModel);
-  const models = Array.from(
-    new Set([requested, ...GEMINI_PLANNER_FALLBACK_MODELS]),
-  );
+  void schema;
+  const capability:AICapability =
+    media?.some((item)=>item?.type==='video') ? 'video-understanding' :
+    media?.some((item)=>item?.type==='audio') ? 'audio-understanding' :
+    media?.some((item)=>item?.type==='image' || item?.url?.startsWith('data:image/')) ? 'image-understanding' :
+    'structured-text';
 
-  let lastError: unknown = null;
-  for (const model of models) {
-    try {
-      /*
-       * Do not send the planner's open-ended action `object` payload through
-       * Gemini responseSchema validation. That schema can be rejected before
-       * the model produces anything. JSON mode + our server sanitizer is the
-       * authoritative contract for executable actions.
-       */
-      try {
-        return await geminiPlannerJsonOnce(prompt, model, media);
-      } catch (visualError) {
-        console.error(
-          '[video-ai] Gemini planner visual request failed; retrying text-only:',
-          model,
-          visualError instanceof Error ? visualError.message : String(visualError),
-        );
-        return await geminiPlannerJsonOnce(prompt, model);
+  const errors:string[]=[];
+  for(const provider of preferredAIProviders(capability)){
+    if(!providerConfigured(provider)) continue;
+    try{
+      if(provider==='groq') return await groqPlannerJsonOnce(prompt,media);
+
+      const requested=normalizeGeminiModel(preferredModel);
+      const models=Array.from(new Set([requested,...GEMINI_PLANNER_FALLBACK_MODELS]));
+      let lastError:unknown=null;
+
+      for(const model of models){
+        try{
+          try{
+            return await geminiPlannerJsonOnce(prompt,model,media);
+          }catch(visualError){
+            console.error('[video-ai] Gemini planner visual request failed; retrying text-only:',model,visualError instanceof Error?visualError.message:String(visualError));
+            return await geminiPlannerJsonOnce(prompt,model);
+          }
+        }catch(error){
+          lastError=error;
+          console.error('[video-ai] Gemini planner model failed:',model,error instanceof Error?error.message:String(error));
+        }
       }
-    } catch (error) {
-      lastError = error;
-      console.error(
-        '[video-ai] Gemini planner model failed:',
-        model,
-        error instanceof Error ? error.message : String(error),
-      );
+      throw lastError instanceof Error ? lastError : new Error('No configured Gemini planner model was available.');
+    }catch(error){
+      errors.push(aiProviderError(provider,error));
+      console.error('[video-ai] planner provider failed:',provider,error instanceof Error?error.message:String(error));
     }
   }
 
   throw new Error(
-    lastError instanceof Error
-      ? lastError.message
-      : 'No configured Gemini planner model was available.',
+    errors.length
+      ? 'No AI provider could build the edit plan. '+errors.join(' | ')
+      : 'No configured AI provider supports the planner capability.',
   );
 }
 
