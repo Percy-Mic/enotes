@@ -460,11 +460,68 @@ async function geminiStructured(
   }>,
 ) {
   try {
-    return await geminiStructuredOnce(prompt, schema, model, media);
-  } catch {
+    return await geminiStructuredOnce(prompt, schema, normalizeGeminiModel(model), media);
+  } catch (firstError) {
     await new Promise((resolve) => setTimeout(resolve, 700));
-    return geminiStructuredOnce(prompt + '\n\nReturn ONLY the JSON object described by the schema.', schema, model, media);
+    try {
+      return await geminiStructuredOnce(
+        prompt + '\n\nReturn ONLY the JSON object described by the schema.',
+        schema,
+        normalizeGeminiModel(model),
+        media,
+      );
+    } catch (secondError) {
+      /* Preserve the useful upstream reason for the caller/fallback diagnostics. */
+      throw new Error(
+        secondError instanceof Error
+          ? secondError.message
+          : firstError instanceof Error
+            ? firstError.message
+            : String(secondError),
+      );
+    }
   }
+}
+
+const GEMINI_PLANNER_FALLBACK_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+] as const;
+
+async function geminiPlannerStructured(
+  prompt: string,
+  schema: Record<string, unknown>,
+  preferredModel: string,
+  media?: Array<{
+    url?: string | null;
+    type?: 'video' | 'image' | 'audio' | null;
+  }>,
+) {
+  const requested = normalizeGeminiModel(preferredModel);
+  const models = Array.from(
+    new Set([requested, ...GEMINI_PLANNER_FALLBACK_MODELS]),
+  );
+
+  let lastError: unknown = null;
+  for (const model of models) {
+    try {
+      return await geminiStructured(prompt, schema, model, media);
+    } catch (error) {
+      lastError = error;
+      console.error(
+        '[video-ai] Gemini planner model failed:',
+        model,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  throw new Error(
+    lastError instanceof Error
+      ? lastError.message
+      : 'No configured Gemini planner model was available.',
+  );
 }
 
 async function geminiText(
