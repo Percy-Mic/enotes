@@ -1955,9 +1955,17 @@ export async function runVideoAI(
           >)
         : {};
 
-    const persistedVisionIndex = (input.operation === 'assistant' || input.operation === 'auto-edit' || input.operation === 'recommend-effects') && input.projectId && Array.isArray(input.visionFrames)
-      ? await updateProjectVisionIndex(supabase, auth.user.id, input.projectId, rawProject, input.visionFrames)
-      : await loadProjectVisionIndex(supabase, auth.user.id, input.projectId);
+    let persistedVisionIndex: VideoAIClipVisionIndex[] = [];
+    try {
+      persistedVisionIndex =
+        (input.operation === 'assistant' || input.operation === 'auto-edit' || input.operation === 'recommend-effects') &&
+        input.projectId && Array.isArray(input.visionFrames)
+          ? await updateProjectVisionIndex(supabase, auth.user.id, input.projectId, rawProject, input.visionFrames)
+          : await loadProjectVisionIndex(supabase, auth.user.id, input.projectId);
+    } catch (error) {
+      console.error('[video-ai] vision index unavailable:', error instanceof Error ? error.message : String(error));
+      persistedVisionIndex = [];
+    }
 
     const compactCanvas =
       rawProject.canvas &&
@@ -2734,7 +2742,13 @@ ${beatsForPlan}
           ? [{ url: input.mediaUrl, type: input.mediaType || 'video' }]
           : [];
 
-    const mediaInputs = [...visionInputs, ...sourceInputs].slice(0, 18);
+    /*
+     * Do not upload the original video to Gemini for the assistant when
+     * representative frames are already available. Uploading a full remote
+     * video through a Vercel function can exceed the serverless execution
+     * window. Frames are the intended visual-grounding path here.
+     */
+    const mediaInputs = (visionInputs.length ? visionInputs : sourceInputs).slice(0, 18);
 
     let critiqueHint: string | null = null;
     let plannerError: string | null = null;
