@@ -111,19 +111,25 @@ async function huggingFace(input: AIJobInput): Promise<AIResult> {
   };
 }
 
-function falInputFor(input: AIJobInput): Record<string, unknown> {
+function falInputFor(input: AIJobInput, endpoint: string): Record<string, unknown> {
   const prompt = String(input.prompt || '').trim() || 'Create a professional creative asset for a video edit.';
 
   switch (input.operation) {
     case 'generate-image':
       return { prompt };
 
-    case 'generate-video':
+    case 'generate-video': {
+      const customVideoModel = Boolean(process.env.FAL_VIDEO_MODEL);
       return {
         prompt,
-        ...(input.mediaType === 'image' && input.mediaUrl ? { image_url: input.mediaUrl } : {}),
-        ...(input.mediaType === 'video' && input.mediaUrl ? { video_url: input.mediaUrl } : {}),
+        ...(customVideoModel && input.mediaType === 'image' && input.mediaUrl
+          ? { image_url: input.mediaUrl }
+          : {}),
+        ...(customVideoModel && input.mediaType === 'video' && input.mediaUrl
+          ? { video_url: input.mediaUrl }
+          : {}),
       };
+    }
 
     case 'remove-background':
       if (!input.mediaUrl) throw new Error('Select an image or video before removing its background.');
@@ -207,7 +213,7 @@ async function fal(input: AIJobInput): Promise<AIResult> {
     );
   }
 
-  const payload = falInputFor(input);
+  const payload = falInputFor(input, endpoint);
 
   const output = await jsonFetch('https://queue.fal.run/' + endpoint, {
     method: 'POST',
