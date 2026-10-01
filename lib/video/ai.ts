@@ -87,6 +87,49 @@ function normalizeGeminiModel(value: string | undefined, fallback = 'gemini-3.8-
 const ASSEMBLY_KEY = () => process.env.ASSEMBLYAI_API_KEY;
 const GROQ_KEY = () => process.env.GROQ_API_KEY;
 
+type AIProvider = 'gemini' | 'groq';
+type AICapability =
+  | 'text'
+  | 'structured-text'
+  | 'image-understanding'
+  | 'video-understanding'
+  | 'audio-understanding'
+  | 'transcription';
+
+const PROVIDER_CAPABILITIES: Record<AIProvider, readonly AICapability[]> = {
+  gemini: ['text', 'structured-text', 'image-understanding', 'video-understanding', 'audio-understanding'],
+  groq: ['text', 'structured-text', 'image-understanding', 'transcription'],
+};
+
+function preferredAIProviders(capability: AICapability): AIProvider[] {
+  const preference = String(process.env.AI_DEFAULT_PROVIDER || 'auto').trim().toLowerCase();
+  const ordered: AIProvider[] =
+    preference === 'groq' || preference === 'free'
+      ? ['groq', 'gemini']
+      : preference === 'gemini'
+        ? ['gemini', 'groq']
+        : ['gemini', 'groq'];
+  return ordered.filter((provider, index, list) =>
+    PROVIDER_CAPABILITIES[provider].includes(capability) &&
+    list.indexOf(provider) === index,
+  );
+}
+
+function providerConfigured(provider: AIProvider) {
+  return provider === 'gemini' ? Boolean(GEMINI_KEY()) : Boolean(GROQ_KEY());
+}
+
+function hasOnlyGroqSafeMedia(media?: Array<{url?: string | null; type?: 'video' | 'image' | 'audio' | null}>) {
+  return (media || []).every((item) =>
+    !item?.url || item.type === 'image' || item.url.startsWith('data:image/')
+  );
+}
+
+function aiProviderError(provider: AIProvider | string, error: unknown) {
+  return provider + ': ' + (error instanceof Error ? error.message : String(error));
+}
+
+
 async function uploadGeminiFileFromUrl(
   mediaUrl: string,
   key: string,
@@ -447,40 +490,84 @@ async function geminiStructuredOnce(
 
 /* Flash-lite under load intermittently blanks or 5xxes; one same-prompt
    retry keeps a transient hiccup from surfacing as a raw API error. */
+async function groqStructured(
+  prompt: string,
+  _schema: Record<string, unknown>,
+  media?: Array<{url?: string | null; type?: 'video' | 'image' | 'audio' | null}>,
+) {
+  const key=GROQ_KEY();
+  if(!key) throw new Error('Groq is not configured. Add GROQ_API_KEY to Vercel.');
+  if(!hasOnlyGroqSafeMedia(media)) throw new Error('Groq fallback supports image inputs, but not video/audio inputs.');
+
+  const images=(media || []).filter((item)=>item?.url && (item.type === 'image' || item.url.startsWith('data:image/'))).slice(0,5);
+  const content:Array<Record<string,unknown>>=[{type:'text',text:prompt}];
+  for(const image of images) content.push({type:'image_url',image_url:{url:String(image.url)}});
+
+  const model=images.length
+    ? process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b'
+    : process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b';
+
+  const response=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+key},
+    body:JSON.stringify({
+      model,
+      messages:[{role:'user',content:images.length ? content : prompt}],
+      temperature:0.2,
+      max_completion_tokens:12000,
+      response_format:{type:'json_object'},
+    }),
+    cache:'no-store',
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data?.error?.message || ('Groq request failed ('+response.status+').'));
+  const text=String(data?.choices?.[0]?.message?.content || '').trim();
+  if(!text) throw new Error('Groq returned an empty structured response.');
+  return parseJson(text);
+}
+
 async function geminiStructured(
   prompt: string,
   schema: Record<string, unknown>,
-  model =
-    process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-  media?: Array<{
-    url?: string | null;
-    type?: 'video' | 'image' | 'audio' | null;
-  }>,
+  model = process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  media?: Array<{url?: string | null; type?: 'video' | 'image' | 'audio' | null}>,
 ) {
-  try {
-    return await geminiStructuredOnce(prompt, schema, normalizeGeminiModel(model), media);
-  } catch (firstError) {
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    try {
-      return await geminiStructuredOnce(
-        prompt + '\n\nReturn ONLY the JSON object described by the schema.',
-        schema,
-        normalizeGeminiModel(model),
-        media,
-      );
-    } catch (secondError) {
-      /* Preserve the useful upstream reason for the caller/fallback diagnostics. */
-      throw new Error(
-        secondError instanceof Error
-          ? secondError.message
-          : firstError instanceof Error
-            ? firstError.message
-            : String(secondError),
-      );
+  const capability: AICapability =
+    media?.some((item) => item?.type === 'video') ? 'video-understanding' :
+    media?.some((item) => item?.type === 'audio') ? 'audio-understanding' :
+    media?.some((item) => item?.type === 'image' || item?.url?.startsWith('data:image/')) ? 'image-understanding' :
+    'structured-text';
+
+  const errors:string[]=[];
+  for(const provider of preferredAIProviders(capability)){
+    if(!providerConfigured(provider)) continue;
+    try{
+      if(provider==='groq') return await groqStructured(prompt,schema,media);
+      return await geminiStructuredOnce(prompt,schema,normalizeGeminiModel(model),media);
+    }catch(error){
+      errors.push(aiProviderError(provider,error));
+      console.error('[video-ai] provider failed:',provider,error instanceof Error?error.message:String(error));
     }
   }
+
+  if(capability!=='video-understanding' && capability!=='audio-understanding' && providerConfigured('gemini')){
+    try{
+      await new Promise((resolve)=>setTimeout(resolve,700));
+      return await geminiStructuredOnce(
+        prompt+'\n\nReturn ONLY the JSON object described by the schema.',
+        schema,normalizeGeminiModel(model),media
+      );
+    }catch(error){ errors.push(aiProviderError('gemini',error)); }
+  }
+
+  throw new Error(
+    errors.length
+      ? 'No AI provider could handle this '+capability+' request. '+errors.join(' | ')
+      : 'No configured AI provider supports the '+capability+' capability.'
+  );
 }
 
+async function geminiPlannerJsonOnce(
 async function geminiPlannerJsonOnce(
   prompt: string,
   model: string,
@@ -581,6 +668,23 @@ async function geminiPlannerStructured(
   );
 }
 
+async function groqText(prompt: string) {
+  const key=GROQ_KEY();
+  if(!key) throw new Error('Groq is not configured. Add GROQ_API_KEY to Vercel.');
+  const model=process.env.GROQ_TEXT_MODEL || 'openai/gpt-oss-120b';
+  const response=await fetch('https://api.groq.com/openai/v1/chat/completions',{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+key},
+    body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0.2}),
+    cache:'no-store',
+  });
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok) throw new Error(data?.error?.message || ('Groq request failed ('+response.status+').'));
+  const text=String(data?.choices?.[0]?.message?.content || '').trim();
+  if(!text) throw new Error('Groq returned an empty response.');
+  return text;
+}
+
 async function geminiText(
   prompt: string,
   model =
@@ -666,6 +770,21 @@ async function geminiText(
   }
 
   return text;
+}
+
+async function routedAIText(prompt: string, model = process.env.GEMINI_MODEL || 'gemini-3.8-flash') {
+  const errors:string[]=[];
+  for(const provider of preferredAIProviders('text')){
+    if(!providerConfigured(provider)) continue;
+    try{
+      if(provider==='groq') return await groqText(prompt);
+      return await geminiText(prompt,model);
+    }catch(error){
+      errors.push(aiProviderError(provider,error));
+      console.error('[video-ai] text provider failed:',provider,error instanceof Error?error.message:String(error));
+    }
+  }
+  throw new Error(errors.length ? 'No text AI provider was available. '+errors.join(' | ') : 'No configured text AI provider is available.');
 }
 
 function inferMediaType(
@@ -1928,16 +2047,37 @@ export async function runVideoAI(
       );
     }
 
-    const transcript =
-      ASSEMBLY_KEY()
-        ? await assemblyTranscript(
-            input.mediaUrl,
-            input.language,
-          )
-        : await groqTranscript(
-            input.mediaUrl,
-            input.language,
-          );
+    const transcriptProviders: Array<'assemblyai' | 'groq'> =
+      ASSEMBLY_KEY() ? ['assemblyai', 'groq'] : ['groq', 'assemblyai'];
+    let transcript:
+      | Awaited<ReturnType<typeof groqTranscript>>
+      | Awaited<ReturnType<typeof assemblyTranscript>>
+      | null = null;
+    let transcriptProvider: 'assemblyai' | 'groq' | null = null;
+    const transcriptErrors:string[]=[];
+
+    for(const provider of transcriptProviders){
+      try{
+        if(provider==='assemblyai'){
+          if(!ASSEMBLY_KEY()) continue;
+          transcript=await assemblyTranscript(input.mediaUrl,input.language);
+        }else{
+          if(!GROQ_KEY()) continue;
+          transcript=await groqTranscript(input.mediaUrl,input.language);
+        }
+        transcriptProvider=provider;
+        break;
+      }catch(error){
+        transcriptErrors.push(provider+': '+(error instanceof Error?error.message:String(error)));
+        console.error('[video-ai] transcription provider failed:',provider,error instanceof Error?error.message:String(error));
+      }
+    }
+
+    if(!transcript || !transcriptProvider){
+      throw new Error(transcriptErrors.length
+        ? 'No transcription provider was available. '+transcriptErrors.join(' | ')
+        : 'No transcription provider is configured. Add GROQ_API_KEY or ASSEMBLYAI_API_KEY to Vercel.');
+    }
 
     if (
       operation ===
@@ -1945,10 +2085,7 @@ export async function runVideoAI(
     ) {
       return {
         operation,
-        provider:
-          ASSEMBLY_KEY()
-            ? 'assemblyai'
-            : 'groq',
+        provider: transcriptProvider,
         output:
           transcript,
       };
@@ -1974,10 +2111,7 @@ export async function runVideoAI(
 
     return {
       operation,
-      provider:
-        ASSEMBLY_KEY()
-          ? 'assemblyai'
-          : 'groq',
+      provider: transcriptProvider,
       output: {
         ...transcript,
         captions,
@@ -3968,7 +4102,7 @@ ${project}
 `;
 
     const result =
-      await geminiText(
+      await routedAIText(
         prompt,
       );
 
