@@ -3929,34 +3929,3 @@ export async function finishAIJob(
     })
     .eq('id', id);
 }
-
-
-  await supabase
-    .from(
-      'video_ai_jobs',
-    )
-    .update({
-      status:
-        patch.status,
-
-      output:
-        patch.output ??
-        null,
-
-      error:
-        patch.error ??
-        null,
-
-      completed_at:
-        patch.status ===
-          'completed' ||
-        patch.status ===
-          'failed'
-          ? new Date().toISOString()
-          : null,
-    })
-    .eq(
-      'id',
-      id,
-    );
-}
