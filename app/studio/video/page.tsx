@@ -4804,7 +4804,10 @@ function VideoEditor() {
 
   // Keep this wrapper as a normal JSX template literal; do not escape the backticks.\n  return (
     <main
-      className={[\n        'flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200',\n        toolDrawerOpen ? 'pb-[42dvh] md:pb-0 md:pr-[min(430px,32vw)]' : '',\n      ].join(' ')}
+      className={[
+        'flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white transition-[padding] duration-200',
+        toolDrawerOpen ? 'pb-[42dvh] md:pb-0 md:pr-[min(430px,32vw)]' : '',
+      ].join(' ')}
       data-history-scoped="true"
     >
       {/* fullscreen preview overlay (renders above everything when active) */}
