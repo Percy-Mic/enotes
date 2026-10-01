@@ -24,7 +24,7 @@ function providerFor(operation: VideoAIOperation): Provider | null {
 function falModelFor(operation: VideoAIOperation, mediaType?: AIJobInput['mediaType']) {
   const models: Partial<Record<VideoAIOperation, string | undefined>> = {
     'generate-image': process.env.FAL_IMAGE_MODEL || 'fal-ai/flux/schnell',
-    'generate-video': process.env.FAL_VIDEO_MODEL || 'fal-ai/kling-video/v1/standard/text-to-video',
+    'generate-video': process.env.FAL_VIDEO_MODEL || 'fal-ai/kling-video/v3/standard/text-to-video',
     'generate-voice': process.env.FAL_VOICE_MODEL || 'fal-ai/elevenlabs/tts/turbo-v2.5',
     'clone-voice': process.env.FAL_VOICE_CLONE_MODEL || 'fal-ai/minimax/voice-clone',
     'convert-voice': process.env.FAL_VOICE_CONVERT_MODEL || 'fal-ai/elevenlabs/voice-changer',
@@ -158,7 +158,7 @@ function falInputFor(input: AIJobInput): Record<string, unknown> {
       }
       return {
         image_url: input.mediaUrl,
-        target_style: String(input.prompt || '').trim() || 'cinematic',
+        target_style: (() => { const requested = String(input.prompt || '').trim().toLowerCase().replace(/\s+/g, '_'); const allowed = new Set(['anime_character','cartoon_3d','hand_drawn_animation','cyberpunk_future','anime_game_style','comic_book_animation','animated_series','cartoon_animation','lofi_aesthetic','cottagecore','dark_academia','y2k','vaporwave','liminal_space','weirdcore','dreamcore','synthwave','outrun','photorealistic','hyperrealistic','digital_art','concept_art','impressionist','anime','pixel_art','claymation']); return allowed.has(requested) ? requested : 'cinematic'; })(),
       };
 
     case 'relight':
@@ -168,7 +168,7 @@ function falInputFor(input: AIJobInput): Record<string, unknown> {
       return {
         image_url: input.mediaUrl,
         light_direction: 'front',
-        light_type: String(input.prompt || '').trim() || 'soft overcast daylight lighting',
+        light_type: (() => { const requested = String(input.prompt || '').trim().toLowerCase(); const allowed = ['soft overcast daylight lighting','warm sunset lighting','cool moonlight','studio lighting','dramatic side lighting','soft frontal lighting','golden hour lighting','neon lighting']; return allowed.includes(requested) ? requested : 'soft overcast daylight lighting'; })(),
       };
 
     case 'generate-voice':
