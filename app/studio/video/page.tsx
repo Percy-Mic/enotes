@@ -5828,7 +5828,7 @@ function VideoEditor() {
               <div className="mb-2 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold">AI Effects & Generation</p>
-                  <p className="text-[9px] leading-snug text-white/40">Media AI uses real provider adapters. Add FAL_KEY for generation/video AI; image background removal can use remove.bg when configured.</p>
+                  <p className="text-[9px] leading-snug text-white/40">Free-first AI: the editor, effects, masks and Gemini editing assistant work without fal.ai. Cloud media generation/voice tools are optional and activate when a provider key is added.</p>
                 </div>
                 <Sparkles className="h-4 w-4 text-[#FFB6C1]" />
               </div>
