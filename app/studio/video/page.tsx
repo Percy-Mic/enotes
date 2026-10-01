@@ -4176,6 +4176,7 @@ function VideoEditor() {
   const [sounds, setSounds] = useState<SoundBrowserItem[]>([]);
   const [soundQuery, setSoundQuery] = useState('');
   const [soundCategory, setSoundCategory] = useState('Cinematic');
+  const [jamendoSearchMode, setJamendoSearchMode] = useState<'all' | 'title' | 'artist' | 'album' | 'genre'>('all');
   const [soundProvider, setSoundProvider] = useState<'library' | 'freesound' | 'jamendo'>('library');
   const [soundPage, setSoundPage] = useState(1);
   const [soundPages, setSoundPages] = useState(1);
@@ -4297,16 +4298,25 @@ function VideoEditor() {
     query = soundQuery,
     page = 1,
     append = false,
-    category = soundCategory
+    category = soundCategory,
+    mode = jamendoSearchMode
   ) => {
     setSoundBusy(true);
     try {
+      const normalizedQuery = query.trim();
       const params = new URLSearchParams({
-        q: query.trim(),
+        q: normalizedQuery,
         page: String(page),
         limit: '24',
-        category: category === 'All' ? '' : category,
+        mode,
       });
+
+      // A category is a discovery filter. Do not silently combine the current
+      // category with title/artist/album searches; that was causing valid
+      // results to disappear (for example a song title without a "cinematic" tag).
+      if (!normalizedQuery && category && category.toLowerCase() !== 'all') {
+        params.set('category', category);
+      }
       const res = await fetch('/api/studio/jamendo?' + params.toString(), { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Could not load Jamendo results.');
@@ -6499,7 +6509,7 @@ function VideoEditor() {
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void searchJamendo(soundQuery, 1, false, soundCategory);
+                      void searchJamendo(soundQuery, 1, false, soundCategory, jamendoSearchMode);
                     }}
                     className="flex gap-2"
                   >
@@ -6508,11 +6518,23 @@ function VideoEditor() {
                       <input
                         value={soundQuery}
                         onChange={(e) => setSoundQuery(e.target.value)}
-                        placeholder="Search OPM, Filipino, cinematic, lo-fi…"
+                        placeholder="Search songs, artists, albums, genres…"
                         aria-label="Search Jamendo music"
                         className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]"
                       />
                     </div>
+                    <select
+                      value={jamendoSearchMode}
+                      onChange={(e) => setJamendoSearchMode(e.target.value as typeof jamendoSearchMode)}
+                      aria-label="Jamendo search type"
+                      className="rounded-lg border border-white/10 bg-[#171017] px-2 text-[10px] font-semibold text-white/75 outline-none focus:border-[#E5798F]"
+                    >
+                      <option value="all">Everything</option>
+                      <option value="title">Song title</option>
+                      <option value="artist">Artist</option>
+                      <option value="album">Album</option>
+                      <option value="genre">Genre / tag</option>
+                    </select>
                     <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
                       Search
                     </button>
@@ -6521,6 +6543,7 @@ function VideoEditor() {
                   <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Jamendo music categories">
                     {['All', 'Filipino / OPM', 'Pop', 'Cinematic', 'Lo-fi', 'Acoustic', 'Electronic', 'Sad', 'Happy', 'Romantic', 'Horror', 'World'].map((category) => {
                       const queryCategory =
+                        category === 'All' ? 'All' :
                         category === 'Filipino / OPM' ? 'filipino opm tagalog philippines' :
                         category === 'Lo-fi' ? 'lofi chill' :
                         category.toLowerCase();
@@ -6532,7 +6555,15 @@ function VideoEditor() {
                           aria-selected={soundCategory === queryCategory}
                           onClick={() => {
                             setSoundCategory(queryCategory);
-                            void searchJamendo(soundQuery, 1, false, queryCategory);
+                            if (category === 'All') {
+                              setJamendoSearchMode('all');
+                              void searchJamendo(soundQuery, 1, false, 'All', 'all');
+                            } else {
+                              // Category chips are true genre/tag searches.
+                              setJamendoSearchMode('genre');
+                              setSoundQuery(queryCategory);
+                              void searchJamendo(queryCategory, 1, false, queryCategory, 'genre');
+                            }
                           }}
                           className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold transition ${soundCategory === queryCategory ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
                         >
@@ -6617,7 +6648,7 @@ function VideoEditor() {
                       {soundPage < soundPages && (
                         <button
                           type="button"
-                          onClick={() => void searchJamendo(soundQuery, soundPage + 1, true, soundCategory)}
+                          onClick={() => void searchJamendo(soundQuery, soundPage + 1, true, soundCategory, jamendoSearchMode)}
                           disabled={soundBusy}
                           className="w-full rounded-lg border border-white/15 py-2.5 text-[10px] font-semibold disabled:opacity-40"
                         >
