@@ -4177,6 +4177,7 @@ function VideoEditor() {
   const [soundQuery, setSoundQuery] = useState('');
   const [soundCategory, setSoundCategory] = useState('Cinematic');
   const [jamendoSearchMode, setJamendoSearchMode] = useState<'all' | 'title' | 'artist' | 'album' | 'genre'>('all');
+  const [jamendoFeed, setJamendoFeed] = useState<'search' | 'latest' | 'trending'>('search');
   const [soundProvider, setSoundProvider] = useState<'library' | 'freesound' | 'jamendo'>('library');
   const [soundPage, setSoundPage] = useState(1);
   const [soundPages, setSoundPages] = useState(1);
@@ -4299,7 +4300,8 @@ function VideoEditor() {
     page = 1,
     append = false,
     category = soundCategory,
-    mode = jamendoSearchMode
+    mode = jamendoSearchMode,
+    feed = jamendoFeed
   ) => {
     setSoundBusy(true);
     try {
@@ -4309,6 +4311,7 @@ function VideoEditor() {
         page: String(page),
         limit: '24',
         mode,
+        feed,
       });
 
       // A category is a discovery filter. Do not silently combine the current
@@ -6349,8 +6352,11 @@ function VideoEditor() {
                   type="button"
                   onClick={() => {
                     setSoundProvider('jamendo');
-                    setSoundCategory('cinematic');
-                    void searchJamendo(soundQuery, 1, false, 'cinematic');
+                    setSoundCategory('All');
+                    setJamendoFeed('trending');
+                    setJamendoSearchMode('all');
+                    setSoundQuery('');
+                    void searchJamendo('', 1, false, 'All', 'all', 'trending');
                   }}
                   className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'jamendo' ? 'bg-white/15 text-white' : 'text-white/45'}`}
                 >
@@ -6365,6 +6371,12 @@ function VideoEditor() {
                     <p className="mt-0.5 text-[10px] leading-4 text-white/45">
                       Search CC0 sounds, preview them, then add the preview directly to your timeline. Nothing is copied into your sound database.
                     </p>
+                  </div>
+
+                  <div className="flex gap-1.5 overflow-x-auto pb-1" aria-label="Meme and viral sound presets">
+                    {['fahh', 'vine boom', 'bruh', 'record scratch', 'airhorn', 'cartoon boing', 'laugh'].map((preset) => (
+                      <button key={preset} type="button" onClick={() => { setSoundQuery(preset); setSoundCategory('All'); void searchFreesound(preset, 1, false, 'All'); }} className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[9px] font-semibold text-white/55 hover:text-white">{preset}</button>
+                    ))}
                   </div>
 
                   <form
@@ -6509,7 +6521,7 @@ function VideoEditor() {
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void searchJamendo(soundQuery, 1, false, soundCategory, jamendoSearchMode);
+                      void searchJamendo(soundQuery, 1, false, soundCategory, jamendoSearchMode, jamendoFeed);
                     }}
                     className="flex gap-2"
                   >
@@ -6539,6 +6551,31 @@ function VideoEditor() {
                       Search
                     </button>
                   </form>
+
+                  <div className="flex gap-1.5 overflow-x-auto pb-1" aria-label="Jamendo music feeds">
+                    {[
+                      ['search', 'Search'],
+                      ['trending', 'Trending now'],
+                      ['latest', 'Latest releases'],
+                    ].map(([feed, label]) => (
+                      <button
+                        key={feed}
+                        type="button"
+                        onClick={() => {
+                          const next = feed as typeof jamendoFeed;
+                          setJamendoFeed(next);
+                          if (next !== 'search') {
+                            setSoundQuery('');
+                            setJamendoSearchMode('all');
+                            void searchJamendo('', 1, false, 'All', 'all', next);
+                          }
+                        }}
+                        className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold ${jamendoFeed === feed ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
 
                   <div className="flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="Jamendo music categories">
                     {['All', 'Filipino / OPM', 'Pop', 'Cinematic', 'Lo-fi', 'Acoustic', 'Electronic', 'Sad', 'Happy', 'Romantic', 'Horror', 'World'].map((category) => {
@@ -6648,7 +6685,7 @@ function VideoEditor() {
                       {soundPage < soundPages && (
                         <button
                           type="button"
-                          onClick={() => void searchJamendo(soundQuery, soundPage + 1, true, soundCategory, jamendoSearchMode)}
+                          onClick={() => void searchJamendo(soundQuery, soundPage + 1, true, soundCategory, jamendoSearchMode, jamendoFeed)}
                           disabled={soundBusy}
                           className="w-full rounded-lg border border-white/15 py-2.5 text-[10px] font-semibold disabled:opacity-40"
                         >
