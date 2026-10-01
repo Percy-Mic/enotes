@@ -5828,7 +5828,7 @@ function VideoEditor() {
               <div className="mb-2 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold">AI Effects & Generation</p>
-                  <p className="text-[9px] text-white/40">Configured providers · results can be inserted into the live timeline.</p>
+                  <p className="text-[9px] leading-snug text-white/40">Media AI uses real provider adapters. Add FAL_KEY for generation/video AI; image background removal can use remove.bg when configured.</p>
                 </div>
                 <Sparkles className="h-4 w-4 text-[#FFB6C1]" />
               </div>
