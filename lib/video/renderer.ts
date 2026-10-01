@@ -1537,9 +1537,14 @@ export class VideoRenderer {
         if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
-          const animatedClip = animated.scale === clip.transform.scale && animated.rotation === clip.transform.rotation && animated.offset_x === clip.transform.offset_x && animated.offset_y === clip.transform.offset_y
+          const animatedClip = animated.scale === clip.transform.scale && animated.rotation === clip.transform.rotation && animated.offset_x === clip.transform.offset_x && animated.offset_y === clip.transform.offset_y && animated.opacity === 1 && animated.volume === clip.volume
             ? clip
-            : { ...clip, volume: animated.volume, transform: { ...clip.transform, scale: animated.scale, offset_x: animated.offset_x, offset_y: animated.offset_y, rotation: animated.rotation } };
+            : {
+                ...clip,
+                volume: animated.volume,
+                opacity: animated.opacity,
+                transform: { ...clip.transform, scale: animated.scale, offset_x: animated.offset_x, offset_y: animated.offset_y, rotation: animated.rotation },
+              };
           const mediaW = image ? image.naturalWidth : video!.videoWidth;
           const mediaH = image ? image.naturalHeight : video!.videoHeight;
           const t = clipDrawRect(animatedClip, W, H, mediaW, mediaH, eff);
