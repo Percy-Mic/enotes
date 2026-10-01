@@ -58,7 +58,7 @@ export async function cloudinaryProcessUrl(input: {
 
   const response = await fetch(
     `https://api.cloudinary.com/v1_1/${encodeURIComponent(config.cloudName)}/${resourceType}/upload`,
-    { method: 'POST', body: form, cache: 'no-store' },
+    { method: 'POST', body: form, cache: 'no-store', signal: AbortSignal.timeout(120000) },
   );
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
