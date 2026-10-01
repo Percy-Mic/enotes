@@ -372,6 +372,87 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, onAppl
   );
 }
 
+function SoundPreviewPlayer({
+  sound,
+  playing,
+  currentTime,
+  onToggle,
+  onSeek,
+}: {
+  sound: SoundBrowserItem;
+  playing: boolean;
+  currentTime: number;
+  onToggle: () => void;
+  onSeek: (time: number) => void;
+}) {
+  const duration = Math.max(0.1, Number(sound.duration_seconds) || 0.1);
+  const pct = Math.max(0, Math.min(100, (currentTime / duration) * 100));
+  const jump = (fraction: number) => onSeek(Math.max(0, Math.min(duration - 0.05, duration * fraction)));
+
+  return (
+    <div className="mt-2 rounded-xl border border-white/10 bg-black/25 p-2.5">
+      <div className="mb-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E5798F] text-white shadow-sm transition hover:scale-105 active:scale-95"
+          aria-label={playing ? `Pause preview of ${sound.title}` : `Play preview of ${sound.title}`}
+        >
+          {playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2 text-[9px] font-semibold text-white/65">
+            <span className="tabular-nums">{fmt(currentTime)}</span>
+            <span className="tabular-nums text-white/35">{fmt(duration)}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={duration}
+            step={0.01}
+            value={Math.min(duration, currentTime)}
+            onChange={(e) => onSeek(Number(e.target.value))}
+            aria-label={`Seek preview of ${sound.title}`}
+            className="mt-0.5 h-3 w-full cursor-pointer accent-[#E5798F]"
+            style={{ background: `linear-gradient(to right, #E5798F 0%, #E5798F ${pct}%, rgba(255,255,255,.12) ${pct}%, rgba(255,255,255,.12) 100%)` }}
+          />
+        </div>
+      </div>
+
+      <div className="mb-2 flex gap-1.5">
+        {[
+          ['Start', 0],
+          ['25%', 0.25],
+          ['Middle', 0.5],
+          ['75%', 0.75],
+          ['End', 0.9],
+        ].map(([label, fraction]) => (
+          <button
+            key={String(label)}
+            type="button"
+            onClick={() => jump(Number(fraction))}
+            className="flex-1 rounded-md bg-white/[0.06] px-1.5 py-1.5 text-[8px] font-semibold text-white/55 transition hover:bg-white/10 hover:text-white active:scale-[0.98]"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative h-7 overflow-hidden rounded-md bg-white/[0.035]" aria-hidden="true">
+        <div className="absolute inset-y-0 left-0 bg-[#E5798F]/20" style={{ width: `${pct}%` }} />
+        <div className="absolute inset-0 flex items-center gap-[2px] px-1">
+          {Array.from({ length: 48 }, (_, i) => {
+            const wave = 3 + Math.abs(Math.sin(i * 1.71) * 8 + Math.sin(i * 0.37) * 4);
+            return <span key={i} className="w-[2px] shrink-0 rounded-full bg-white/25" style={{ height: `${Math.min(22, wave)}px` }} />;
+          })}
+        </div>
+        <div className="absolute inset-y-0 w-0.5 bg-white shadow-[0_0_6px_rgba(255,255,255,.6)]" style={{ left: `${pct}%` }} />
+      </div>
+      <p className="mt-1 text-[8px] text-white/30">Drag the timeline or choose a point to hear that exact part of the track.</p>
+    </div>
+  );
+}
+
 function AudioWaveformPreview({ src, duration, start, onSeek }: { src: string; duration: number; start: number; onSeek?: (offset: number) => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -4184,14 +4265,21 @@ function VideoEditor() {
   const [soundCount, setSoundCount] = useState(0);
   const [soundBusy, setSoundBusy] = useState(false);
   const [previewingSoundId, setPreviewingSoundId] = useState<string | null>(null);
+  const [previewSoundTime, setPreviewSoundTime] = useState(0);
   const soundPreviewRef = useRef<HTMLAudioElement | null>(null);
+
+  const seekSoundPreview = useCallback((time: number) => {
+    const audio = soundPreviewRef.current;
+    if (!audio) return;
+    const safe = Math.max(0, Math.min(Number.isFinite(audio.duration) ? audio.duration : 0, time));
+    audio.currentTime = safe;
+    setPreviewSoundTime(safe);
+  }, []);
 
   const toggleSoundPreview = useCallback((sound: SoundBrowserItem) => {
     const current = soundPreviewRef.current;
     if (current && previewingSoundId === sound.id) {
       current.pause();
-      current.currentTime = 0;
-      soundPreviewRef.current = null;
       setPreviewingSoundId(null);
       return;
     }
@@ -4203,9 +4291,15 @@ function VideoEditor() {
 
     const audio = new Audio(sound.url);
     audio.preload = 'auto';
+    audio.ontimeupdate = () => {
+      if (soundPreviewRef.current === audio) setPreviewSoundTime(audio.currentTime);
+    };
+    audio.onloadedmetadata = () => {
+      if (soundPreviewRef.current === audio) setPreviewSoundTime(audio.currentTime);
+    };
     audio.onended = () => {
       if (soundPreviewRef.current === audio) {
-        soundPreviewRef.current = null;
+        setPreviewSoundTime(audio.duration || sound.duration_seconds || 0);
         setPreviewingSoundId(null);
       }
     };
@@ -4213,10 +4307,12 @@ function VideoEditor() {
       if (soundPreviewRef.current === audio) {
         soundPreviewRef.current = null;
         setPreviewingSoundId(null);
+        setPreviewSoundTime(0);
       }
       notify('Sound preview could not be loaded.');
     };
     soundPreviewRef.current = audio;
+    setPreviewSoundTime(0);
     setPreviewingSoundId(sound.id);
     void audio.play().catch(() => {
       if (soundPreviewRef.current === audio) {
@@ -4229,6 +4325,7 @@ function VideoEditor() {
   useEffect(() => () => {
     soundPreviewRef.current?.pause();
     soundPreviewRef.current = null;
+    setPreviewSoundTime(0);
   }, []);
 
   const soundCategories = [
@@ -6456,17 +6553,16 @@ function VideoEditor() {
                             </button>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => toggleSoundPreview(s)}
-                            className="mt-2 flex w-full items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left text-[10px] font-semibold text-white/75 transition hover:bg-white/[0.08] active:scale-[0.99]"
-                            aria-label={`${previewingSoundId === s.id ? 'Pause' : 'Preview'} ${s.title}`}
-                          >
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E5798F] text-white">
-                              {previewingSoundId === s.id ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
-                            </span>
-                            <span>{previewingSoundId === s.id ? 'Previewing…' : 'Preview sound'}</span>
-                          </button>
+                          <SoundPreviewPlayer
+                            sound={s}
+                            playing={previewingSoundId === s.id}
+                            currentTime={previewingSoundId === s.id ? previewSoundTime : 0}
+                            onToggle={() => toggleSoundPreview(s)}
+                            onSeek={(time) => {
+                              if (previewingSoundId !== s.id) toggleSoundPreview(s);
+                              window.setTimeout(() => seekSoundPreview(time), 0);
+                            }}
+                          />
 
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <div className="min-w-0 truncate text-[9px] text-white/35">
@@ -6651,17 +6747,16 @@ function VideoEditor() {
                             </button>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => toggleSoundPreview(s)}
-                            className="mt-2 flex w-full items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left text-[10px] font-semibold text-white/75 transition hover:bg-white/[0.08] active:scale-[0.99]"
-                            aria-label={`${previewingSoundId === s.id ? 'Pause' : 'Preview'} ${s.title}`}
-                          >
-                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#E5798F] text-white">
-                              {previewingSoundId === s.id ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />}
-                            </span>
-                            <span>{previewingSoundId === s.id ? 'Previewing…' : 'Preview track'}</span>
-                          </button>
+                          <SoundPreviewPlayer
+                            sound={s}
+                            playing={previewingSoundId === s.id}
+                            currentTime={previewingSoundId === s.id ? previewSoundTime : 0}
+                            onToggle={() => toggleSoundPreview(s)}
+                            onSeek={(time) => {
+                              if (previewingSoundId !== s.id) toggleSoundPreview(s);
+                              window.setTimeout(() => seekSoundPreview(time), 0);
+                            }}
+                          />
 
                           <div className="mt-2 flex items-center justify-between gap-2">
                             <div className="min-w-0 truncate text-[9px] text-white/35">
