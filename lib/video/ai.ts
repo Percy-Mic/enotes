@@ -71,7 +71,7 @@ const GEMINI_KEY = () =>
   process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY;
 
 function normalizeGeminiModel(value: string | undefined, fallback = 'gemini-3.1-flash-lite') {
-  const model = String(value || '').trim().replace(/^models\\//, '');
+  const model = String(value || '').trim().replace(/^models\//, '');
   if (!model) return fallback;
   const retired = new Set([
     'gemini-3.5-flash-lite',
