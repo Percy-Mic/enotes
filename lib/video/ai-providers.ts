@@ -3,7 +3,11 @@ import type { AIJobInput, AIResult, VideoAIOperation } from '@/lib/video/ai';
 type Provider = 'huggingface' | 'fal' | 'replicate' | 'cloudinary';
 
 function providerFor(operation: VideoAIOperation): Provider | null {
-  if (operation === 'remove-background' || operation === 'enhance') return 'huggingface';
+  // Background removal is a specialized media operation. Do not route it
+  // through generic hf-inference: RMBG-2.0 is exposed as image segmentation
+  // and video background removal needs a video-capable endpoint.
+  if (operation === 'remove-background') return 'fal';
+  if (operation === 'enhance') return 'huggingface';
   if (
     operation === 'remove-object' ||
     operation === 'track-object' ||
@@ -27,6 +31,10 @@ function falModelFor(operation: VideoAIOperation) {
     'clone-voice': process.env.FAL_VOICE_CLONE_MODEL,
     'convert-voice': process.env.FAL_VOICE_CONVERT_MODEL,
     'generate-music': process.env.FAL_MUSIC_MODEL || 'fal-ai/stable-audio',
+    'remove-background':
+      process.env.FAL_BACKGROUND_MODEL ||
+      process.env.FAL_BACKGROUND_IMAGE_MODEL ||
+      'fal-ai/bria/background/remove',
     'remove-object': process.env.FAL_OBJECT_REMOVE_MODEL,
     'track-object': process.env.FAL_OBJECT_TRACK_MODEL,
     'style-transfer': process.env.FAL_STYLE_MODEL,
@@ -109,7 +117,17 @@ async function fal(input: AIJobInput): Promise<AIResult> {
   const key = process.env.FAL_KEY;
   if (!key) throw new Error(`fal.ai is not configured. Add ${requiredKey('fal')} to Vercel.`);
 
-  const endpoint = falModelFor(input.operation);
+  const endpoint =
+    input.operation === 'remove-background'
+      ? (
+          input.mediaType === 'video'
+            ? process.env.FAL_BACKGROUND_VIDEO_MODEL || 'bria/video/background-removal/v3'
+            : process.env.FAL_BACKGROUND_IMAGE_MODEL ||
+              process.env.FAL_BACKGROUND_MODEL ||
+              'fal-ai/bria/background/remove'
+        )
+      : falModelFor(input.operation);
+
   if (!endpoint) {
     throw new Error(`No fal.ai model is configured for "${input.operation}". Add the matching FAL_*_MODEL environment variable in Vercel.`);
   }
