@@ -636,13 +636,16 @@ function VideoEditor() {
         'relight',
       ];
 
-      const videoOperations = [
-        'generate-video',
-        'remove-background',
-        'track-object',
-      ];
+      const isImageOutput =
+        imageOperations.includes(operation) ||
+        (operation === 'remove-background' && mediaType === 'image');
 
-      if (imageOperations.includes(operation)) {
+      const isVideoOutput =
+        operation === 'generate-video' ||
+        operation === 'track-object' ||
+        (operation === 'remove-background' && mediaType === 'video');
+
+      if (isImageOutput) {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.src = url;
@@ -682,18 +685,9 @@ function VideoEditor() {
         setSelectedClipId(clip.id);
         setSelectedElementId(null);
         notify('AI result added to the main track.');
-      } else if (videoOperations.includes(operation)) {
+      } else if (isVideoOutput) {
         if (!selectedClip) {
           notify('Select a main-track video clip to apply this AI result.');
-          return;
-        }
-
-        const outputIsVideo =
-          operation === 'generate-video' ||
-          mediaType === 'video';
-
-        if (!outputIsVideo) {
-          notify('This AI result is not a video output.');
           return;
         }
 
