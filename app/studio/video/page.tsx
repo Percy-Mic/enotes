@@ -1091,8 +1091,7 @@ function VideoEditor() {
           audio?.pause();
           audio = new Audio(clip.src);
           audio.preload = 'auto';
-          audio.crossOrigin = 'anonymous';
-          previewAudioRef.current.set(clipId, audio);
+                    previewAudioRef.current.set(clipId, audio);
         }
 
         const local = Math.max(0, time - clipStart);
