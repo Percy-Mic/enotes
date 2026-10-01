@@ -3123,24 +3123,13 @@ ${beatsForPlan}
       !Array.isArray(plan.actions) ||
       !plan.actions.length
     ) {
-      plan = buildDeterministicEditPlan();
-
-      /*
-       * Keep the user-facing message useful without exposing API keys,
-       * request bodies, URLs, or other sensitive provider details.
-       */
-      if (plannerError) {
-        const safeReason = /api key|authorization|token|secret/i.test(plannerError)
-          ? 'AI provider configuration'
-          : /quota|rate.?limit|429/i.test(plannerError)
-            ? 'AI provider rate limit'
-            : /schema|invalid argument|bad request|400/i.test(plannerError)
-              ? 'AI structured-output validation'
-              : 'AI provider availability';
-
-        plan.message = `I prepared the edit with the local fallback planner because ${safeReason} prevented the AI planner from returning actions.`;
-        critiqueHint = 'Gemini planner diagnostics were recorded server-side.';
-      }
+      /* Never turn a provider failure into a fake “AI edit”. The client must
+         receive the real failure so the user can fix the provider/configuration
+         instead of silently receiving generic edits. */
+      throw new Error(
+        plannerError ||
+          'Gemini did not return a usable editing plan. Please try again.',
+      );
     }
 
     /*
