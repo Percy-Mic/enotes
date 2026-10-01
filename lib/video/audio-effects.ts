@@ -1,3 +1,5 @@
+import type { AudioEffect, AudioEffectType } from '@/lib/video/project';
+
 /* Browser-native audio effect graph used by the video editor preview/export. */
 
 export const AUDIO_EFFECT_PRESETS: { id: AudioEffectType; name: string; hint: string }[] = [
