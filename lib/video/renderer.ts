@@ -1622,7 +1622,7 @@ export class VideoRenderer {
            ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
            ctx.rotate((animated.rotation * Math.PI) / 180);
            ctx.scale(animatedClip.transform.flip_h ? -1 : 1, animatedClip.transform.flip_v ? -1 : 1);
-           ctx.globalAlpha = Math.max(0, Math.min(1, animatedClip.opacity ?? 1));
+           ctx.globalAlpha = Math.max(0, Math.min(1, animated.opacity));
            ctx.drawImage(surface, -surface.width / 2, -surface.height / 2);
            ctx.restore();
 
