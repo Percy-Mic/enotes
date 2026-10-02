@@ -1851,10 +1851,24 @@ function VideoEditor() {
         } as VideoClip;
       });
       if (clips.length < 3) throw new Error('Not enough stock footage was returned. Try again.');
+      const firstPractice = clips[0] as VideoClip | undefined;
+      const practiceBase = emptyProject('original');
       setDoc((prev) => ({
         ...prev,
         title: 'Cinematic Practice — Untitled',
-        project: normalizeProject({ ...emptyProject(prev.project.aspect), clips }),
+        project: normalizeProject({
+          ...practiceBase,
+          ...(firstPractice?.source_width && firstPractice?.source_height
+            ? {
+                aspect: 'original' as const,
+                canvas: {
+                  width: firstPractice.source_width,
+                  height: firstPractice.source_height,
+                },
+              }
+            : {}),
+          clips,
+        }),
       }), 'Create practice project');
       setSelectedClipId(clips[0].id);
       setSelectedElementId(null);
