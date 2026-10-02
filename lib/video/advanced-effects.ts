@@ -18,11 +18,25 @@ function rgba(hex:string,a:number){
 /* Never draw a canvas back onto itself. Browser canvas implementations are
    allowed to produce feedback/undefined pixels for self-blits, which showed
    up as flashes/black frames in blur and kaleidoscope previews. */
+const effectSnapshots = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+
 function snapshotCanvas(ctx:Ctx,W:number,H:number): HTMLCanvasElement | null {
-  const copy=document.createElement('canvas');
-  copy.width=W; copy.height=H;
+  let copy = effectSnapshots.get(ctx.canvas);
+  if (!copy) {
+    copy = document.createElement('canvas');
+    effectSnapshots.set(ctx.canvas, copy);
+  }
+  if (copy.width !== W || copy.height !== H) {
+    copy.width = W;
+    copy.height = H;
+  }
   const c=copy.getContext('2d');
   if(!c) return null;
+  c.setTransform(1,0,0,1,0,0);
+  c.globalAlpha=1;
+  c.globalCompositeOperation='source-over';
+  c.filter='none';
+  c.clearRect(0,0,W,H);
   c.drawImage(ctx.canvas,0,0,W,H);
   return copy;
 }
