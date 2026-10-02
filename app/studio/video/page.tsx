@@ -140,6 +140,7 @@ function useLatestPreviewRenderer() {
           await rendererRef.current.drawFrame(canvas, project, nextTime, {
             previewing: true,
             playing: false,
+            isolatedPreview: true,
           });
         } catch {
           /* A transient decoder seek must not break the preview card. */
