@@ -1703,7 +1703,7 @@ function VideoEditor() {
           setImporting(null);
 
           if (isImage) {
-            const firstMainMedia = !docRef.current.project.clips.length && !docRef.current.project.elements.length;
+            const firstMainMedia = docRef.current.project.clips.length === 0;
             const clip: VideoClip = {
               id: makeVideoId('clip'), src: mediaUrl, name: file.name,
               sourceDuration: 4, trimStart: 0, trimEnd: 4, speed: 1, volume: 0, muted: true,
@@ -1746,7 +1746,7 @@ function VideoEditor() {
               setSelectedClipId(replacement.id);
               notify('Clip replaced — your edit position and timeline slot were preserved.');
             } else {
-              const firstMainMedia = !docRef.current.project.clips.length && !docRef.current.project.elements.length;
+              const firstMainMedia = docRef.current.project.clips.length === 0;
               const clip: VideoClip = {
                 id: makeVideoId('clip'), src: mediaUrl, name: file.name,
                 sourceDuration: meta.duration, trimStart: 0,
@@ -1805,7 +1805,14 @@ function VideoEditor() {
       transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
       audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
     };
-    updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add stock footage');
+    const firstMainMedia = docRef.current.project.clips.length === 0;
+    updateProject((p) => ({
+      ...p,
+      ...(firstMainMedia && item.width > 0 && item.height > 0
+        ? { aspect: 'original' as const, canvas: { width: item.width, height: item.height } }
+        : {}),
+      clips: [...p.clips, clip],
+    }), 'Add stock footage');
     setSelectedClipId(clip.id); setSelectedElementId(null); notify('Stock footage added to the main timeline.');
   }, [notify, updateProject]);
 
