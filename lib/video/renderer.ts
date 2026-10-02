@@ -1059,11 +1059,48 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
       ctx.shadowColor = 'transparent';
       ctx.shadowBlur = 0;
     }
-    if (el.text_effect === '3d') { ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillText(visibleLine, 4, y + 4); }
-    if (el.text_effect === 'hollow') { ctx.strokeStyle = el.color || '#FFFFFF'; ctx.lineWidth = Math.max(1, el.stroke_width ?? 2); ctx.strokeText(visibleLine, 0, y); }
-    else if (el.text_effect === 'neon' || el.text_effect === 'glow') { ctx.shadowColor = el.color || '#FFFFFF'; ctx.shadowBlur = el.text_effect === 'neon' ? fontSize * 0.55 : fontSize * 0.35; ctx.fillStyle = el.color || '#FFFFFF'; ctx.fillText(visibleLine, 0, y); }
-    else if (el.text_effect === 'gradient') { const gradient = ctx.createLinearGradient(-fontSize * 2, y - fontSize, fontSize * 2, y + fontSize); gradient.addColorStop(0, el.color || '#FFFFFF'); gradient.addColorStop(1, '#FF8FA3'); ctx.fillStyle = gradient; ctx.fillText(visibleLine, 0, y); }
-    else { ctx.fillStyle = el.color || '#FFFFFF'; ctx.fillText(visibleLine, 0, y); }    if (isTypewriter && i === lines.length - 1 && revealed < totalChars) {
+    if (el.text_effect === '3d') {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillText(visibleLine, 4, y + 4);
+      ctx.fillStyle = el.color || '#FFFFFF';
+      ctx.fillText(visibleLine, 0, y);
+    } else if (el.text_effect === 'hollow' || el.text_effect === 'outline') {
+      ctx.strokeStyle = el.stroke_color || el.color || '#FFFFFF';
+      ctx.lineWidth = Math.max(1, el.stroke_width ?? 2);
+      ctx.strokeText(visibleLine, 0, y);
+    } else if (el.text_effect === 'neon' || el.text_effect === 'glow') {
+      ctx.shadowColor = el.color || '#FFFFFF';
+      ctx.shadowBlur = el.text_effect === 'neon' ? fontSize * 0.55 : fontSize * 0.35;
+      ctx.fillStyle = el.color || '#FFFFFF';
+      ctx.fillText(visibleLine, 0, y);
+    } else if (el.text_effect === 'gradient') {
+      const gradient = ctx.createLinearGradient(-fontSize * 2, y - fontSize, fontSize * 2, y + fontSize);
+      gradient.addColorStop(0, el.color || '#FFFFFF');
+      gradient.addColorStop(0.5, '#FFB6C1');
+      gradient.addColorStop(1, '#E5798F');
+      ctx.fillStyle = gradient;
+      ctx.fillText(visibleLine, 0, y);
+    } else if (el.text_effect === 'retro') {
+      ctx.fillStyle = el.color || '#FFF3D6';
+      ctx.shadowColor = 'rgba(0,0,0,.75)';
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 3;
+      ctx.fillText(visibleLine, 0, y);
+    } else if (el.text_effect === 'glitch') {
+      ctx.save();
+      ctx.globalAlpha *= 0.8;
+      ctx.fillStyle = '#00E5FF';
+      ctx.fillText(visibleLine, Math.sin(timeIn * 45) * 4, y);
+      ctx.fillStyle = '#FF2BD6';
+      ctx.fillText(visibleLine, Math.cos(timeIn * 37) * -4, y);
+      ctx.restore();
+      ctx.fillStyle = el.color || '#FFFFFF';
+      ctx.fillText(visibleLine, 0, y);
+    } else {
+      ctx.fillStyle = el.color || '#FFFFFF';
+      ctx.fillText(visibleLine, 0, y);
+    }    if (isTypewriter && i === lines.length - 1 && revealed < totalChars) {
       /* Caret blinks at 2 Hz while typing. */
       if (Math.floor(timeIn * 4) % 2 === 0) {
         const caretX = ctx.measureText(visibleLine).width / 2 + 4;
