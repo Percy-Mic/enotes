@@ -8201,8 +8201,6 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
         <button onClick={onReset} className="rounded-full border border-white/25 bg-black/75 px-4 py-2 text-xs font-semibold backdrop-blur">Reset</button>
         <button onClick={onApply} className="flex items-center gap-1 rounded-full bg-[#E5798F] px-4 py-2 text-xs font-bold text-white shadow"><Check className="h-3.5 w-3.5" />Apply</button>
       </div>
-      </>
-      )}
     </div>
   );
 }
@@ -8742,6 +8740,8 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
         <Slider label="Opacity" min={10} max={100} value={el.opacity * 100} onChange={(v) => onChange({ opacity: v / 100 }, 'Overlay opacity', `o-${el.id}`)} />
         <Slider label="Layer (z)" min={1} max={20} value={el.z} onChange={(v) => onChange({ z: v }, 'Layer order')} />
       </div>
+      </>
+      )}
     </div>
   );
 }
