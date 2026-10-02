@@ -1203,9 +1203,8 @@ function VideoEditor() {
       if (!audio || audio.src !== el.src) {
         audio?.pause();
         const videoAudio = document.createElement('video');
-        if ((el.audioProcessing?.effects || []).some((effect) => effect.type !== 'none' && effect.amount > 0)) {
-          videoAudio.crossOrigin = 'anonymous';
-        }
+        /* TimelineElement has no audioProcessing field. Keep its native
+           media audio path independent from optional DSP effects. */
         videoAudio.preload = 'auto';
         videoAudio.playsInline = true;
         videoAudio.setAttribute('playsinline', '');
