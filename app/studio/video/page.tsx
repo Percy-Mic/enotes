@@ -1703,7 +1703,6 @@ function VideoEditor() {
           setImporting(null);
 
           if (isImage) {
-            const firstMainMedia = docRef.current.project.clips.length === 0;
             const clip: VideoClip = {
               id: makeVideoId('clip'), src: mediaUrl, name: file.name,
               sourceDuration: 4, trimStart: 0, trimEnd: 4, speed: 1, volume: 0, muted: true,
@@ -1715,13 +1714,11 @@ function VideoEditor() {
             };
             updateProject((p) => ({
               ...p,
-              aspect: firstMainMedia ? 'original' : p.aspect,
-              canvas: firstMainMedia ? { width: meta.w, height: meta.h } : p.canvas,
               clips: [...p.clips, clip],
             }), 'Add image to main track');
             setSelectedClipId(clip.id);
             setSelectedElementId(null);
-            notify(firstMainMedia ? 'Image added — canvas matched the source orientation.' : 'Image added to the main track.');
+            notify('Image added to the main track. The canvas will follow the first video added.');
           } else {
             const replacement = replaceClipId
               ? docRef.current.project.clips.find((c) => c.id === replaceClipId)
@@ -1746,7 +1743,7 @@ function VideoEditor() {
               setSelectedClipId(replacement.id);
               notify('Clip replaced — your edit position and timeline slot were preserved.');
             } else {
-              const firstMainMedia = docRef.current.project.clips.length === 0;
+              const firstMainVideo = !docRef.current.project.clips.some((c) => c.media_type !== 'image');
               const clip: VideoClip = {
                 id: makeVideoId('clip'), src: mediaUrl, name: file.name,
                 sourceDuration: meta.duration, trimStart: 0,
@@ -1758,13 +1755,13 @@ function VideoEditor() {
               };
               updateProject((p) => ({
                 ...p,
-                aspect: firstMainMedia ? 'original' : p.aspect,
-                canvas: firstMainMedia && meta.w && meta.h ? { width: meta.w, height: meta.h } : p.canvas,
+                aspect: firstMainVideo ? 'original' : p.aspect,
+                canvas: firstMainVideo && meta.w && meta.h ? { width: meta.w, height: meta.h } : p.canvas,
                 clips: [...p.clips, clip],
               }), 'Add clip');
               setSelectedClipId(clip.id);
               setSelectedElementId(null);
-              if (firstMainMedia) notify('Video added — canvas matched the source orientation.');
+              if (firstMainVideo) notify('First video added — canvas matched the video orientation.');
             }
           }
         } catch (e) {
@@ -1805,10 +1802,10 @@ function VideoEditor() {
       transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
       audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
     };
-    const firstMainMedia = docRef.current.project.clips.length === 0;
+    const firstMainVideo = !docRef.current.project.clips.some((c) => c.media_type !== 'image');
     updateProject((p) => ({
       ...p,
-      ...(firstMainMedia && item.width > 0 && item.height > 0
+      ...(firstMainVideo && item.width > 0 && item.height > 0
         ? { aspect: 'original' as const, canvas: { width: item.width, height: item.height } }
         : {}),
       clips: [...p.clips, clip],
