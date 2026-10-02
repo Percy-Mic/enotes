@@ -964,6 +964,14 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   ctx.rotate((v.rotation * Math.PI) / 180);
   if (v.scale !== 1) ctx.scale(v.scale, v.scale);
 
+  /* The element box is the source of truth. Clip the actual text rendering
+     to that box so glyphs, shadows, strokes and animated effects cannot
+     visually escape the selection/container square. */
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-el.width / 2, -el.height / 2, el.width, el.height);
+  ctx.clip();
+
   // Loop motion runs after the static transform so it feels attached to the text.
   if (loopAnimation !== 'none') {
     const amount = Math.max(0, Math.min(2, el.animation_loop_amount ?? 1));
@@ -1007,7 +1015,7 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     ? (Math.max(20, el.height * 0.88) / (lineHeightRequested * lines.length))
     : 1;
   const fitScale = Math.min(1, widthFit, heightFit);
-  const fontSize = Math.max(8, Math.min(240, requestedFontSize * fitScale));
+  const fontSize = Math.max(1, Math.min(240, requestedFontSize * fitScale));
   ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   const lineHeight = fontSize * (el.line_height || 1.25);
   const totalHeight = lines.length * lineHeight;
@@ -1129,7 +1137,8 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   });
 
   void canvasW;
-  ctx.restore();
+  ctx.restore(); // container clip
+  ctx.restore(); // element renderer state
 }
 
 function easeOut(t: number) {
