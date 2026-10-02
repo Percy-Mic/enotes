@@ -5524,7 +5524,7 @@ function VideoEditor() {
                     outlineOffset: 0,
                   }}
                 />
-              )
+              )}
 
               {/* Selection frame only. The canvas owns the invisible transform hit
                   zones; there are no transparent buttons sitting over the artwork. */}
