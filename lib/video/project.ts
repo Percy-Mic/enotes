@@ -777,7 +777,7 @@ export function normalizeProject(input: unknown): VideoProject {
           sourceDuration,
           trimStart,
           trimEnd,
-          volume: Math.max(0, Math.min(1, Number(track.volume) || 0)),
+          volume: Math.max(0, Math.min(1, track.volume == null ? 1 : Number(track.volume))),
           audioProcessing: track.audioProcessing && typeof track.audioProcessing === 'object'
             ? {
                 ...DEFAULT_AUDIO_PROCESSING,
