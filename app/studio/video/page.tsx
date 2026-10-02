@@ -4651,37 +4651,142 @@ function VideoEditor() {
 
   const startVoiceover = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = ['audio/webm', 'audio/mp4'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        notify('Voice recording is not supported by this browser.');
+        return;
+      }
+
+      /*
+       * Prefer Opus/WebM for browser voice recording. Do not select audio/mp4
+       * here: browsers can report partial MP4 support while still producing a
+       * container that is unreliable for subsequent Web Audio/HTMLAudio
+       * decoding. The old implementation could also upload an MP4 recording
+       * under a .webm filename.
+       */
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 48000 },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      const mimeCandidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+      ];
+      const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+      const rec = mimeType
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128000 })
+        : new MediaRecorder(stream);
+
+      const actualMime = rec.mimeType || mimeType || 'audio/webm';
       const chunks: Blob[] = [];
-      rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+
+      rec.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      rec.onerror = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        recRef.current = null;
+        setRecording(false);
+        notify('Voice recording failed. Please check your microphone and try again.');
+      };
+
       rec.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks, { type: mime || 'audio/webm' });
-        if (meId) {
-          const file = new File([blob], `voiceover-${Date.now()}.webm`, { type: blob.type });
-          try {
-            const mediaUrl = await uploadStudioMedia(file);
-            /* measure the real recording duration instead of guessing */
-            const dur = await new Promise<number>((res) => {
-              const a = document.createElement('audio');
-              a.onloadedmetadata = () => res(Number.isFinite(a.duration) && a.duration > 0 ? a.duration : 30);
-              a.onerror = () => res(30);
-              a.src = URL.createObjectURL(blob);
-            });
-            addSoundTrack({ title: 'Voiceover', url: mediaUrl, duration_seconds: dur }, 'voiceover');
-            notify('Voiceover added to the timeline.');
-          } catch {
-            notify('Could not save the voiceover — the upload failed. Try again.');
+
+        if (!chunks.length) {
+          notify('No audio was captured. Please try recording again.');
+          return;
+        }
+
+        const bareMime = actualMime.split(';')[0].toLowerCase();
+        const extension =
+          bareMime === 'audio/ogg' ? 'ogg' :
+          bareMime === 'audio/mp4' ? 'm4a' :
+          'webm';
+
+        const blob = new Blob(chunks, { type: actualMime });
+        if (!blob.size) {
+          notify('The recording was empty. Please try again.');
+          return;
+        }
+
+        if (!meId) {
+          notify('Sign in to save your voiceover.');
+          return;
+        }
+
+        try {
+          /*
+           * Voice recordings go directly to Supabase. They do not need the
+           * optional Cloudinary optimization layer, which also avoids turning
+           * a valid audio recording into an incorrectly typed/optimized URL.
+           */
+          const file = new File(
+            [blob],
+            `voiceover-${Date.now()}.${extension}`,
+            { type: bareMime }
+          );
+          const up = await uploadFile(file, 'studio-media', meId);
+
+          const objectUrl = URL.createObjectURL(blob);
+          const dur = await new Promise<number>((resolve) => {
+            const a = document.createElement('audio');
+            const cleanup = () => URL.revokeObjectURL(objectUrl);
+            a.preload = 'metadata';
+            a.onloadedmetadata = () => {
+              const value = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : 0;
+              cleanup();
+              resolve(value);
+            };
+            a.onerror = () => {
+              cleanup();
+              resolve(0);
+            };
+            a.src = objectUrl;
+          });
+
+          if (dur <= 0) {
+            notify('The recording was created, but the browser could not decode it. Please record again.');
+            return;
           }
+
+          addSoundTrack(
+            {
+              title: 'Voiceover',
+              url: up.url,
+              duration_seconds: dur,
+              provider: 'upload',
+            },
+            'voiceover'
+          );
+          notify('Voiceover added to the timeline.');
+        } catch (error) {
+          notify(`Could not save the voiceover — ${error instanceof Error ? error.message : 'the upload failed'}.`);
         }
       };
+
       recRef.current = rec;
-      rec.start();
+
+      /*
+       * Emit chunks every 250 ms instead of waiting for stop(). This makes
+       * short recordings reliable and gives MediaRecorder a chance to flush
+       * its Opus packet before the stream is closed.
+       */
+      rec.start(250);
       setRecording(true);
-    } catch {
-      notify('Microphone permission denied.');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotAllowedError') {
+        notify('Microphone permission was denied. Allow microphone access and try again.');
+      } else {
+        notify('Could not start voice recording. Check that a microphone is available.');
+      }
     }
   };
 
