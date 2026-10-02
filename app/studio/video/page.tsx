@@ -168,7 +168,7 @@ type LookPreviewProps = {
 
 function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const { rendererRef, render } = useLatestPreviewRenderer();
+  const { render } = useLatestPreviewRenderer();
 
   useEffect(() => {
     const draw = async () => {
