@@ -7848,7 +7848,7 @@ function MobileColorField({ label, value, onChange }: {
       </button>
 
       {open && (
-        <div className="absolute inset-x-0 top-full z-[80] mt-2 rounded-2xl border border-white/10 bg-[#171717] p-3 shadow-2xl shadow-black/50">
+        <div className="relative z-[80] mt-2 rounded-2xl border border-white/10 bg-[#171717] p-3 shadow-2xl shadow-black/50">
           <div className="flex items-center gap-2">
             <label className="relative h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-white/15">
               <span className="absolute inset-0" style={{ background: safe }} />
