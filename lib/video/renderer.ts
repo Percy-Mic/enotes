@@ -2125,14 +2125,46 @@ export class VideoRenderer {
 
       /* ---------- media recorder ---------- */
       const canvasStream = canvas.captureStream(settings.fps);
+
+      /* Only require an audio track when the project actually contains
+         audible audio. A deliberately silent project is still a valid export. */
+      const exportAudioLanes = scaled.tracks.filter((t) => t.kind === 'audio');
+      const exportSoloActive = exportAudioLanes.some((t) => t.solo);
+      const hasExpectedAudio = !scaled.masterMuted && (
+        scaled.clips.some((clip) =>
+          clip.media_type !== 'image' &&
+          !clip.muted &&
+          clip.volume > 0 &&
+          !!clip.src &&
+          !isPlaceholder(clip.src)
+        ) ||
+        scaled.elements.some((el) =>
+          el.kind === 'video' &&
+          !el.muted &&
+          !!el.src &&
+          !isPlaceholder(el.src) &&
+          (el.volume ?? 1) > 0
+        ) ||
+        scaled.audio.some((track) => {
+          if (!track.src || track.volume <= 0) return false;
+          const lane = exportAudioLanes.find((t) => t.id === track.track_id) || exportAudioLanes[0];
+          if (lane?.muted) return false;
+          if (exportSoloActive && !lane?.solo) return false;
+          return true;
+        })
+      );
+
       const mixedAudioTracks = destination.stream.getAudioTracks();
-      if (mixedAudioTracks.length === 0) {
+      if (hasExpectedAudio && mixedAudioTracks.length === 0) {
         throw new Error('The audio mixer produced no audio track. Export stopped to prevent a silent video.');
       }
-      const mixed = new MediaStream([
-        ...canvasStream.getVideoTracks(),
-        ...mixedAudioTracks,
-      ]);
+
+      const mixed = mixedAudioTracks.length > 0
+        ? new MediaStream([
+            ...canvasStream.getVideoTracks(),
+            ...mixedAudioTracks,
+          ])
+        : canvasStream;
 
       const mimeCandidates = [
         'video/webm;codecs=vp9,opus',
