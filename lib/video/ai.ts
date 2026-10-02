@@ -622,9 +622,23 @@ async function groqPlannerJsonOnce(
   if(!key) throw new Error('Groq is not configured. Add GROQ_API_KEY to Vercel.');
   if(!hasOnlyGroqSafeMedia(media)) throw new Error('Groq planner fallback supports image frames, but not video/audio media.');
   const images=(media || []).filter((item)=>item?.url && (item.type==='image' || item.url.startsWith('data:image/'))).slice(0,5);
+
+  /*
+   * Groq enforces an organization-wide input-tokens-per-minute limit.
+   * The full planner prompt can become very large because it contains the
+   * action grammar, conversation, memory, timeline, visual index and timing
+   * signals. Keep the most important instruction contract and the newest
+   * project/timing state while staying comfortably below a 7k-token request.
+   */
+  const groqPlannerPrompt = prompt.length > 20000
+    ? prompt.slice(0, 9000) +
+      '\n\n[Planner prompt compacted for Groq input limits. Use the project state and timing data below as authoritative.]\n\n' +
+      prompt.slice(-11000)
+    : prompt;
+
   // Groq's JSON-object response mode requires the prompt itself to mention JSON.
   // Keep this value in scope for both the text-only and vision branches.
-  const jsonPrompt = prompt + '\n\nOUTPUT FORMAT: Return ONLY a valid JSON object. Do not wrap the JSON in markdown fences or prose.';
+  const jsonPrompt = groqPlannerPrompt + '\n\nOUTPUT FORMAT: Return ONLY a valid JSON object. Do not wrap the JSON in markdown fences or prose.';
   const content:Array<Record<string,unknown>>=[{type:'text',text:jsonPrompt}];
   for(const image of images) content.push({type:'image_url',image_url:{url:String(image.url)}});
   const model=process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b';
