@@ -7386,6 +7386,7 @@ function VideoEditor() {
                     <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: 0 } }, 'Reset rotation')} className={EDITOR_ACTION_PILL}>Reset rotation</button>
                     <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: 0, offset_y: 0 } }, 'Center frame')} className={EDITOR_ACTION_PILL}>Center frame</button>
                   </div>
+                  </div>
                 )}
                 {frameMode === 'layer' && (
                   <div className="grid grid-cols-2 gap-1.5">
