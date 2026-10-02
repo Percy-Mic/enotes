@@ -7665,10 +7665,6 @@ function VideoEditor() {
                       onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, sharpen: v } }, 'Sharpen', `sh-${selectedClip.id}`)} />
                     <Slider label="Blur" min={0} max={10} value={selectedClip.adjustments.blur}
                       onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, blur: v } }, 'Blur', `bl-${selectedClip.id}`)} />
-                    <Slider label="Scale" min={50} max={200} value={selectedClip.transform.scale * 100}
-                      onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: v / 100 } }, 'Scale', `sc-${selectedClip.id}`)} />
-                    <Slider label="Rotation" min={-180} max={180} value={selectedClip.transform.rotation}
-                      onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: v } }, 'Rotate', `ro-${selectedClip.id}`)} />
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -9096,8 +9092,23 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
           </div><div className="grid grid-cols-2 gap-2">
         <Slider label="Start (s)" min={0} max={Math.max(duration, 1)} step={0.1} value={el.start} onChange={(v) => onChange({ start: v, end: Math.max(v + 0.2, el.end) }, 'Overlay start', `st-${el.id}`)} />
         <Slider label="End (s)" min={el.start + 0.2} max={Math.max(duration, 1)} step={0.1} value={el.end} onChange={(v) => onChange({ end: v }, 'Overlay end', `en-${el.id}`)} />
-        <Slider label="Width" min={20} max={el.kind === 'text' ? 800 : 500} value={el.width} onChange={(v) => onChange({ width: v, height: el.kind === 'text' ? el.height : v * (el.height / el.width) }, 'Resize overlay', `w-${el.id}`)} />
-        <Slider label="Rotation" min={-180} max={180} value={el.rotation} onChange={(v) => onChange({ rotation: v }, 'Rotate overlay', `r-${el.id}`)} />
+        <div className="col-span-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+          <div className="flex items-center gap-2">
+            <Move className="h-4 w-4 shrink-0 text-[#E5798F]" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-white">Transform on canvas</p>
+              <p className="text-[9px] leading-4 text-white/40">Drag to position · use the floating controls to resize or rotate · pinch with two fingers on touch.</p>
+            </div>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => onChange({ x: 0, y: 0, rotation: 0 }, 'Reset element transform')} className={EDITOR_ACTION_PILL}>
+              Reset transform
+            </button>
+            <button type="button" onClick={() => onChange({ rotation: 0 }, 'Reset element rotation')} className={EDITOR_ACTION_PILL}>
+              Reset rotation
+            </button>
+          </div>
+        </div>
         <Slider label="Opacity" min={10} max={100} value={el.opacity * 100} onChange={(v) => onChange({ opacity: v / 100 }, 'Overlay opacity', `o-${el.id}`)} />
         <Slider label="Layer (z)" min={1} max={20} value={el.z} onChange={(v) => onChange({ z: v }, 'Layer order')} />
       </div>
