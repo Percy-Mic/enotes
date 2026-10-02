@@ -1546,6 +1546,24 @@ export class VideoRenderer {
   private isolatedVideoLoading = new Map<string, Promise<HTMLVideoElement>>();
   private isolatedPlaybackState = new Map<string, PlaybackRecord>();
 
+  /* Reused clip compositor surface. Creating a large canvas every playback
+     frame causes allocation/GC spikes, especially with animated effects. */
+  private clipSurface: HTMLCanvasElement | null = null;
+  private clipSurfaceCtx: CanvasRenderingContext2D | null = null;
+
+  private getClipSurface(width: number, height: number) {
+    const w = Math.max(1, Math.ceil(width));
+    const h = Math.max(1, Math.ceil(height));
+    if (!this.clipSurface || !this.clipSurfaceCtx || this.clipSurface.width !== w || this.clipSurface.height !== h) {
+      const canvas = this.clipSurface || document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      this.clipSurface = canvas;
+      this.clipSurfaceCtx = canvas.getContext('2d');
+    }
+    return { canvas: this.clipSurface, ctx: this.clipSurfaceCtx };
+  }
+
   /** Cooperative cancellation flag for the running export. */
   private exportCancelled = false;
 
@@ -1746,11 +1764,15 @@ export class VideoRenderer {
             * resized/moved clip from leaving its effects behind on the full
             * project canvas.
             */
-           const surface = document.createElement('canvas');
-           surface.width = Math.max(1, Math.ceil(t.dw));
-           surface.height = Math.max(1, Math.ceil(t.dh));
-           const sctx = surface.getContext('2d');
-           if (!sctx) return;
+           const surfaceState = this.getClipSurface(t.dw, t.dh);
+           const surface = surfaceState.canvas;
+           const sctx = surfaceState.ctx;
+           if (!surface || !sctx) return;
+           sctx.setTransform(1, 0, 0, 1, 0, 0);
+           sctx.globalAlpha = 1;
+           sctx.globalCompositeOperation = 'source-over';
+           sctx.filter = 'none';
+           sctx.clearRect(0, 0, surface.width, surface.height);
 
            let paintedFromCache = false;
            if (clip.reverse) {
