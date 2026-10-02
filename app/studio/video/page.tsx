@@ -8409,241 +8409,330 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
               ))}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Slider label="Size" min={16} max={140} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
-            <label className="space-y-1">
-              <span className="text-white/60">Color</span>
-              <input type="color" value={el.color || '#FFFFFF'} onChange={(e) => onChange({ color: e.target.value }, 'Text color', `tc-${el.id}`)} className="h-8 w-full rounded bg-white/10" aria-label="Text color" />
-            </label>
-            <label className="space-y-1">
-              <span className="text-white/60">Font</span>
-              <select value={el.font_family || 'Poppins, sans-serif'} onChange={(e) => onChange({ font_family: e.target.value }, 'Text font')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Font family">
-                {['Poppins, sans-serif', 'Inter, sans-serif', 'Arial, sans-serif', 'Helvetica, sans-serif', 'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Impact, sans-serif'].map((f) => <option key={f} value={f} className="text-black">{f.split(',')[0]}</option>)}
-              </select>
-            </label>
-            <label className="space-y-1">
-              <span className="text-white/60">Weight</span>
-              <select value={el.font_weight || 700} onChange={(e) => onChange({ font_weight: Number(e.target.value) }, 'Text weight')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Font weight">
-                {[300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w} className="text-black">{w}</option>)}
-              </select>
-            </label>
-            <div className="space-y-1">
-              <span className="text-white/60">Align</span>
-              <div className="flex gap-1">
-                {(['left', 'center', 'right'] as const).map((a) => (
-                  <button
-                    key={a}
-                    onClick={() => onChange({ align: a }, 'Text align')}
-                    aria-pressed={el.align === a}
-                    aria-label={`Align ${a}`}
-                    className={`flex-1 rounded bg-white/10 py-1.5 capitalize ${el.align === a ? 'ring-1 ring-[#E5798F]' : ''}`}
-                  >
-                    {a}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className="space-y-1">
-              <span className="text-white/60">Stroke</span>
-              <input
-                type="color"
-                value={el.stroke_color || '#000000'}
-                onChange={(e) => onChange({ stroke_color: e.target.value }, 'Text stroke', `stk-${el.id}`)}
-                className="h-8 w-full rounded bg-white/10"
-                aria-label="Stroke color"
-              />
-            </label>
-            <label className="space-y-1">
-              <span className="text-white/60">Background</span>
-              <input
-                type="color"
-                value={el.background || '#000000'}
-                onChange={(e) => onChange({ background: e.target.value }, 'Text background', `bg-${el.id}`)}
-                className="h-8 w-full rounded bg-white/10"
-                aria-label="Text background color"
-              />
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <Slider label="Stroke width" min={0} max={16} step={1} value={el.stroke_width || 2} onChange={(v) => onChange({ stroke_width: v }, 'Stroke width', `stw-${el.id}`)} />
-              <Slider label="Shadow blur" min={0} max={40} step={1} value={el.shadow_blur ?? 10} onChange={(v) => onChange({ shadow_blur: v }, 'Shadow blur', `shb-${el.id}`)} />
-              <Slider label="Shadow opacity" min={0} max={1} step={0.05} value={el.shadow_opacity ?? 0.55} onChange={(v) => onChange({ shadow_opacity: v }, 'Shadow opacity', `sho-${el.id}`)} />
-              <Slider label="Letter spacing" min={-4} max={16} step={0.5} value={el.letter_spacing ?? 0} onChange={(v) => onChange({ letter_spacing: v }, 'Letter spacing', `ls-${el.id}`)} />
-              <Slider label="Line height" min={0.8} max={2} step={0.05} value={el.line_height ?? 1.25} onChange={(v) => onChange({ line_height: v }, 'Line height', `lh-${el.id}`)} />
-              <Slider label="Background radius" min={0} max={80} step={2} value={el.background_radius ?? 8} onChange={(v) => onChange({ background_radius: v }, 'Background radius', `br-${el.id}`)} />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <label className="space-y-1">
-                <span className="text-white/60">Case</span>
-                <select value={el.text_case || 'none'} onChange={(e) => onChange({ text_case: e.target.value as TimelineElement['text_case'] }, 'Text case')} className="w-full rounded bg-white/10 px-2 py-1.5 text-xs">
-                  {['none','uppercase','lowercase','capitalize'].map((v) => <option key={v} value={v} className="text-black">{v}</option>)}
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-white/60">Text effect</span>
-                <select value={el.text_effect || 'none'} onChange={(e) => onChange({ text_effect: e.target.value as TimelineElement['text_effect'] }, 'Text effect')} className="w-full rounded bg-white/10 px-2 py-1.5 text-xs">
-                  {['none','neon','glow','3d','hollow','gradient','retro','glitch'].map((v) => <option key={v} value={v} className="text-black">{v}</option>)}
-                </select>
-              </label>
-            </div>
-            <div className="space-y-1">
-              <span className="text-white/60">Effects</span>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => onChange({ shadow: !el.shadow }, 'Toggle text shadow')}
-                  aria-pressed={!!el.shadow}
-                  className={`flex-1 rounded py-1.5 text-[11px] ${el.shadow ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
-                >
-                  Shadow
-                </button>
-                <button
-                  onClick={() => onChange({ background: el.background ? null : '#000000' }, el.background ? 'Clear text background' : 'Set text background')}
-                  aria-pressed={!!el.background}
-                  className={`flex-1 rounded py-1.5 text-[11px] ${el.background ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
-                >
-                  Bg {el.background ? 'on' : 'off'}
-                </button>
-              </div>
-            </div>
-            <div className="space-y-2 rounded-xl border border-white/10 bg-black/15 p-2.5">
-              <div className="flex items-center justify-between">
+          <div className="space-y-3">
+            {/* Professional typography inspector */}
+            <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
+              <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
                 <div>
-                  <span className="text-[11px] font-bold text-white/80">Text motion</span>
-                  <p className="text-[9px] text-white/35">Separate in, out and looping motion.</p>
+                  <p className="text-[11px] font-bold tracking-wide text-white">Typography</p>
+                  <p className="text-[9px] text-white/35">Build the text style, then fine-tune it.</p>
                 </div>
-                <Sparkles className="h-3.5 w-3.5 text-[#E5798F]" />
+                <Type className="h-4 w-4 text-[#E5798F]" />
               </div>
 
-              <div>
-                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-white/35">Entrance · tap to preview/apply</p>
-                <div className="grid grid-cols-3 gap-1.5">
-                  {TEXT_ANIMATION_PRESETS.map((preset) => (
-                    <TextMotionPreview
-                      key={preset.id}
-                      animation={preset.id}
-                      label={preset.name}
-                      active={(el.animation_in ?? el.animation ?? 'none') === preset.id}
-                      onClick={() => onChange({ animation_in: preset.id, animation: preset.id }, 'Text entrance')}
-                    />
-                  ))}
+              <div className="space-y-3 p-3">
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/35">Styles</span>
+                    <span className="text-[8px] text-white/25">One tap</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {[
+                      { id: 'bold', label: 'Bold', sample: 'Aa', patch: { font_size: 64, font_weight: 900, color: '#FFFFFF', background: null, stroke_color: '#000000', stroke_width: 2, shadow: true, text_effect: 'none' as const } },
+                      { id: 'caption', label: 'Caption', sample: 'Caption', patch: { font_size: 42, font_weight: 800, color: '#FFFFFF', background: '#000000', background_padding: 0.55, background_radius: 12, shadow: false, text_effect: 'none' as const } },
+                      { id: 'neon', label: 'Neon', sample: 'NEON', patch: { font_size: 58, font_weight: 800, color: '#FFFFFF', background: null, shadow: false, text_effect: 'neon' as const } },
+                      { id: 'retro', label: 'Retro', sample: 'Retro', patch: { font_size: 58, font_weight: 900, color: '#FFF3D6', background: null, shadow: true, text_effect: 'retro' as const } },
+                      { id: 'impact', label: 'Impact', sample: 'IMPACT', patch: { font_size: 72, font_weight: 900, color: '#FFFFFF', stroke_color: '#000000', stroke_width: 5, shadow: false, text_effect: 'outline' as const } },
+                      { id: 'minimal', label: 'Minimal', sample: 'Minimal', patch: { font_size: 46, font_weight: 500, color: '#FFFFFF', background: null, stroke_color: null, stroke_width: 0, shadow: false, text_effect: 'none' as const } },
+                    ].map((style) => {
+                      const active = el.text_preset === style.id;
+                      return (
+                        <button
+                          key={style.id}
+                          type="button"
+                          onClick={() => onChange({ ...style.patch, text_preset: style.id as TimelineElement['text_preset'] }, 'Apply text style')}
+                          aria-pressed={active}
+                          className={`group relative min-h-[58px] overflow-hidden rounded-xl border px-2 py-2 text-left transition-all ${
+                            active
+                              ? 'border-[#E5798F] bg-[#E5798F]/15 shadow-[0_0_0_1px_rgba(229,121,143,.25)]'
+                              : 'border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.06]'
+                          }`}
+                        >
+                          <span className={`block truncate text-[13px] font-black leading-5 ${
+                            style.id === 'neon' ? 'text-[#FFB6C1]' : style.id === 'retro' ? 'font-serif text-[#FFF3D6]' : ''
+                          }`}>{style.sample}</span>
+                          <span className="block text-[8px] font-medium text-white/35">{style.label}</span>
+                          {active && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#E5798F]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <label className="space-y-1">
-                  <span className="text-[9px] text-white/55">Entrance duration</span>
-                  <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_in_duration ?? 0.55}
-                    onChange={(e) => onChange({ animation_in_duration: Number(e.target.value) }, 'Text entrance duration', `tin-${el.id}`)} className="w-full accent-[#E5798F]" />
-                  <span className="block text-[8px] text-white/30">{(el.animation_in_duration ?? 0.55).toFixed(2)}s</span>
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[9px] text-white/55">Exit duration</span>
-                  <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_out_duration ?? 0.35}
-                    onChange={(e) => onChange({ animation_out_duration: Number(e.target.value) }, 'Text exit duration', `tout-${el.id}`)} className="w-full accent-[#E5798F]" />
-                  <span className="block text-[8px] text-white/30">{(el.animation_out_duration ?? 0.35).toFixed(2)}s</span>
-                </label>
-              </div>
-
-              <div>
-                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-white/35">Exit</p>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {TEXT_ANIMATION_PRESETS.filter((p) => ['none','fade','pop','slide-up','slide-down','slide-left','slide-right','zoom-in','zoom-out','blur-in','rotate-in','flip-in','glitch-in'].includes(p.id)).map((preset) => (
-                    <button key={preset.id} type="button"
-                      onClick={() => onChange({ animation_out: preset.id }, 'Text exit animation')}
-                      className={`rounded-lg border px-2 py-1.5 text-[9px] font-semibold ${(el.animation_out ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}>
-                      {preset.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-white/35">Loop</p>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {TEXT_LOOP_PRESETS.map((preset) => (
-                    <button key={preset.id} type="button"
-                      onClick={() => onChange({ animation_loop: preset.id }, 'Text loop animation')}
-                      className={`rounded-lg border px-2 py-1.5 text-[9px] font-semibold ${(el.animation_loop ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}>
-                      {preset.name}
-                    </button>
-                  ))}
-                </div>
-                {(el.animation_loop && el.animation_loop !== 'none') && (
-                  <label className="mt-2 block text-[9px] text-white/55">
-                    Loop amount
-                    <input type="range" min="0" max="2" step="0.05" value={el.animation_loop_amount ?? 1}
-                      onChange={(e) => onChange({ animation_loop_amount: Number(e.target.value) }, 'Text loop amount', `tloop-${el.id}`)} className="mt-1 w-full accent-[#E5798F]" />
+                <div className="grid grid-cols-[1.35fr_.65fr] gap-2">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.1em] text-white/35">Font</span>
+                    <select
+                      value={el.font_family || 'Poppins, sans-serif'}
+                      onChange={(e) => onChange({ font_family: e.target.value }, 'Text font')}
+                      className="h-9 w-full rounded-xl border border-white/10 bg-black/30 px-2.5 text-[11px] font-semibold text-white outline-none transition focus:border-[#E5798F]/70"
+                      aria-label="Font family"
+                    >
+                      {['Poppins, sans-serif', 'Inter, sans-serif', 'Arial, sans-serif', 'Helvetica, sans-serif', 'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Impact, sans-serif'].map((f) => (
+                        <option key={f} value={f} className="text-black">{f.split(',')[0]}</option>
+                      ))}
+                    </select>
                   </label>
-                )}
+                  <label className="block">
+                    <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.1em] text-white/35">Weight</span>
+                    <select
+                      value={el.font_weight || 700}
+                      onChange={(e) => onChange({ font_weight: Number(e.target.value) }, 'Text weight')}
+                      className="h-9 w-full rounded-xl border border-white/10 bg-black/30 px-2.5 text-[11px] font-semibold text-white outline-none transition focus:border-[#E5798F]/70"
+                      aria-label="Font weight"
+                    >
+                      {[300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w} className="text-black">{w}</option>)}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Slider label="Size" min={16} max={140} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
+                  <div>
+                    <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.1em] text-white/35">Align</span>
+                    <div className="grid h-[28px] grid-cols-3 overflow-hidden rounded-lg border border-white/10 bg-black/25">
+                      {[
+                        { id: 'left' as const, icon: '≡', label: 'Left' },
+                        { id: 'center' as const, icon: '≡', label: 'Center' },
+                        { id: 'right' as const, icon: '≡', label: 'Right' },
+                      ].map((item, index) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => onChange({ align: item.id }, 'Text align')}
+                          aria-pressed={el.align === item.id}
+                          aria-label={item.label}
+                          className={`relative flex items-center justify-center text-[17px] leading-none transition ${
+                            el.align === item.id ? 'bg-[#E5798F] text-white' : 'text-white/45 hover:bg-white/[0.06] hover:text-white'
+                          }`}
+                        >
+                          <span className={index === 0 ? 'translate-x-[-2px]' : index === 2 ? 'translate-x-[2px]' : ''}>{item.icon}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'Fill', value: el.color || '#FFFFFF', patch: 'color' as const, action: 'Text color' },
+                    { label: 'Stroke', value: el.stroke_color || '#000000', patch: 'stroke_color' as const, action: 'Text stroke' },
+                    { label: 'Background', value: el.background || '#000000', patch: 'background' as const, action: 'Text background' },
+                  ].map((item) => (
+                    <label key={item.label} className="group block cursor-pointer">
+                      <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.08em] text-white/35">{item.label}</span>
+                      <div className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-2 transition group-hover:border-white/20">
+                        <span className="relative h-5 w-5 shrink-0 overflow-hidden rounded-md border border-white/20 shadow-inner" style={{ background: item.value }}>
+                          <input
+                            type="color"
+                            value={item.value}
+                            onChange={(e) => onChange({ [item.patch]: e.target.value } as Partial<TimelineElement>, item.action)}
+                            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                            aria-label={item.label}
+                          />
+                        </span>
+                        <span className="truncate font-mono text-[8px] uppercase text-white/45">{item.value}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <Slider label="Tracking" min={-4} max={16} step={0.5} value={el.letter_spacing ?? 0} onChange={(v) => onChange({ letter_spacing: v }, 'Letter spacing', `ls-${el.id}`)} />
+                  <Slider label="Line height" min={0.8} max={2} step={0.05} value={el.line_height ?? 1.25} onChange={(v) => onChange({ line_height: v }, 'Line height', `lh-${el.id}`)} />
+                  <Slider label="Stroke" min={0} max={16} step={1} value={el.stroke_width || 0} onChange={(v) => onChange({ stroke_width: v }, 'Stroke width', `stw-${el.id}`)} />
+                  <Slider label="Corner radius" min={0} max={80} step={2} value={el.background_radius ?? 8} onChange={(v) => onChange({ background_radius: v }, 'Background radius', `br-${el.id}`)} />
+                </div>
               </div>
-            </div>
-          </div>
-        </>
-      )}
+            </section>
 
-      {(el.kind === 'image' || el.kind === 'video') && (
-        <div className="grid grid-cols-2 gap-2">
-          <label className="space-y-1">
-            <span className="text-white/60">Object fit</span>
-            <select
-              value={el.object_fit || 'contain'}
-              onChange={(e) => onChange({ object_fit: e.target.value === 'cover' ? 'cover' : 'contain' }, 'Overlay object fit')}
-              className="w-full rounded bg-white/10 px-2 py-1.5"
-              aria-label="Object fit"
-            >
-              <option value="contain" className="text-black">Contain</option>
-              <option value="cover" className="text-black">Cover</option>
-            </select>
-          </label>
-          <label className="space-y-1">
-            <span className="text-white/60">Animation</span>
-            <select value={el.animation || 'none'} onChange={(e) => onChange({ animation: e.target.value as TimelineElement['animation'] }, 'Overlay animation')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Overlay animation">
-              {['none', 'fade', 'pop', 'slide-up'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
-            </select>
-          </label>
-        </div>
-      )}
+            <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
+              <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
+                <div>
+                  <p className="text-[11px] font-bold tracking-wide text-white">Appearance</p>
+                  <p className="text-[9px] text-white/35">Effects, shadow and caption treatment.</p>
+                </div>
+                <Sparkles className="h-4 w-4 text-[#E5798F]" />
+              </div>
+              <div className="space-y-3 p-3">
+                <div>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-white/35">Text effect</span>
+                    <span className="text-[8px] text-white/25">Live in preview</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {[
+                      ['none', 'Clean'],
+                      ['outline', 'Outline'],
+                      ['neon', 'Neon'],
+                      ['glow', 'Glow'],
+                      ['3d', '3D'],
+                      ['hollow', 'Hollow'],
+                      ['gradient', 'Gradient'],
+                      ['retro', 'Retro'],
+                      ['glitch', 'Glitch'],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => onChange({ text_effect: id as TimelineElement['text_effect'] }, 'Text effect')}
+                        aria-pressed={(el.text_effect || 'none') === id}
+                        className={`min-h-[34px] rounded-lg border px-1.5 py-1 text-[9px] font-semibold transition ${
+                          (el.text_effect || 'none') === id
+                            ? 'border-[#E5798F] bg-[#E5798F]/15 text-white'
+                            : 'border-white/10 bg-black/20 text-white/45 hover:border-white/20 hover:text-white'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-      {el.kind === 'video' && (
-        <div className="grid grid-cols-2 gap-2">
-          <Slider
-            label="Trim start (s)"
-            min={0}
-            max={Math.max(0.2, (el.source_duration || 10) - 0.2)}
-            step={0.1}
-            value={el.trim_start || 0}
-            onChange={(v) => onChange({ trim_start: v }, 'Overlay trim start', `ots-${el.id}`)}
-          />
-          <Slider
-            label="Trim end (s)"
-            min={(el.trim_start || 0) + 0.2}
-            max={Math.max((el.trim_start || 0) + 0.4, el.source_duration || 10)}
-            step={0.1}
-            value={el.trim_end || el.source_duration || 5}
-            onChange={(v) => onChange({ trim_end: v }, 'Overlay trim end', `ote-${el.id}`)}
-          />
-          <Slider
-            label="Volume"
-            min={0}
-            max={1}
-            step={0.05}
-            value={el.volume ?? 1}
-            onChange={(v) => onChange({ volume: v }, 'Overlay volume', `ov-${el.id}`)}
-          />
-          <div className="space-y-1">
-            <span className="text-white/60">Audio</span>
-            <button
-              onClick={() => onChange({ muted: !el.muted }, el.muted ? 'Unmute overlay' : 'Mute overlay')}
-              aria-pressed={!!el.muted}
-              className={`flex w-full items-center justify-center gap-1 rounded py-1.5 ${el.muted ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
-            >
-              {el.muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-              {el.muted ? 'Muted' : 'Sound on'}
-            </button>
-          </div>
-        </div>
-      )}
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onChange({ shadow: !el.shadow }, 'Toggle text shadow')}
+                    aria-pressed={!!el.shadow}
+                    className={`flex h-9 items-center justify-between rounded-xl border px-3 text-[10px] font-semibold transition ${
+                      el.shadow ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/20 text-white/45'
+                    }`}
+                  >
+                    <span>Shadow</span>
+                    <span className={`h-2 w-2 rounded-full ${el.shadow ? 'bg-[#E5798F]' : 'bg-white/20'}`} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange({ background: el.background ? null : '#000000' }, el.background ? 'Clear text background' : 'Set text background')}
+                    aria-pressed={!!el.background}
+                    className={`flex h-9 items-center justify-between rounded-xl border px-3 text-[10px] font-semibold transition ${
+                      el.background ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/20 text-white/45'
+                    }`}
+                  >
+                    <span>Text background</span>
+                    <span className={`h-2 w-2 rounded-full ${el.background ? 'bg-[#E5798F]' : 'bg-white/20'}`} />
+                  </button>
+                </div>
 
-      <div className="grid grid-cols-2 gap-2">
+                {el.shadow && (
+                  <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/20 p-2.5">
+                    <Slider label="Shadow blur" min={0} max={40} step={1} value={el.shadow_blur ?? 10} onChange={(v) => onChange({ shadow_blur: v }, 'Shadow blur', `shb-${el.id}`)} />
+                    <Slider label="Shadow opacity" min={0} max={1} step={0.05} value={el.shadow_opacity ?? 0.55} onChange={(v) => onChange({ shadow_opacity: v }, 'Shadow opacity', `sho-${el.id}`)} />
+                  </div>
+                )}
+
+                {el.background && (
+                  <Slider label="Background padding" min={0} max={1.5} step={0.05} value={el.background_padding ?? 0.55} onChange={(v) => onChange({ background_padding: v }, 'Background padding', `bgp-${el.id}`)} />
+                )}
+
+                <div>
+                  <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.1em] text-white/35">Case</span>
+                  <div className="grid h-9 grid-cols-4 overflow-hidden rounded-xl border border-white/10 bg-black/25">
+                    {[
+                      ['none', 'Aa'],
+                      ['uppercase', 'AA'],
+                      ['lowercase', 'aa'],
+                      ['capitalize', 'Ab'],
+                    ].map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => onChange({ text_case: id as TimelineElement['text_case'] }, 'Text case')}
+                        aria-pressed={(el.text_case || 'none') === id}
+                        className={`text-[10px] font-bold transition ${
+                          (el.text_case || 'none') === id ? 'bg-[#E5798F] text-white' : 'text-white/45 hover:bg-white/[0.06] hover:text-white'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035]">
+              <div className="flex items-center justify-between border-b border-white/10 px-3 py-2.5">
+                <div>
+                  <p className="text-[11px] font-bold tracking-wide text-white">Text motion</p>
+                  <p className="text-[9px] text-white/35">Entrance, exit and looping animation.</p>
+                </div>
+                <Sparkles className="h-4 w-4 text-[#E5798F]" />
+              </div>
+              <div className="space-y-3 p-3">
+                <div>
+                  <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/35">Entrance</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {TEXT_ANIMATION_PRESETS.map((preset) => (
+                      <TextMotionPreview
+                        key={preset.id}
+                        animation={preset.id}
+                        label={preset.name}
+                        active={(el.animation_in ?? el.animation ?? 'none') === preset.id}
+                        onClick={() => onChange({ animation_in: preset.id, animation: preset.id }, 'Text entrance')}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1">
+                    <span className="text-[9px] font-semibold text-white/45">Entrance duration</span>
+                    <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_in_duration ?? 0.55}
+                      onChange={(e) => onChange({ animation_in_duration: Number(e.target.value) }, 'Text entrance duration', `tin-${el.id}`)}
+                      className="w-full accent-[#E5798F]" />
+                    <span className="block text-[8px] tabular-nums text-white/25">{(el.animation_in_duration ?? 0.55).toFixed(2)}s</span>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-[9px] font-semibold text-white/45">Exit duration</span>
+                    <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_out_duration ?? 0.35}
+                      onChange={(e) => onChange({ animation_out_duration: Number(e.target.value) }, 'Text exit duration', `tout-${el.id}`)}
+                      className="w-full accent-[#E5798F]" />
+                    <span className="block text-[8px] tabular-nums text-white/25">{(el.animation_out_duration ?? 0.35).toFixed(2)}s</span>
+                  </label>
+                </div>
+
+                <div>
+                  <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/35">Exit</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {TEXT_ANIMATION_PRESETS.filter((p) => ['none','fade','pop','slide-up','slide-down','slide-left','slide-right','zoom-in','zoom-out','blur-in','rotate-in','flip-in','glitch-in'].includes(p.id)).map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => onChange({ animation_out: preset.id }, 'Text exit animation')}
+                        className={`rounded-lg border px-2 py-2 text-[9px] font-semibold transition ${
+                          (el.animation_out ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/[0.02] text-white/45 hover:border-white/20 hover:text-white'
+                        }`}
+                      >
+                        {preset.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-white/35">Loop</p>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {TEXT_LOOP_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => onChange({ animation_loop: preset.id }, 'Text loop animation')}
+                        className={`rounded-lg border px-2 py-2 text-[9px] font-semibold transition ${
+                          (el.animation_loop ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/[0.02] text-white/45 hover:border-white/20 hover:text-white'
+                        }`}
+                      >
+                        {preset.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <Slider label="Loop amount" min={0} max={1} step={0.05} value={el.animation_loop_amount ?? 0.5}
+                  onChange={(v) => onChange({ animation_loop_amount: v }, 'Text loop amount', `tla-${el.id}`)} />
+              </div>
+            </section>
+          </div><div className="grid grid-cols-2 gap-2">
         <Slider label="Start (s)" min={0} max={Math.max(duration, 1)} step={0.1} value={el.start} onChange={(v) => onChange({ start: v, end: Math.max(v + 0.2, el.end) }, 'Overlay start', `st-${el.id}`)} />
         <Slider label="End (s)" min={el.start + 0.2} max={Math.max(duration, 1)} step={0.1} value={el.end} onChange={(v) => onChange({ end: v }, 'Overlay end', `en-${el.id}`)} />
         <Slider label="Width" min={20} max={el.kind === 'text' ? 800 : 500} value={el.width} onChange={(v) => onChange({ width: v, height: el.kind === 'text' ? el.height : v * (el.height / el.width) }, 'Resize overlay', `w-${el.id}`)} />
