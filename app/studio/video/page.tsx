@@ -7368,51 +7368,48 @@ function VideoEditor() {
                 </div>
                 {frameMode === 'motion' && (
                   <div className="space-y-2">
-                    <div className="rounded-xl border border-white/10 bg-black/30 p-2.5">
+                    <div className="rounded-2xl border border-[#E5798F]/20 bg-gradient-to-br from-[#E5798F]/10 to-white/[0.03] p-3">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E5798F]/15 text-[#FFB6C1]">
+                          <Move className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white">Direct canvas controls</p>
+                          <p className="mt-0.5 text-[10px] leading-4 text-white/45">
+                            Drag the video itself to position it. Drag a corner to resize. Drag an edge to stretch. Drag the top handle to rotate.
+                            On touch screens, pinch to resize and use two fingers to rotate or move.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-1.5">
+                        <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: 0 } }, 'Reset rotation')} className={EDITOR_ACTION_PILL}>
+                          Reset rotation
+                        </button>
+                        <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: 0, offset_y: 0 } }, 'Center video')} className={EDITOR_ACTION_PILL}>
+                          Center video
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-black/20 p-2.5">
                       <div className="mb-2 flex items-center justify-between">
                         <div>
-                          <p className="text-[11px] font-bold text-white">Transform</p>
-                          <p className="text-[9px] text-white/35">Position, size and rotation at the playhead</p>
+                          <p className="text-[11px] font-bold text-white">Motion keyframes</p>
+                          <p className="text-[9px] text-white/35">Capture the transform directly from the canvas.</p>
                         </div>
-                        <span className="rounded-full bg-[#E5798F]/10 px-2 py-1 text-[8px] font-bold text-[#FFB6C1]">LIVE</span>
+                        <span className="text-[9px] text-[#FFB6C1]">{fmt(selectedClipTimeIn)}</span>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <Slider
-                          label={`Position X · ${Math.round(selectedClip.transform.offset_x)}`}
-                          min={-2000} max={4000} step={1}
-                          value={selectedClip.transform.offset_x}
-                          onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: v } }, 'Position X', `tx-${selectedClip.id}`)}
-                        />
-                        <Slider
-                          label={`Position Y · ${Math.round(selectedClip.transform.offset_y)}`}
-                          min={-2000} max={4000} step={1}
-                          value={selectedClip.transform.offset_y}
-                          onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_y: v } }, 'Position Y', `ty-${selectedClip.id}`)}
-                        />
-                        <Slider
-                          label={`Size · ${Math.round(selectedClip.transform.scale * 100)}%`}
-                          min={5} max={400} step={1}
-                          value={selectedClip.transform.scale * 100}
-                          onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: v / 100 } }, 'Size', `scale-${selectedClip.id}`)}
-                        />
-                        <Slider
-                          label={`Rotation · ${Math.round(selectedClip.transform.rotation)}°`}
-                          min={-180} max={180} step={1}
-                          value={selectedClip.transform.rotation}
-                          onChange={(v) => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: v } }, 'Rotation', `rot-${selectedClip.id}`)}
-                        />
-                      </div>
-
-                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      <div className="grid grid-cols-2 gap-1.5">
                         {([
-                          ['pos_x_kf', 'Position X'],
-                          ['pos_y_kf', 'Position Y'],
+                          ['pos_x_kf', 'Position'],
+                          ['pos_y_kf', 'Position'],
                           ['scale_kf', 'Size'],
                           ['rotation_kf', 'Rotation'],
-                        ] as const).map(([prop, label]) => {
+                        ] as const).map(([prop, label], index) => {
                           const list = selectedClip.keyframes?.[prop] || [];
                           const active = list.some((k) => Math.abs(k.t - selectedClipTimeIn) < 0.05);
+                          const uniqueLabel = prop === 'pos_x_kf' ? 'Position X' : prop === 'pos_y_kf' ? 'Position Y' : label;
                           return (
                             <button
                               key={prop}
@@ -7420,20 +7417,13 @@ function VideoEditor() {
                               onClick={() => active ? removeMainClipKeyframe(prop) : addMainClipKeyframe(prop)}
                               className={`flex min-h-9 items-center justify-between rounded-lg border px-2.5 text-[9px] font-semibold transition active:scale-[.98] ${active ? 'border-[#E5798F]/60 bg-[#E5798F]/15 text-[#FFB6C1]' : 'border-white/10 bg-white/[.04] text-white/55'}`}
                             >
-                              <span>{label}</span>
+                              <span>{uniqueLabel}</span>
                               <span className="text-sm">{active ? '◆' : '◇'}</span>
                             </button>
                           );
                         })}
                       </div>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-1.5">
-                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: Math.min(4, selectedClip.transform.scale * 1.08) } }, 'Frame zoom in')} className={EDITOR_ACTION_PILL}>Zoom in</button>
-                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, scale: Math.max(0.05, selectedClip.transform.scale / 1.08) } }, 'Frame zoom out')} className={EDITOR_ACTION_PILL}>Zoom out</button>
-                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, rotation: 0 } }, 'Reset rotation')} className={EDITOR_ACTION_PILL}>Reset rotation</button>
-                    <button type="button" onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, offset_x: 0, offset_y: 0 } }, 'Center frame')} className={EDITOR_ACTION_PILL}>Center frame</button>
-                  </div>
                   </div>
                 )}
                 {frameMode === 'layer' && (
