@@ -2090,8 +2090,7 @@ export class VideoRenderer {
                   lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
                   compressor: clip.audioProcessing?.compressor || false,
                 });
-                const effected = connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
-                if (effected !== destination) { /* already connected by helper */ }
+                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
                 source.start(audioCtx.currentTime + startDelay + clipStart, 0, trimLength);
               } else {
                 source.buffer = decoded;
@@ -2102,8 +2101,7 @@ export class VideoRenderer {
                   lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
                   compressor: clip.audioProcessing?.compressor || false,
                 });
-                const effected = connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
-                if (effected !== destination) { /* already connected by helper */ }
+                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
                 source.start(audioCtx.currentTime + startDelay + clipStart, clip.trimStart, trimLength);
               }
             } catch {
