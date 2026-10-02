@@ -105,9 +105,10 @@ function syncPlaybackVideo(
   playing: boolean,
   forceSeek = false,
   rate = 1,
-  reverse = false
+  reverse = false,
+  stateStore: Map<string, PlaybackRecord> = playbackState
 ) {
-  const state = playbackState.get(src);
+  const state = stateStore.get(src);
   const safeTarget = Math.max(0, target);
   const rateChanged = !state || Math.abs(state.rate - rate) > 0.001;
   /* Reversed playback advances ONLY by seeking (per-frame), so it gets a
@@ -124,14 +125,14 @@ function syncPlaybackVideo(
 
   if (!playing) {
     if (!video.paused) video.pause();
-    playbackState.set(src, { lastTarget: safeTarget, playing: false, rate });
+    stateStore.set(src, { lastTarget: safeTarget, playing: false, rate });
     return needsSeek ? seekAndWait(video, safeTarget) : Promise.resolve();
   }
 
   if (playing && reverse) {
     if (!video.paused) video.pause();
     const seeked = needsSeek ? seekAndWait(video, safeTarget) : Promise.resolve();
-    playbackState.set(src, { lastTarget: safeTarget, playing: false, rate });
+    stateStore.set(src, { lastTarget: safeTarget, playing: false, rate });
     return seeked;
   }
 
@@ -139,7 +140,7 @@ function syncPlaybackVideo(
     try { video.currentTime = safeTarget; } catch { /* decoder keeps its last frame */ }
   }
   if (video.paused) void video.play().catch(() => undefined);
-  playbackState.set(src, { lastTarget: safeTarget, playing: true, rate });
+  stateStore.set(src, { lastTarget: safeTarget, playing: true, rate });
   return Promise.resolve();
 }
 
@@ -1171,15 +1172,31 @@ function drawImageElement(ctx: CanvasRenderingContext2D, el: TimelineElement, ti
   ctx.restore();
 }
 
-async function drawVideoElement(ctx: CanvasRenderingContext2D, el: TimelineElement, timeIn: number, previewing = false, playing = false) {
+async function drawVideoElement(
+  ctx: CanvasRenderingContext2D,
+  el: TimelineElement,
+  timeIn: number,
+  previewing = false,
+  playing = false,
+  loadVideoFn: (src: string) => Promise<HTMLVideoElement> = loadVideo,
+  syncVideoFn: (
+    video: HTMLVideoElement,
+    src: string,
+    target: number,
+    playing: boolean,
+    forceSeek?: boolean,
+    rate?: number,
+    reverse?: boolean
+  ) => Promise<void> = syncPlaybackVideo,
+) {
   if (!el.src) return;
-  const video = await loadVideo(el.src);
+  const video = await loadVideoFn(el.src);
   const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : (el.source_duration || 10);
   const speed = Math.max(0.05, el.speed || 1);
   const trimStart = Math.max(0, el.trim_start || 0);
   const trimEnd = Math.min(duration, Math.max(trimStart + 0.01, el.trim_end || duration));
   const target = Math.min(trimEnd - 0.01, Math.max(trimStart, trimStart + timeIn * speed));
-  await syncPlaybackVideo(video, el.src, target, !!playing, !previewing, speed, false);
+  await syncVideoFn(video, el.src, target, !!playing, !previewing, speed, false);
   if (video.readyState < 2) return;
 
   const v = resolveElementValues(el, timeIn);
@@ -1520,11 +1537,86 @@ export class VideoRenderer {
   /** Set while an export is running — the editor guards double-exports. */
   isExporting = false;
 
+  /*
+   * Effect/filter/motion preview cards must never share the main editor's
+   * decoder. Each card has its own VideoRenderer, so isolated previews get
+   * their own <video> elements and playback clock.
+   */
+  private isolatedVideoCache = new Map<string, HTMLVideoElement>();
+  private isolatedVideoLoading = new Map<string, Promise<HTMLVideoElement>>();
+  private isolatedPlaybackState = new Map<string, PlaybackRecord>();
+
   /** Cooperative cancellation flag for the running export. */
   private exportCancelled = false;
 
   /** Sources whose reversed-frame cache is currently being built (one build at a time per source). */
   private reverseCacheBuilding = new Set<string>();
+
+  private loadIsolatedVideo(src: string): Promise<HTMLVideoElement> {
+    const cached = this.isolatedVideoCache.get(src);
+    if (cached) return Promise.resolve(cached);
+    const pending = this.isolatedVideoLoading.get(src);
+    if (pending) return pending;
+
+    const promise = new Promise<HTMLVideoElement>((resolve, reject) => {
+      const video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.preload = 'auto';
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', '');
+      video.src = src;
+
+      const timeout = window.setTimeout(() => {
+        this.isolatedVideoLoading.delete(src);
+        reject(new Error('Timed out loading video preview.'));
+      }, 20000);
+
+      const fail = () => {
+        window.clearTimeout(timeout);
+        this.isolatedVideoLoading.delete(src);
+        reject(new Error('Could not load video preview.'));
+      };
+
+      video.onerror = fail;
+      video.onloadeddata = async () => {
+        try {
+          window.clearTimeout(timeout);
+          await normalizeVideoDuration(video);
+          this.isolatedVideoCache.set(src, video);
+          this.isolatedVideoLoading.delete(src);
+          resolve(video);
+        } catch (e) {
+          this.isolatedVideoLoading.delete(src);
+          reject(e);
+        }
+      };
+    });
+
+    this.isolatedVideoLoading.set(src, promise);
+    return promise;
+  }
+
+  private syncIsolatedVideo(
+    video: HTMLVideoElement,
+    src: string,
+    target: number,
+    playing: boolean,
+    forceSeek = false,
+    rate = 1,
+    reverse = false,
+  ) {
+    return syncPlaybackVideo(
+      video,
+      src,
+      target,
+      playing,
+      forceSeek,
+      rate,
+      reverse,
+      this.isolatedPlaybackState,
+    );
+  }
 
   /**
    * Prepare a reversed clip before the editor switches it on.
@@ -1578,7 +1670,7 @@ export class VideoRenderer {
     canvas: HTMLCanvasElement,
     project: VideoProject,
     time: number,
-    opts: { previewing?: boolean; playing?: boolean } = {}
+    opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean } = {}
   ) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -1618,7 +1710,11 @@ export class VideoRenderer {
       try {
         const image = clip.media_type === 'image' ? await loadImage(clip.src) : null;
         if (!isCurrent()) return;
-        const video = image ? null : await loadVideo(clip.src);
+        const video = image
+          ? null
+          : opts.isolatedPreview
+            ? await this.loadIsolatedVideo(clip.src)
+            : await loadVideo(clip.src);
         if (!isCurrent()) return;
         const target = clip.reverse
           ? Math.max(clip.trimStart, sourceTime)
@@ -1685,7 +1781,11 @@ export class VideoRenderer {
 
            if (!paintedFromCache) {
              if (video) {
-               await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+               if (opts.isolatedPreview) {
+                 await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+               } else {
+                 await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+               }
                if (!isCurrent()) return;
              }
              sctx.save();
@@ -1755,7 +1855,20 @@ export class VideoRenderer {
         drawTextElement(ctx, el, W, timeIn);
       } else if (el.kind === 'video' || el.media_type === 'video') {
         try {
-          await drawVideoElement(ctx, el, timeIn, !!opts.previewing, !!opts.playing);
+          if (opts.isolatedPreview) {
+            await drawVideoElement(
+              ctx,
+              el,
+              timeIn,
+              !!opts.previewing,
+              !!opts.playing,
+              (src) => this.loadIsolatedVideo(src),
+              (video, src, target, playing, forceSeek, rate, reverse) =>
+                this.syncIsolatedVideo(video, src, target, playing, forceSeek, rate, reverse),
+            );
+          } else {
+            await drawVideoElement(ctx, el, timeIn, !!opts.previewing, !!opts.playing);
+          }
           if (!isCurrent()) return;
         } catch {
           this.lastSourceError = el.src;
