@@ -1064,6 +1064,7 @@ function VideoEditor() {
   const previewAudioContextRef = useRef<AudioContext | null>(null);
   const previewAudioSourcesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   const previewAudioGraphRef = useRef<Map<string, { signature: string; output: GainNode }>>(new Map());
+  const previewAudioSyncTokenRef = useRef(0);
 
   const ensurePreviewAudioGraph = useCallback((key: string, media: HTMLMediaElement, effects: AudioEffect[] | undefined) => {
     if (typeof window === 'undefined') return;
@@ -1115,6 +1116,8 @@ function VideoEditor() {
 
 
   const syncPreviewAudio = useCallback(async (time: number, shouldPlay: boolean) => {
+    const syncToken = ++previewAudioSyncTokenRef.current;
+    const isCurrent = () => syncToken === previewAudioSyncTokenRef.current;
     const p = docRef.current.project;
     const lanes = p.tracks.filter((t) => t.kind === 'audio');
     const soloActive = lanes.some((t) => t.solo);
@@ -1171,6 +1174,7 @@ function VideoEditor() {
         if (shouldPlay && audio.paused) {
           try {
             await audio.play();
+            if (!isCurrent()) { audio.pause(); return; }
             previewAudioUnlockedRef.current = true;
           } catch {
             /* The Play button retries on the next synchronization pass. */
@@ -1218,7 +1222,7 @@ function VideoEditor() {
         try { audio.currentTime = target; } catch { /* wait for metadata */ }
       }
       if (shouldPlay && audio.paused) {
-        try { await audio.play(); previewAudioUnlockedRef.current = true; }
+        try { await audio.play(); if (!isCurrent()) { audio.pause(); return; } previewAudioUnlockedRef.current = true; }
         catch { /* retried on the next user-initiated synchronization pass */ }
       }
     }
@@ -1266,6 +1270,7 @@ function VideoEditor() {
       if (audio.paused) {
         try {
           await audio.play();
+          if (!isCurrent()) { audio.pause(); return; }
           previewAudioUnlockedRef.current = true;
         } catch {
           /* Browser autoplay policy: the next user play click retries. */
@@ -1273,6 +1278,7 @@ function VideoEditor() {
       }
     }
 
+    if (!isCurrent()) return;
     previewAudioRef.current.forEach((audio, id) => {
       if (!activeIds.has(id)) audio.pause();
     });
@@ -1301,7 +1307,6 @@ function VideoEditor() {
     drawingRef.current = true;
     try {
       await rendererRef.current.drawFrame(canvas, docRef.current.project, t, { previewing: true, playing });
-      await syncPreviewAudio(t, playing);
       /* surface undecodable/unreachable sources as a toast instead of a
          silently black canvas (fires at most once per source change) */
       const err = rendererRef.current.lastSourceError;
@@ -1326,7 +1331,7 @@ function VideoEditor() {
       void drawOnce(playhead);
       void syncPreviewAudio(playhead, false);
     }
-  }, [project, playhead, playing, drawOnce]);
+  }, [project, playhead, playing, drawOnce, syncPreviewAudio]);
 
   /* Play/pause with the universal fix: pressing play at the END of the
      timeline restarts from 0 instead of instantly stopping again. */
