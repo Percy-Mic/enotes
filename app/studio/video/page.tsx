@@ -5388,7 +5388,8 @@ function VideoEditor() {
     );
   }
 
-  // Main editor shell. Keep this expression deliberately simple for the JSX parser.
+  // Main editor shell. Keep this return as a single JSX root so the production parser
+  // cannot confuse the conditional load-error branch with the editor shell.
   return (
     <main
       className="flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white"
