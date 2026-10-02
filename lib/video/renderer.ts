@@ -1010,9 +1010,14 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
      preview and export agree on the same text bounds. */
   const longestLine = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
   const lineHeightRequested = requestedFontSize * (el.line_height || 1.25);
-  const widthFit = longestLine > 0 ? (Math.max(24, el.width * 0.94) / longestLine) : 1;
+  /* Never invent a larger layout box than the actual container. The old
+     24px/20px minimums meant a tiny text container could still calculate a
+     font from a larger virtual box, making glyphs appear outside the handles. */
+  const availableWidth = Math.max(1, el.width * 0.92);
+  const availableHeight = Math.max(1, el.height * 0.86);
+  const widthFit = longestLine > 0 ? (availableWidth / longestLine) : 1;
   const heightFit = lineHeightRequested * lines.length > 0
-    ? (Math.max(20, el.height * 0.88) / (lineHeightRequested * lines.length))
+    ? (availableHeight / (lineHeightRequested * lines.length))
     : 1;
   const fitScale = Math.min(1, widthFit, heightFit);
   const fontSize = Math.max(1, Math.min(240, requestedFontSize * fitScale));
