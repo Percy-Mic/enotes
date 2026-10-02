@@ -3881,6 +3881,15 @@ function VideoEditor() {
     const startAspect = startGeometry.width / Math.max(1, startGeometry.height);
     const minSize = 24;
 
+    /* Text's rendered container is always fully contained in the canvas. */
+    const containedCenter = (cx: number, cy: number, width: number, height: number) => {
+      if (startEl.kind !== 'text') return { cx, cy };
+      return {
+        cx: clampNum(cx, width / 2, Math.max(width / 2, project.canvas.width - width / 2)),
+        cy: clampNum(cy, height / 2, Math.max(height / 2, project.canvas.height - height / 2)),
+      };
+    };
+
     /* Text size is tied to the element box. Resizing the box therefore
        scales the typography instead of leaving a tiny/huge font behind. */
     const scaledTextSize = (width: number, height: number) => {
@@ -3902,8 +3911,12 @@ function VideoEditor() {
       const dy = p.y - startY;
 
       if (gesture === 'move') {
-        const nx = clampNum(startGeometry.x + dx, -startGeometry.width * 0.75, project.canvas.width - startGeometry.width * 0.25);
-        const ny = clampNum(startGeometry.y + dy, -startGeometry.height * 0.75, project.canvas.height - startGeometry.height * 0.25);
+        const nx = startEl.kind === 'text'
+          ? clampNum(startGeometry.x + dx, 0, Math.max(0, project.canvas.width - startGeometry.width))
+          : clampNum(startGeometry.x + dx, -startGeometry.width * 0.75, project.canvas.width - startGeometry.width * 0.25);
+        const ny = startEl.kind === 'text'
+          ? clampNum(startGeometry.y + dy, 0, Math.max(0, project.canvas.height - startGeometry.height))
+          : clampNum(startGeometry.y + dy, -startGeometry.height * 0.75, project.canvas.height - startGeometry.height * 0.25);
         const baseX = nx + startEl.width * startGeometry.scale / 2 - startEl.width / 2;
         const baseY = ny + startEl.height * startGeometry.scale / 2 - startEl.height / 2;
         updateElement(
@@ -5559,42 +5572,35 @@ function VideoEditor() {
                       outlineOffset: 0,
                     }}
                   >
+                    {/* Invisible controls stay inside the selected container. */}
                     <button
                       type="button"
-                      className="pointer-events-auto absolute left-0 top-0 z-40 flex h-11 w-11 touch-none items-center justify-center rounded-full opacity-0"
+                      className="pointer-events-auto absolute left-0 top-0 z-40 h-1/2 w-1/3 touch-none bg-transparent opacity-0"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
                       aria-label="Rotate element"
                       title="Rotate"
-                    >
-                      <span className="sr-only">Rotate element</span>
-                    </button>
+                    />
                     <button
                       type="button"
-                      className="pointer-events-auto absolute left-1/2 top-0 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full opacity-0"
+                      className="pointer-events-auto absolute left-1/3 top-0 z-40 h-1/3 w-1/3 touch-none bg-transparent opacity-0"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-n', e)}
                       aria-label="Stretch element vertically"
                       title="Stretch vertically"
-                    >
-                      <span className="sr-only">Stretch element vertically</span>
-                    </button>
+                    />
                     <button
                       type="button"
-                      className="pointer-events-auto absolute right-0 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 touch-none items-center justify-center rounded-full opacity-0"
+                      className="pointer-events-auto absolute right-0 top-1/3 z-40 h-1/3 w-1/3 touch-none bg-transparent opacity-0"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-e', e)}
                       aria-label="Stretch element horizontally"
                       title="Stretch horizontally"
-                    >
-                      <span className="sr-only">Stretch element horizontally</span>
-                    </button>
+                    />
                     <button
                       type="button"
-                      className="pointer-events-auto absolute bottom-0 left-1/2 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full opacity-0"
+                      className="pointer-events-auto absolute bottom-0 left-1/3 z-40 h-1/2 w-1/3 touch-none bg-transparent opacity-0"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-uniform', e)}
                       aria-label="Resize element proportionally"
                       title="Resize proportionally"
-                    >
-                      <span className="sr-only">Resize element proportionally</span>
-                    </button>
+                    />
                   </div>
                 );
               })()}
