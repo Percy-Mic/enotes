@@ -5503,41 +5503,40 @@ function VideoEditor() {
                 >
                   <button
                     type="button"
-                    className="pointer-events-auto absolute left-1 top-1 z-40 flex h-11 w-11 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
+                    className="pointer-events-auto absolute left-0 top-0 z-40 flex h-11 w-11 touch-none items-center justify-center rounded-full opacity-0"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'rotate', e)}
                     aria-label="Rotate video"
                     title="Rotate"
                   >
-                    <RotateCw className="h-4 w-4" />
+                    <span className="sr-only">Rotate</span>
                   </button>
                   <button
                     type="button"
-                    className="pointer-events-auto absolute left-1/2 top-1 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
+                    className="pointer-events-auto absolute left-1/2 top-0 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full opacity-0"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-n', e)}
                     aria-label="Stretch video vertically"
                     title="Stretch vertically"
                   >
-                    <span className="text-base font-bold leading-none">↕</span>
+                    <span className="sr-only">Stretch vertically</span>
                   </button>
                   <button
                     type="button"
-                    className="pointer-events-auto absolute right-1 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
+                    className="pointer-events-auto absolute right-0 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 touch-none items-center justify-center rounded-full opacity-0"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-e', e)}
                     aria-label="Stretch video horizontally"
                     title="Stretch horizontally"
                   >
-                    <span className="text-base font-bold leading-none">↔</span>
+                    <span className="sr-only">Stretch horizontally</span>
                   </button>
                   <button
                     type="button"
-                    className="pointer-events-auto absolute bottom-1 left-1/2 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
+                    className="pointer-events-auto absolute bottom-0 left-1/2 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full opacity-0"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-uniform', e)}
                     aria-label="Resize video proportionally"
                     title="Resize proportionally"
                   >
-                    <Maximize2 className="h-4 w-4" />
+                    <span className="sr-only">Resize proportionally</span>
                   </button>
-                  </span>
                   
                 </div>
               )}
