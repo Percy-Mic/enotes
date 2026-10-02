@@ -102,6 +102,57 @@ function fmt(t: number): string {
 
 const clampNum = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
+function previewTimeForClip(project: VideoProject, clipId: string, requestedTime: number): number {
+  const index = project.clips.findIndex((clip) => clip.id === clipId);
+  if (index < 0) return Math.max(0, requestedTime);
+  const start = project.clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0);
+  const duration = Math.max(0.05, clipDuration(project.clips[index]));
+  const local = clampNum(Number.isFinite(requestedTime) ? requestedTime - start : 0, 0, Math.max(0, duration - 0.02));
+  return start + local;
+}
+
+function previewClipStart(project: VideoProject, clipId: string): number {
+  const index = project.clips.findIndex((clip) => clip.id === clipId);
+  if (index < 0) return 0;
+  return project.clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0);
+}
+
+function useLatestPreviewRenderer() {
+  const rendererRef = useRef<VideoRenderer | null>(null);
+  const renderingRef = useRef(false);
+  const queuedTimeRef = useRef<number | null>(null);
+
+  const render = useCallback(async (
+    canvas: HTMLCanvasElement,
+    project: VideoProject,
+    time: number,
+  ) => {
+    queuedTimeRef.current = time;
+    if (renderingRef.current) return;
+
+    renderingRef.current = true;
+    try {
+      while (queuedTimeRef.current !== null) {
+        const nextTime = queuedTimeRef.current;
+        queuedTimeRef.current = null;
+        if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+        try {
+          await rendererRef.current.drawFrame(canvas, project, nextTime, {
+            previewing: true,
+            playing: false,
+          });
+        } catch {
+          /* A transient decoder seek must not break the preview card. */
+        }
+      }
+    } finally {
+      renderingRef.current = false;
+    }
+  }, []);
+
+  return { rendererRef, render };
+}
+
 type LookPreviewProps = {
   project: VideoProject;
   clipId: string;
@@ -112,8 +163,7 @@ type LookPreviewProps = {
 
 function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<VideoRenderer | null>(null);
-  if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+  const { rendererRef, render } = useLatestPreviewRenderer();
 
   useEffect(() => {
     const render = async () => {
@@ -128,14 +178,11 @@ function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewP
             : clip
         ),
       };
-      try {
-        await renderer.drawFrame(canvas, previewProject, playhead, { previewing: true, playing: false });
-      } catch {
-        /* Media may briefly be undecodable while the user is scrubbing. */
-      }
+      const previewTime = previewTimeForClip(previewProject, clipId, playhead);
+      await render(canvas, previewProject, previewTime);
     };
     void render();
-  }, [project, clipId, playhead, effect, filter]);
+  }, [project, clipId, playhead, effect, filter, render]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/50">
@@ -152,21 +199,19 @@ function FilterPreviewCard({
   onHover: () => void; onLeave: () => void; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<VideoRenderer | null>(null);
+  const { rendererRef, render } = useLatestPreviewRenderer();
   const timerRef = useRef<number | null>(null);
 
   const renderAt = useCallback(async (t: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
     const previewProject: VideoProject = {
       ...project,
       clips: project.clips.map((clip) => clip.id === clipId ? { ...clip, filter } : clip),
     };
-    try {
-      await rendererRef.current.drawFrame(canvas, previewProject, t, { previewing: true, playing: false });
-    } catch {}
-  }, [project, clipId, filter]);
+    const previewTime = previewTimeForClip(previewProject, clipId, t);
+    await render(canvas, previewProject, previewTime);
+  }, [project, clipId, filter, render]);
 
   useEffect(() => {
     const clip = project.clips.find((item) => item.id === clipId);
@@ -204,21 +249,21 @@ function EffectPreviewCard({
   active: boolean; onHover: () => void; onLeave: () => void; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<VideoRenderer | null>(null);
+  const { render } = useLatestPreviewRenderer();
   const timerRef = useRef<number | null>(null);
 
   const renderAt = useCallback(async (t: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
     const previewProject: VideoProject = {
       ...project,
       clips: project.clips.map((clip) =>
         clip.id === clipId ? { ...clip, effect, effects: effect === 'none' ? [] : [{ type: effect, intensity: 1 }], filter } : clip
       ),
     };
-    try { await rendererRef.current.drawFrame(canvas, previewProject, t, { previewing: true, playing: false }); } catch { /* media may still be loading */ }
-  }, [project, clipId, effect, filter]);
+    const previewTime = previewTimeForClip(previewProject, clipId, t);
+    await render(canvas, previewProject, previewTime);
+  }, [project, clipId, effect, filter, render]);
 
   useEffect(() => {
     const clip = project.clips.find((item) => item.id === clipId);
@@ -292,7 +337,7 @@ function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
   project: VideoProject; clipId: string; preset: 'zoom-in' | 'zoom-out' | 'spin' | 'float' | 'pop' | 'shake'; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<VideoRenderer | null>(null);
+  const { render } = useLatestPreviewRenderer();
   const timerRef = useRef<number | null>(null);
   const renderAt = useCallback(async (phase: number) => {
     const canvas = canvasRef.current;
@@ -308,8 +353,10 @@ function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
     if (preset === 'pop') transform.scale = source.transform.scale * (u < 0.2 ? 0.82 + u * 1.3 : 1.08 - (u - 0.2) * 0.1);
     if (preset === 'shake') { transform.offset_x = source.transform.offset_x + Math.sin(u * Math.PI * 10) * 14; transform.rotation = source.transform.rotation + Math.sin(u * Math.PI * 8) * 2; }
     const previewProject: VideoProject = { ...project, clips: project.clips.map((clip) => clip.id === clipId ? { ...clip, transform } : clip) };
-    try { await rendererRef.current.drawFrame(canvas, previewProject, u * Math.max(0.2, clipDuration(source)), { previewing: true, playing: false }); } catch {}
-  }, [project, clipId, preset]);
+    const start = previewClipStart(previewProject, clipId);
+    const previewTime = start + u * Math.max(0.2, clipDuration(source));
+    await render(canvas, previewProject, previewTime);
+  }, [project, clipId, preset, render]);
   useEffect(() => {
     void renderAt(0.5);
     const started = performance.now();
@@ -331,7 +378,7 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, onAppl
   project: VideoProject; clipId: string; name: string; layers: string[]; active: boolean; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<VideoRenderer | null>(null);
+  const { render } = useLatestPreviewRenderer();
   const timerRef = useRef<number | null>(null);
   const renderAt = useCallback(async (t: number) => {
     const canvas = canvasRef.current;
@@ -347,8 +394,9 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, onAppl
           }
         : clip),
     };
-    try { await rendererRef.current.drawFrame(canvas, previewProject, t, { previewing: true, playing: false }); } catch {}
-  }, [project, clipId, layers]);
+    const previewTime = previewTimeForClip(previewProject, clipId, t);
+    await render(canvas, previewProject, previewTime);
+  }, [project, clipId, layers, render]);
 
   useEffect(() => {
     const clip = project.clips.find((item) => item.id === clipId);
