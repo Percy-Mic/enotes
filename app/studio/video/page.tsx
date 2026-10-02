@@ -8383,6 +8383,32 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
               placeholder="Type your title, caption, subtitle, or body text…"
             />
           </div>
+          <div className="rounded-xl border border-white/10 bg-black/15 p-2.5">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-bold text-white/75">Quick text styles</span>
+              <span className="text-[8px] text-white/30">One tap applies a complete look</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {[
+                { id: 'bold', label: 'Bold', patch: { font_size: 64, font_weight: 900, color: '#FFFFFF', background: null, stroke_color: '#000000', stroke_width: 2, shadow: true, text_effect: 'none' as const } },
+                { id: 'caption', label: 'Caption', patch: { font_size: 42, font_weight: 800, color: '#FFFFFF', background: '#000000', background_padding: 0.55, background_radius: 12, shadow: false, text_effect: 'none' as const } },
+                { id: 'neon', label: 'Neon', patch: { font_size: 58, font_weight: 800, color: '#FFFFFF', background: null, shadow: false, text_effect: 'neon' as const } },
+                { id: 'retro', label: 'Retro', patch: { font_size: 58, font_weight: 900, color: '#FFF3D6', background: null, shadow: true, text_effect: 'retro' as const } },
+                { id: 'impact', label: 'Impact', patch: { font_size: 72, font_weight: 900, color: '#FFFFFF', stroke_color: '#000000', stroke_width: 5, shadow: false, text_effect: 'outline' as const } },
+                { id: 'minimal', label: 'Minimal', patch: { font_size: 46, font_weight: 500, color: '#FFFFFF', background: null, stroke_color: null, stroke_width: 0, shadow: false, text_effect: 'none' as const } },
+              ].map((style) => (
+                <button
+                  key={style.id}
+                  type="button"
+                  onClick={() => onChange({ ...style.patch, text_preset: style.id as TimelineElement['text_preset'] }, 'Apply text style')}
+                  className="rounded-lg border border-white/10 bg-white/[0.035] px-2 py-2 text-left transition hover:border-[#E5798F]/50 hover:bg-[#E5798F]/10"
+                >
+                  <span className="block text-[11px] font-black text-white">{style.label}</span>
+                  <span className="mt-0.5 block text-[8px] text-white/35">{style.id === 'caption' ? 'Subtitle-ready' : style.id === 'impact' ? 'High contrast' : 'Instant preset'}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <Slider label="Size" min={16} max={140} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
             <label className="space-y-1">
