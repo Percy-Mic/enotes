@@ -1013,8 +1013,9 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   /* Never invent a larger layout box than the actual container. The old
      24px/20px minimums meant a tiny text container could still calculate a
      font from a larger virtual box, making glyphs appear outside the handles. */
-  const availableWidth = Math.max(1, el.width * 0.92);
-  const availableHeight = Math.max(1, el.height * 0.86);
+  /* Keep only a small breathing room inside the selection box. */
+  const availableWidth = Math.max(1, el.width * 0.97);
+  const availableHeight = Math.max(1, el.height * 0.94);
   const widthFit = longestLine > 0 ? (availableWidth / longestLine) : 1;
   const heightFit = lineHeightRequested * lines.length > 0
     ? (availableHeight / (lineHeightRequested * lines.length))
