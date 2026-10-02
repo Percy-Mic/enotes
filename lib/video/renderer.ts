@@ -1975,62 +1975,21 @@ export class VideoRenderer {
 
       onProgress?.({ phase: 'processing', percent: 5, message: 'Setting up audio mix…' });
 
-      /* ---------- audio graph ---------- */
-      /* Two independent recorder-killer modes, both reproduced:
-         1) Chrome starts an AudioContext SUSPENDED when it was created after
-            the user gesture's transient activation expired — exports do
-            seconds of async media prep before this line.
-         2) Some browsers never emit recorder data when the mixed stream
-            carries an audio track whose source context yields no samples —
-            even when the context REPORTS "running" (a silent-ended context
-            also triggers this). Video-only streams always record fine.
-         Strategy: resume the context, then PROBE a tiny recording; if the
-         browser will not emit bytes with an audio track attached, fall back
-         to a video-only stream — a silent export beats no export. */
+      /* ---------- audio graph ----------
+       * The project audio graph is the source of truth for export.
+       * Do NOT run a throw-away MediaRecorder probe here: a probe can fail
+       * while the real graph is valid, and the old fallback closed this
+       * context and silently produced a video-only file.
+       */
       const audioCtx = new AudioContext();
       if (audioCtx.state === 'suspended') {
-        try { await audioCtx.resume(); } catch { /* fall through */ }
+        try { await audioCtx.resume(); } catch { /* checked below */ }
+      }
+      if (audioCtx.state !== 'running') {
+        throw new Error('The audio engine could not start. Click Play once and export again.');
       }
       const destination = audioCtx.createMediaStreamDestination();
 
-      const recorderEmitsWithAudioTrack = async (): Promise<boolean> => {
-        try {
-          const osc = audioCtx.createOscillator();
-          osc.frequency.value = 440;
-          const probeGain = audioCtx.createGain();
-          probeGain.gain.value = 0.05;
-          osc.connect(probeGain).connect(destination);
-          osc.start();
-          const probeCanvas = document.createElement('canvas');
-          probeCanvas.width = 64;
-          probeCanvas.height = 64;
-          const pctx = probeCanvas.getContext('2d');
-          pctx?.fillRect(0, 0, 64, 64);
-          const stream = new MediaStream([
-            ...probeCanvas.captureStream(15).getVideoTracks(),
-            ...destination.stream.getAudioTracks(),
-          ]);
-          const rec = new MediaRecorder(stream);
-          const bytes = await new Promise<number>((resolve) => {
-            let sum = 0;
-            rec.ondataavailable = (e) => { sum += e.data.size; };
-            rec.onstop = () => resolve(sum);
-            rec.onerror = () => resolve(-1);
-            rec.start();
-            window.setTimeout(() => rec.stop(), 350);
-          });
-          osc.stop();
-          stream.getTracks().forEach((t) => t.stop());
-          return bytes > 0;
-        } catch {
-          return false;
-        }
-      };
-      const audioRunnable =
-        audioCtx.state === 'running' && (await recorderEmitsWithAudioTrack());
-      if (!audioRunnable) {
-        void audioCtx.close().catch(() => undefined);
-      }
       const connectTrack = async (track: { src: string; volume: number; trimStart: number; fadeOutSec: number; fadeInSec: number; startAt: number; trackDuration: number; effects?: import('@/lib/video/project').AudioEffect[] }) => {
         try {
           const res = await fetch(track.src);
