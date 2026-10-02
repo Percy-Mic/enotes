@@ -1143,7 +1143,9 @@ function VideoEditor() {
         if (!audio || audio.src !== clip.src) {
           audio?.pause();
           const videoAudio = document.createElement('video');
-          videoAudio.crossOrigin = 'anonymous';
+          if ((clip.audioProcessing?.effects || []).some((effect) => effect.type !== 'none' && effect.amount > 0)) {
+            videoAudio.crossOrigin = 'anonymous';
+          }
           videoAudio.preload = 'auto';
           videoAudio.playsInline = true;
           videoAudio.setAttribute('playsinline', '');
@@ -1197,7 +1199,9 @@ function VideoEditor() {
       if (!audio || audio.src !== el.src) {
         audio?.pause();
         const videoAudio = document.createElement('video');
-        videoAudio.crossOrigin = 'anonymous';
+        if ((el.audioProcessing?.effects || []).some((effect) => effect.type !== 'none' && effect.amount > 0)) {
+          videoAudio.crossOrigin = 'anonymous';
+        }
         videoAudio.preload = 'auto';
         videoAudio.playsInline = true;
         videoAudio.setAttribute('playsinline', '');
@@ -1230,7 +1234,9 @@ function VideoEditor() {
       if (!audio || audio.src !== track.src) {
         audio?.pause();
         audio = new Audio();
-        audio.crossOrigin = 'anonymous';
+        if ((track.audioProcessing?.effects || []).some((effect) => effect.type !== 'none' && effect.amount > 0)) {
+          audio.crossOrigin = 'anonymous';
+        }
         audio.preload = 'auto';
         audio.src = track.src;
         previewAudioRef.current.set(key, audio);
