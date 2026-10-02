@@ -3735,8 +3735,27 @@ function VideoEditor() {
     };
   };
 
-  const hitsElement = (el: TimelineElement, px: number, py: number) =>
-    px >= el.x && px <= el.x + el.width && py >= el.y && py <= el.y + el.height;
+  /** Geometry actually rendered at the current playhead. The preview,
+      selection frame, hit-testing and handles must all use this same box. */
+  const elementVisualGeometry = (el: TimelineElement) => {
+    const timeIn = Math.max(0, Math.min(el.end - el.start, playheadRef.current - el.start));
+    const v = resolveElementValues(el, timeIn);
+    return {
+      ...v,
+      width: Math.max(1, el.width * v.scale),
+      height: Math.max(1, el.height * v.scale),
+    };
+  };
+
+  const hitsElement = (el: TimelineElement, px: number, py: number) => {
+    const g = elementVisualGeometry(el);
+    const rad = -(g.rotation * Math.PI) / 180;
+    const dx = px - (g.x + g.width / 2);
+    const dy = py - (g.y + g.height / 2);
+    const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+    return Math.abs(lx) <= g.width / 2 && Math.abs(ly) <= g.height / 2;
+  };
 
   /** Topmost overlay under a canvas point (visible at the current playhead). */
   const elementAt = (px: number, py: number): TimelineElement | null => {
@@ -3764,41 +3783,26 @@ function VideoEditor() {
     return Math.abs(lx) <= box.w / 2 && Math.abs(ly) <= box.h / 2 ? resolved.clip : null;
   };
 
-  /* handle positions for the selected element, in canvas units */
+  /* Handle positions use exactly the same resolved geometry as the
+     rendered element. This prevents handles from drifting when position,
+     scale or rotation keyframes are active. */
   const elementHandlePoints = (el: TimelineElement) => {
-    const corner = (cx: 0 | 1, cy: 0 | 1) => {
-      const rad = (el.rotation * Math.PI) / 180;
-      const lx = cx * el.width - el.width / 2;
-      const ly = cy * el.height - el.height / 2;
-      return {
-        x: el.x + el.width / 2 + lx * Math.cos(rad) - ly * Math.sin(rad),
-        y: el.y + el.height / 2 + lx * Math.sin(rad) + ly * Math.cos(rad),
-      };
-    };
-    const edgeMid = (ax: 'x' | 'y', at: 0 | 1) => {
-      const rad = (el.rotation * Math.PI) / 180;
-      const lx = (ax === 'x' ? at * el.width : el.width / 2) - el.width / 2;
-      const ly = (ax === 'y' ? at * el.height : el.height / 2) - el.height / 2;
-      return {
-        x: el.x + el.width / 2 + lx * Math.cos(rad) - ly * Math.sin(rad),
-        y: el.y + el.height / 2 + lx * Math.sin(rad) + ly * Math.cos(rad),
-      };
-    };
-    const rad = (el.rotation * Math.PI) / 180;
-    const rotate = {
-      x: el.x + el.width / 2 - Math.sin(rad) * (el.height / 2 + ROTATE_HANDLE_DY),
-      y: el.y + el.height / 2 - Math.cos(rad) * (el.height / 2 + ROTATE_HANDLE_DY),
-    };
+    const g = elementVisualGeometry(el);
+    const rad = (g.rotation * Math.PI) / 180;
+    const point = (lx: number, ly: number) => ({
+      x: g.x + g.width / 2 + lx * Math.cos(rad) - ly * Math.sin(rad),
+      y: g.y + g.height / 2 + lx * Math.sin(rad) + ly * Math.cos(rad),
+    });
     return {
-      'resize-nw': corner(0, 0),
-      'resize-ne': corner(1, 0),
-      'resize-sw': corner(0, 1),
-      'resize-se': corner(1, 1),
-      'resize-n': edgeMid('y', 0),
-      'resize-s': edgeMid('y', 1),
-      'resize-w': edgeMid('x', 0),
-      'resize-e': edgeMid('x', 1),
-      rotate,
+      'resize-nw': point(-g.width / 2, -g.height / 2),
+      'resize-ne': point(g.width / 2, -g.height / 2),
+      'resize-sw': point(-g.width / 2, g.height / 2),
+      'resize-se': point(g.width / 2, g.height / 2),
+      'resize-n': point(0, -g.height / 2),
+      'resize-s': point(0, g.height / 2),
+      'resize-w': point(-g.width / 2, 0),
+      'resize-e': point(g.width / 2, 0),
+      rotate: point(0, -g.height / 2 - ROTATE_HANDLE_DY),
     };
   };
 
@@ -3852,13 +3856,33 @@ function VideoEditor() {
 
     const startX = start.x;
     const startY = start.y;
+    const visual = elementVisualGeometry(el);
     const startEl = { ...el };
-    const centerX = el.x + el.width / 2;
-    const centerY = el.y + el.height / 2;
+    const startGeometry = {
+      x: visual.x,
+      y: visual.y,
+      width: visual.width,
+      height: visual.height,
+      rotation: visual.rotation,
+      scale: visual.scale,
+    };
+    const centerX = startGeometry.x + startGeometry.width / 2;
+    const centerY = startGeometry.y + startGeometry.height / 2;
     const startAngle = Math.atan2(startY - centerY, startX - centerX);
     const keepAspect = el.kind !== 'text';
-    const startAspect = el.width / Math.max(1, el.height);
+    const startAspect = startGeometry.width / Math.max(1, startGeometry.height);
     const minSize = 24;
+
+    /* Text size is tied to the element box. Resizing the box therefore
+       scales the typography instead of leaving a tiny/huge font behind. */
+    const scaledTextSize = (width: number, height: number) => {
+      if (startEl.kind !== 'text' || !startEl.font_size) return undefined;
+      const areaScale = Math.sqrt(
+        Math.max(0.05, (width / Math.max(1, startGeometry.width)) *
+          (height / Math.max(1, startGeometry.height)))
+      );
+      return Math.max(8, Math.min(240, startEl.font_size * areaScale));
+    };
 
     const onMove = (ev: PointerEvent) => {
       /* Once a second touch arrives, the mobile gesture recognizer owns the
@@ -3870,12 +3894,11 @@ function VideoEditor() {
       const dy = p.y - startY;
 
       if (gesture === 'move') {
+        const nx = clampNum(startGeometry.x + dx, -startGeometry.width * 0.75, project.canvas.width - startGeometry.width * 0.25);
+        const ny = clampNum(startGeometry.y + dy, -startGeometry.height * 0.75, project.canvas.height - startGeometry.height * 0.25);
         updateElement(
           el.id,
-          {
-            x: Math.round(clampNum(startEl.x + dx, -startEl.width * 0.75, project.canvas.width - startEl.width * 0.25)),
-            y: Math.round(clampNum(startEl.y + dy, -startEl.height * 0.75, project.canvas.height - startEl.height * 0.25)),
-          },
+          { x: Math.round(nx / Math.max(0.001, startGeometry.scale)), y: Math.round(ny / Math.max(0.001, startGeometry.scale)) },
           'Move overlay',
           `move-${el.id}`
         );
@@ -3888,18 +3911,20 @@ function VideoEditor() {
         /* pointer delta in the element's rotated frame */
         const lx = dx * Math.cos(rad) + dy * Math.sin(rad);
         const ly = -dx * Math.sin(rad) + dy * Math.cos(rad);
-        const nw = Math.max(minSize, startEl.width + sx * lx);
-        const nh = keepAspect ? nw / startAspect : Math.max(minSize, startEl.height + sy * ly);
+        const nw = Math.max(minSize, startGeometry.width + sx * lx);
+        const nh = keepAspect ? nw / startAspect : Math.max(minSize, startGeometry.height + sy * ly);
         /* keep the opposite corner visually fixed */
         const ncx = centerX + (sx * lx) / 2;
         const ncy = centerY + (sy * ly) / 2;
+        const nextFont = scaledTextSize(nw, nh);
         updateElement(
           el.id,
           {
-            width: Math.round(nw),
-            height: Math.round(nh),
-            x: Math.round(ncx - nw / 2),
-            y: Math.round(ncy - nh / 2),
+            width: Math.round(nw / Math.max(0.001, startGeometry.scale)),
+            height: Math.round(nh / Math.max(0.001, startGeometry.scale)),
+            x: Math.round((ncx - nw / 2) / Math.max(0.001, startGeometry.scale)),
+            y: Math.round((ncy - nh / 2) / Math.max(0.001, startGeometry.scale)),
+            ...(nextFont != null ? { font_size: nextFont } : {}),
           },
           'Resize overlay',
           `size-${el.id}`
@@ -3911,22 +3936,29 @@ function VideoEditor() {
         const rad = (startEl.rotation * Math.PI) / 180;
         const lx = dx * Math.cos(rad) + dy * Math.sin(rad);
         const ly = -dx * Math.sin(rad) + dy * Math.cos(rad);
-        let nw = startEl.width;
-        let nh = startEl.height;
+        let nw = startGeometry.width;
+        let nh = startGeometry.height;
         let ncx = centerX;
         let ncy = centerY;
         if (gesture === 'resize-e' || gesture === 'resize-w') {
-          nw = Math.max(minSize, startEl.width + lx);
+          nw = Math.max(minSize, startGeometry.width + lx);
           ncx = centerX + lx / 2;
           if (keepAspect) nh = nw / startAspect;
         } else {
-          nh = Math.max(minSize, startEl.height + ly);
+          nh = Math.max(minSize, startGeometry.height + ly);
           ncy = centerY + ly / 2;
           if (keepAspect) nw = nh * startAspect;
         }
+        const nextFont = scaledTextSize(nw, nh);
         updateElement(
           el.id,
-          { width: Math.round(nw), height: Math.round(nh), x: Math.round(ncx - nw / 2), y: Math.round(ncy - nh / 2) },
+          {
+            width: Math.round(nw / Math.max(0.001, startGeometry.scale)),
+            height: Math.round(nh / Math.max(0.001, startGeometry.scale)),
+            x: Math.round((ncx - nw / 2) / Math.max(0.001, startGeometry.scale)),
+            y: Math.round((ncy - nh / 2) / Math.max(0.001, startGeometry.scale)),
+            ...(nextFont != null ? { font_size: nextFont } : {}),
+          },
           'Resize overlay',
           `size-${el.id}`
         );
@@ -4162,6 +4194,9 @@ function VideoEditor() {
             height: Math.round(height),
             x: Math.round(centerX - width / 2),
             y: Math.round(centerY - height / 2),
+            ...(element.kind === 'text' && element.font_size
+              ? { font_size: Math.max(8, Math.min(240, element.font_size * factor)) }
+              : {}),
           },
           'Pinch resize overlay',
           `pinch-size-${element.id}`,
