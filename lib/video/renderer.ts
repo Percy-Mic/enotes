@@ -993,7 +993,7 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   if (typeof el.letter_spacing === 'number') ctxWithSpacing.letterSpacing = `${el.letter_spacing}px`;
 
   const rawContent = el.content || '';
-  const content = el.text_case === 'uppercase' ? rawContent.toUpperCase() : rawContent.toLowerCase() ? rawContent.toLowerCase() : rawContent;
+  const content = el.text_case === 'uppercase' ? rawContent.toUpperCase() : el.text_case === 'lowercase' ? rawContent.toLowerCase() : el.text_case === 'capitalize' ? rawContent.replace(/\b\w/g, (m) => m.toUpperCase()) : rawContent;
   const lines = content.split('\n');
 
   /* Typography is container-aware: the requested size is the design size,
