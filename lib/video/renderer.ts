@@ -995,7 +995,11 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   }
 
   ctx.font = `${weight} ${requestedFontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
-  ctx.textAlign = (el.align || 'center') as CanvasTextAlign;
+  /* Text is always centered inside its element container. The container, not the
+     measured line width, is the positioning reference, so every line shares
+     the exact same horizontal center and the multi-line block is vertically
+     centered by the line positions below. */
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const ctxWithSpacing = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
   if (typeof el.letter_spacing === 'number') ctxWithSpacing.letterSpacing = `${el.letter_spacing}px`;
