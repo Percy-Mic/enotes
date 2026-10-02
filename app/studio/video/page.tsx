@@ -3740,10 +3740,17 @@ function VideoEditor() {
   const elementVisualGeometry = (el: TimelineElement) => {
     const timeIn = Math.max(0, Math.min(el.end - el.start, playheadRef.current - el.start));
     const v = resolveElementValues(el, timeIn);
+    const width = Math.max(1, el.width * v.scale);
+    const height = Math.max(1, el.height * v.scale);
+    /* drawTextElement/drawImageElement/drawVideoElement scale around the
+       element center. Mirror that exact transform here so handles, hit
+       testing and the visible selection frame stay locked to the pixels. */
     return {
       ...v,
-      width: Math.max(1, el.width * v.scale),
-      height: Math.max(1, el.height * v.scale),
+      x: v.x + el.width / 2 - width / 2,
+      y: v.y + el.height / 2 - height / 2,
+      width,
+      height,
     };
   };
 
@@ -3896,9 +3903,11 @@ function VideoEditor() {
       if (gesture === 'move') {
         const nx = clampNum(startGeometry.x + dx, -startGeometry.width * 0.75, project.canvas.width - startGeometry.width * 0.25);
         const ny = clampNum(startGeometry.y + dy, -startGeometry.height * 0.75, project.canvas.height - startGeometry.height * 0.25);
+        const baseX = nx + startEl.width * startGeometry.scale / 2 - startEl.width / 2;
+        const baseY = ny + startEl.height * startGeometry.scale / 2 - startEl.height / 2;
         updateElement(
           el.id,
-          { x: Math.round(nx / Math.max(0.001, startGeometry.scale)), y: Math.round(ny / Math.max(0.001, startGeometry.scale)) },
+          { x: Math.round(baseX), y: Math.round(baseY) },
           'Move overlay',
           `move-${el.id}`
         );
@@ -3922,8 +3931,8 @@ function VideoEditor() {
           {
             width: Math.round(nw / Math.max(0.001, startGeometry.scale)),
             height: Math.round(nh / Math.max(0.001, startGeometry.scale)),
-            x: Math.round((ncx - nw / 2) / Math.max(0.001, startGeometry.scale)),
-            y: Math.round((ncy - nh / 2) / Math.max(0.001, startGeometry.scale)),
+            x: Math.round(ncx - (nw / Math.max(0.001, startGeometry.scale)) / 2),
+            y: Math.round(ncy - (nh / Math.max(0.001, startGeometry.scale)) / 2),
             ...(nextFont != null ? { font_size: nextFont } : {}),
           },
           'Resize overlay',
