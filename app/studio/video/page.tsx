@@ -216,7 +216,7 @@ function FilterPreviewCard({
   useEffect(() => {
     const clip = project.clips.find((item) => item.id === clipId);
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
-    const base = clip ? Math.max(0, Math.min(Math.max(0.05, duration - 0.05), playhead)) : 0;
+    const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
     void renderAt(base);
     if (!active) return;
     const started = performance.now();
@@ -268,7 +268,7 @@ function EffectPreviewCard({
   useEffect(() => {
     const clip = project.clips.find((item) => item.id === clipId);
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
-    const base = clip ? Math.max(0, Math.min(Math.max(0.05, duration - 0.05), playhead)) : 0;
+    const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
     void renderAt(base);
     if (!active) return;
     const started = performance.now();
@@ -302,19 +302,19 @@ function TransitionPreviewCard({ project, clipId, transition, duration, active, 
   duration: number; active: boolean; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rendererRef = useRef<VideoRenderer | null>(null);
+  const { render } = useLatestPreviewRenderer();
   const timerRef = useRef<number | null>(null);
   const index = project.clips.findIndex((clip) => clip.id === clipId);
   const cut = index > 0 ? project.clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0) : 0;
   const renderAt = useCallback(async (phase: number) => {
     const canvas = canvasRef.current;
     if (!canvas || index < 0) return;
-    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
     const safeDuration = Math.max(0.2, Math.min(duration, project.clips[index]?.transitionIn?.duration || duration));
     const t = index > 0 ? cut - safeDuration * 0.55 + phase * safeDuration * 1.1 : phase * safeDuration;
     const previewProject: VideoProject = { ...project, clips: project.clips.map((clip) => clip.id === clipId ? { ...clip, transitionIn: { type: transition, duration: safeDuration } } : clip) };
-    try { await rendererRef.current.drawFrame(canvas, previewProject, Math.max(0, Math.min(projectDuration(previewProject) - 0.01, t)), { previewing: true, playing: false }); } catch {}
-  }, [project, clipId, transition, duration, index, cut]);
+    const previewTime = Math.max(0, Math.min(projectDuration(previewProject) - 0.01, t));
+    await render(canvas, previewProject, previewTime);
+  }, [project, clipId, transition, duration, index, cut, render]);
   useEffect(() => {
     void renderAt(0.5);
     if (!active) return;
@@ -343,7 +343,6 @@ function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
     const canvas = canvasRef.current;
     const source = project.clips.find((clip) => clip.id === clipId);
     if (!canvas || !source) return;
-    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
     const u = phase;
     const transform = { ...source.transform };
     if (preset === 'zoom-in') transform.scale = source.transform.scale * (1 + 0.35 * u);
@@ -383,7 +382,6 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, onAppl
   const renderAt = useCallback(async (t: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
     const previewProject: VideoProject = {
       ...project,
       clips: project.clips.map((clip) => clip.id === clipId
