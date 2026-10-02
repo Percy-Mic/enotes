@@ -4,7 +4,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, ArrowRight, ArrowUpDown, ArrowLeftRight, Bot, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
+  ArrowLeft, ArrowRight, Bot, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
   Image as ImageIcon, Layers, Loader2, Lock, Mic, MicOff, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw,
   Scissors, Search, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Trash2, Type, Undo2, Move,
   Upload, Users, VolumeX, Volume2, X, Save, Share2, Maximize2, Minimize2,
@@ -5502,7 +5502,7 @@ function VideoEditor() {
                   }}
                 >
                   <span
-                    className="pointer-events-auto absolute left-0 top-0 z-40 h-10 w-10 -translate-x-[calc(100%+8px)] -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    className="pointer-events-auto absolute left-0 top-0 z-40 h-10 w-10 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'rotate', e)}
                     aria-label="Rotate video"
                     role="button"
@@ -5510,7 +5510,7 @@ function VideoEditor() {
                     <span className="sr-only">Rotate</span>
                   </span>
                   <span
-                    className="pointer-events-auto absolute left-1/2 top-0 z-40 h-10 w-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    className="pointer-events-auto absolute left-1/2 top-0 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-n', e)}
                     aria-label="Resize video vertically"
                     role="button"
@@ -5518,7 +5518,7 @@ function VideoEditor() {
                     <span className="sr-only">Resize vertically</span>
                   </span>
                   <span
-                    className="pointer-events-auto absolute right-0 top-1/2 z-40 h-10 w-10 translate-x-[calc(100%+8px)] -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    className="pointer-events-auto absolute right-0 top-1/2 z-40 h-10 w-10 -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-e', e)}
                     aria-label="Resize video horizontally"
                     role="button"
@@ -5526,7 +5526,7 @@ function VideoEditor() {
                     <span className="sr-only">Resize horizontally</span>
                   </span>
                   <span
-                    className="pointer-events-auto absolute bottom-0 left-1/2 z-40 h-10 w-10 -translate-x-1/2 translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    className="pointer-events-auto absolute bottom-0 left-1/2 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-uniform', e)}
                     aria-label="Resize video"
                     role="button"
@@ -5554,7 +5554,7 @@ function VideoEditor() {
                     }}
                   >
                     <span
-                      className="pointer-events-auto absolute left-0 top-0 z-40 h-10 w-10 -translate-x-[calc(100%+8px)] -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                      className="pointer-events-auto absolute left-0 top-0 z-40 h-10 w-10 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
                       aria-label="Rotate element"
                       role="button"
@@ -5562,7 +5562,7 @@ function VideoEditor() {
                       <span className="sr-only">Rotate</span>
                     </span>
                     <span
-                      className="pointer-events-auto absolute left-1/2 top-0 z-40 h-10 w-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                      className="pointer-events-auto absolute left-1/2 top-0 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-n', e)}
                       aria-label="Resize element vertically"
                       role="button"
@@ -5570,7 +5570,7 @@ function VideoEditor() {
                       <span className="sr-only">Resize vertically</span>
                     </span>
                     <span
-                      className="pointer-events-auto absolute right-0 top-1/2 z-40 h-10 w-10 translate-x-[calc(100%+8px)] -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                      className="pointer-events-auto absolute right-0 top-1/2 z-40 h-10 w-10 -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-e', e)}
                       aria-label="Resize element horizontally"
                       role="button"
@@ -5578,7 +5578,7 @@ function VideoEditor() {
                       <span className="sr-only">Resize horizontally</span>
                     </span>
                     <span
-                      className="pointer-events-auto absolute bottom-0 left-1/2 z-40 h-10 w-10 -translate-x-1/2 translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                      className="pointer-events-auto absolute bottom-0 left-1/2 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-uniform', e)}
                       aria-label="Resize element"
                       role="button"
