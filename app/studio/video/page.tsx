@@ -7818,6 +7818,91 @@ function VideoEditor() {
 
 /* ---------- small helpers used above ---------- */
 
+function MobileColorField({ label, value, onChange }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const safe = /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#FFFFFF';
+  const presets = ['#FFFFFF','#000000','#FFB6C1','#E5798F','#1E90FF','#FFD166','#06D6A0','#EF476F','#7C3AED','#22D3EE','#F97316','#A3E635'];
+
+  return (
+    <div className="relative">
+      <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.08em] text-white/35">{label}</span>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={`Choose ${label.toLowerCase()}`}
+        className="flex h-11 w-full items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-2.5 text-left transition hover:border-white/20 active:scale-[.99]"
+      >
+        <span className="h-7 w-7 shrink-0 rounded-lg border border-white/20 shadow-inner" style={{ background: safe }} />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[9px] font-medium text-white/35">{label}</span>
+          <span className="block truncate font-mono text-[10px] font-semibold uppercase text-white/75">{safe}</span>
+        </span>
+        <span className="rounded-md bg-white/[0.06] px-1.5 py-1 text-[8px] font-bold text-white/40">EDIT</span>
+      </button>
+
+      {open && (
+        <div className="absolute inset-x-0 top-full z-[80] mt-2 rounded-2xl border border-white/10 bg-[#171717] p-3 shadow-2xl shadow-black/50">
+          <div className="flex items-center gap-2">
+            <label className="relative h-12 w-12 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-white/15">
+              <span className="absolute inset-0" style={{ background: safe }} />
+              <input
+                type="color"
+                value={safe}
+                onChange={(e) => onChange(e.target.value.toUpperCase())}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                aria-label={`${label} color picker`}
+              />
+            </label>
+            <div className="min-w-0 flex-1">
+              <span className="mb-1 block text-[8px] font-semibold uppercase tracking-[.12em] text-white/35">HEX</span>
+              <input
+                value={safe}
+                maxLength={7}
+                spellCheck={false}
+                onChange={(e) => {
+                  const next = e.target.value.startsWith('#') ? e.target.value : `#${e.target.value}`;
+                  if (/^#[0-9a-fA-F]{0,6}$/.test(next)) onChange(next.toUpperCase());
+                }}
+                onBlur={() => {
+                  if (!/^#[0-9a-fA-F]{6}$/.test(value || '')) onChange(safe);
+                }}
+                className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 font-mono text-[11px] font-semibold uppercase text-white outline-none focus:border-[#E5798F]"
+                aria-label={`${label} hex value`}
+              />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[8px] font-semibold uppercase tracking-[.12em] text-white/35">Quick colors</span>
+              <button type="button" onClick={() => setOpen(false)} className="text-[9px] font-semibold text-white/40 hover:text-white">Done</button>
+            </div>
+            <div className="grid grid-cols-6 gap-2">
+              {presets.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => onChange(color)}
+                  aria-label={`Use ${color}`}
+                  aria-pressed={safe === color}
+                  className={`h-8 rounded-lg border transition active:scale-95 ${safe === color ? 'border-white ring-2 ring-[#E5798F]/70 ring-offset-1 ring-offset-[#171717]' : 'border-white/10'}`}
+                  style={{ background: color }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
 function Slider({ label, min, max, step = 1, value, onChange }: {
   label: string; min: number; max: number; step?: number; value: number; onChange: (v: number) => void;
 }) {
@@ -8513,28 +8598,10 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { label: 'Fill', value: el.color || '#FFFFFF', patch: 'color' as const, action: 'Text color' },
-                    { label: 'Stroke', value: el.stroke_color || '#000000', patch: 'stroke_color' as const, action: 'Text stroke' },
-                    { label: 'Background', value: el.background || '#000000', patch: 'background' as const, action: 'Text background' },
-                  ].map((item) => (
-                    <label key={item.label} className="group block cursor-pointer">
-                      <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.08em] text-white/35">{item.label}</span>
-                      <div className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-2 transition group-hover:border-white/20">
-                        <span className="relative h-5 w-5 shrink-0 overflow-hidden rounded-md border border-white/20 shadow-inner" style={{ background: item.value }}>
-                          <input
-                            type="color"
-                            value={item.value}
-                            onChange={(e) => onChange({ [item.patch]: e.target.value } as Partial<TimelineElement>, item.action)}
-                            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-                            aria-label={item.label}
-                          />
-                        </span>
-                        <span className="truncate font-mono text-[8px] uppercase text-white/45">{item.value}</span>
-                      </div>
-                    </label>
-                  ))}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <MobileColorField label="Fill" value={el.color || '#FFFFFF'} onChange={(v) => onChange({ color: v }, 'Text color')} />
+                  <MobileColorField label="Stroke" value={el.stroke_color || '#000000'} onChange={(v) => onChange({ stroke_color: v }, 'Text stroke')} />
+                  <MobileColorField label="Background" value={el.background || '#000000'} onChange={(v) => onChange({ background: v }, 'Text background')} />
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
