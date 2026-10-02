@@ -871,7 +871,8 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
 
   // Professional text motion: legacy animation remains the fallback,
   // while new projects can control entrance, exit and looping motion independently.
-  // Keep the renderer tolerant of legacy animation ids stored in older projects.\n  const entryAnimation = String(el.animation_in ?? el.animation ?? 'none');
+  // Keep the renderer tolerant of legacy animation ids stored in older projects.
+  const entryAnimation = String(el.animation_in ?? el.animation ?? 'none');
   const exitAnimation = el.animation_out ?? 'none';
   const loopAnimation = el.animation_loop ?? 'none';
   let progress = 1;
