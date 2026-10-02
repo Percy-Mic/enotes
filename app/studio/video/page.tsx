@@ -3844,8 +3844,10 @@ function VideoEditor() {
       invisible touch target is intentionally large enough for a fingertip. */
   const handleTolerance = () => {
     const canvas = canvasRef.current;
-    if (!canvas || previewScale <= 0) return 56;
-    return Math.max(HANDLE_PX, 56 / previewScale);
+    if (!canvas || previewScale <= 0) return 24;
+    /* Keep transform zones deliberately close to the selection boundary.
+       The interior of an element must remain a reliable move surface. */
+    return Math.max(18, 28 / previewScale);
   };
 
   /* Active touch pointers on the preview. A second finger switches the
@@ -5505,7 +5507,9 @@ function VideoEditor() {
                 style={{ width: previewSize?.width, height: previewSize?.height, maxWidth: '100%', maxHeight: '100%', touchAction: 'none' }}
                 aria-label="Video preview — tap the video or an overlay to select, drag to move, corner to resize, edge to stretch, top handle to rotate"
               />
-              {/* Reference-style transform controls for the MAIN clip. */}
+              {/* Selection frame only. Transform hit-testing is handled by the
+                  canvas itself so the invisible controllers can never cover the
+                  element's move surface. */}
               {clipFrame && previewScale > 0 && selectedClip && (
                 <div
                   className="pointer-events-none absolute"
@@ -5518,50 +5522,11 @@ function VideoEditor() {
                     outline: '2px solid rgba(34,211,238,0.95)',
                     outlineOffset: 0,
                   }}
-                >
-                  <button
-                    type="button"
-                    className="pointer-events-auto absolute left-0 top-0 z-40 flex h-11 w-11 touch-none items-center justify-center rounded-full opacity-0"
-                    onPointerDown={(e) => beginClipGesture(selectedClip, 'rotate', e)}
-                    aria-label="Rotate video"
-                    title="Rotate"
-                  >
-                    <span className="sr-only">Rotate</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pointer-events-auto absolute left-1/2 top-0 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full opacity-0"
-                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-n', e)}
-                    aria-label="Stretch video vertically"
-                    title="Stretch vertically"
-                  >
-                    <span className="sr-only">Stretch vertically</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pointer-events-auto absolute right-0 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 touch-none items-center justify-center rounded-full opacity-0"
-                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-e', e)}
-                    aria-label="Stretch video horizontally"
-                    title="Stretch horizontally"
-                  >
-                    <span className="sr-only">Stretch horizontally</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="pointer-events-auto absolute bottom-0 left-1/2 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full opacity-0"
-                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-uniform', e)}
-                    aria-label="Resize video proportionally"
-                    title="Resize proportionally"
-                  >
-                    <span className="sr-only">Resize proportionally</span>
-                  </button>
-                  
-                </div>
-              )}
+                />
+              )
 
-              {/* Invisible canvas controllers for text, images, stickers and other overlays.
-                 The selection frame remains visible; the transform hit areas stay large and touchable
-                 without permanently covering the artwork with buttons. */}
+              {/* Selection frame only. The canvas owns the invisible transform hit
+                  zones; there are no transparent buttons sitting over the artwork. */}
               {selectedElement && previewScale > 0 && !cropMode && (() => {
                 const g = elementVisualGeometry(selectedElement);
                 return (
@@ -5576,37 +5541,7 @@ function VideoEditor() {
                       outline: '2px solid rgba(229,121,143,0.98)',
                       outlineOffset: 0,
                     }}
-                  >
-                    {/* Invisible controls stay inside the selected container. */}
-                    <button
-                      type="button"
-                      className="pointer-events-auto absolute left-0 top-0 z-40 h-1/2 w-1/3 touch-none bg-transparent opacity-0"
-                      onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
-                      aria-label="Rotate element"
-                      title="Rotate"
-                    />
-                    <button
-                      type="button"
-                      className="pointer-events-auto absolute left-1/3 top-0 z-40 h-1/3 w-1/3 touch-none bg-transparent opacity-0"
-                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-n', e)}
-                      aria-label="Stretch element vertically"
-                      title="Stretch vertically"
-                    />
-                    <button
-                      type="button"
-                      className="pointer-events-auto absolute right-0 top-1/3 z-40 h-1/3 w-1/3 touch-none bg-transparent opacity-0"
-                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-e', e)}
-                      aria-label="Stretch element horizontally"
-                      title="Stretch horizontally"
-                    />
-                    <button
-                      type="button"
-                      className="pointer-events-auto absolute bottom-0 left-1/3 z-40 h-1/2 w-1/3 touch-none bg-transparent opacity-0"
-                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-uniform', e)}
-                      aria-label="Resize element proportionally"
-                      title="Resize proportionally"
-                    />
-                  </div>
+                  />
                 );
               })()}
 
