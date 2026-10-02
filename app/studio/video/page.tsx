@@ -6207,7 +6207,10 @@ function VideoEditor() {
               <div className="mt-1.5 flex items-center gap-1.5 overflow-x-auto border-t border-white/10 bg-[#101010]/96 px-1.5 py-1.5 backdrop-blur-xl md:hidden" aria-label="Selected item actions">
                 {selectedClip && (
                   <>
-                    <button onClick={() => openTool('motion')} className={EDITOR_ACTION_PILL} aria-label="Frame tools"><Sparkles className="h-4 w-4" />Frame</button>
+                    <button onClick={() => openTool('overlays')} className={EDITOR_ACTION_PILL} aria-label="Add overlay"><Plus className="h-4 w-4" />Add overlay</button>
+
+                    <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Splice and blend"><Layers className="h-4 w-4" />Splice</button>
+                    <button onClick={() => openTool('motion')} className={EDITOR_ACTION_PILL} aria-label="Animations"><Sparkles className="h-4 w-4" />Animations</button>
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Effects"><Sparkles className="h-4 w-4" />Effects</button>
                     <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
@@ -6325,8 +6328,9 @@ function VideoEditor() {
             className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] md:hidden"
           />
           <section
-            className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[58dvh] max-h-[calc(100dvh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:right-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
-            aria-label={`${TOOL_LABELS[tool]} tools`}
+            className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:left-auto md:right-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
+            style={{ contain: 'layout paint' }}
+            aria-label={TOOL_LABELS[tool] + ' tools'}
           >
             <div className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 px-3">
               <div className="h-1 w-10 rounded-full bg-white/20 md:hidden" aria-hidden="true" />
@@ -7710,7 +7714,7 @@ function VideoEditor() {
                         (!q || (fx.name + ' ' + fx.hint + ' ' + fx.category).toLowerCase().includes(q))
                       );
                       return (
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        <div className="grid grid-cols-3 gap-1.5 min-[420px]:grid-cols-4 sm:grid-cols-3">
                           {filtered.map((fx) => (
                             <EffectPreviewCard
                               key={fx.id}
