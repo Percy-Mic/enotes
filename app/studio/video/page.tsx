@@ -5314,14 +5314,14 @@ function VideoEditor() {
                   ]).map((c, i) => (
                     <span
                       key={i}
-                      className={`absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow ${c.cls}`}
+                      className={`absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)] ${c.cls}`}
                     />
                   ))}
-                  <span className="absolute left-1/2 top-0 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
-                  <span className="absolute bottom-0 left-1/2 h-3.5 w-3.5 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
-                  <span className="absolute left-0 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
-                  <span className="absolute right-0 top-1/2 h-3.5 w-3.5 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow" />
-                  <span className="absolute left-1/2 top-0 flex h-9 w-9 sm:h-7 sm:w-7 -translate-x-1/2 -translate-y-[34px] items-center justify-center rounded-full border-2 border-white bg-[#E5798F] shadow">
+                  <span className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
+                  <span className="absolute bottom-0 left-1/2 h-2.5 w-2.5 -translate-x-1/2 translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
+                  <span className="absolute left-0 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
+                  <span className="absolute right-0 top-1/2 h-2.5 w-2.5 translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
+                  <span className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[30px] items-center justify-center rounded-full border border-white bg-[#E5798F] shadow-[0_2px_7px_rgba(0,0,0,.55)]">
                     <RotateCw className="h-3.5 w-3.5 text-white" />
                   </span>
                 </div>
@@ -5353,8 +5353,10 @@ function VideoEditor() {
               )}
 
               {selectedElement && !cropMode && (
-                <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-bold text-white/90">
-                  Text: drag · corner/edge resize · top rotate
+                <span className="pointer-events-none absolute left-2 top-2 max-w-[calc(100%-1rem)] rounded-full border border-white/10 bg-black/65 px-2.5 py-1 text-[9px] font-semibold text-white/75 shadow-lg backdrop-blur">
+                  {selectedElement.kind === 'text'
+                    ? 'Drag to move · corners resize · top handle rotates'
+                    : 'Drag to move · corners resize · top handle rotates'}
                 </span>
               )}
 
