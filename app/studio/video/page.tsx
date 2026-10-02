@@ -5541,9 +5541,9 @@ function VideoEditor() {
                 </div>
               )}
 
-              {/* Invisible canvas controllers for text, images, stickers and other overlays.
+              {{/* Invisible canvas controllers for text, images, stickers and other overlays.
                  The selection frame remains visible; the transform hit areas stay large and touchable
-                 without permanently covering the artwork with buttons. */
+                 without permanently covering the artwork with buttons. */}
               {selectedElement && previewScale > 0 && !cropMode && (() => {
                 const g = elementVisualGeometry(selectedElement);
                 return (
