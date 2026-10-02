@@ -19,10 +19,10 @@ import SharePostPicker from '@/components/community/SharePostPicker';
 import VideoAIStudio, { type VideoAIEditAction } from '@/components/studio/VideoAIStudio';
 import { AUDIO_EFFECT_PRESETS, audioEffectName, connectAudioEffects } from '@/lib/video/audio-effects';
 import {
-  CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS,
+  CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS, TEXT_ANIMATION_PRESETS, TEXT_LOOP_PRESETS,
   addTimelineTrack, clipDuration, clipIndexAtTime, coverFit, croppedAspect, emptyProject, isPlaceholder, makeVideoId, moveElementToTrack, normalizeProject,
   placeholderSrc, projectDuration, removeKeyframe, removeTimelineTrack, resolveClipAdjustments, resolveClipValues, resolveElementValues, resolveTime, sanitizeCrop, upsertClipKeyframe, upsertKeyframe,
-  type AspectRatio, type AudioEffect, type AudioEffectType, type AudioTrack, type CropRect, type KeyframeProperty, type MaskShape, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject,
+  type AspectRatio, type AudioEffect, type AudioEffectType, type AudioTrack, type CropRect, type KeyframeProperty, type MaskShape, type TimelineElement, type TimelineMarker, type VideoClip, type VideoProject, type TextAnimationType, type TextLoopAnimationType,
 } from '@/lib/video/project';
 import {
   EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
@@ -8241,6 +8241,58 @@ function LibraryPicker({ meId, onPick }: {
   );
 }
 
+function TextMotionPreview({ animation, label, active, onClick }: {
+  animation: TextAnimationType;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const [phase, setPhase] = useState(0);
+  useEffect(() => {
+    let frame = 0;
+    const started = performance.now();
+    const tick = (now: number) => {
+      setPhase(((now - started) / 900) % 1);
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  const p = phase;
+  const ease = 1 - Math.pow(1 - p, 3);
+  let transform = 'translate3d(0,0,0) scale(1) rotate(0deg)';
+  let opacity = 1;
+  if (animation === 'fade') opacity = ease;
+  if (animation === 'pop') transform = `scale(${0.72 + ease * 0.28})`;
+  if (animation === 'zoom-in') transform = `scale(${0.55 + ease * 0.45})`;
+  if (animation === 'zoom-out') transform = `scale(${1.25 - ease * 0.25})`;
+  if (animation === 'slide-up') transform = `translateY(${(1-ease)*14}px)`;
+  if (animation === 'slide-down') transform = `translateY(${-(1-ease)*14}px)`;
+  if (animation === 'slide-left') transform = `translateX(${(1-ease)*18}px)`;
+  if (animation === 'slide-right') transform = `translateX(${-(1-ease)*18}px)`;
+  if (animation === 'bounce') transform = `translateY(${Math.sin(p*Math.PI*2.2)*(1-p)*5}px) scale(${0.78+ease*0.22})`;
+  if (animation === 'rotate-in') transform = `rotate(${(1-ease)*-12}deg) scale(${0.8+ease*0.2})`;
+  if (animation === 'elastic') transform = `scale(${Math.max(.05, ease + Math.sin(p*Math.PI*3)*(1-p)*.12)})`;
+  if (animation === 'glitch-in') transform = `translate(${Math.sin(p*60)*(1-p)*3}px,${Math.cos(p*45)*(1-p)*2}px)`;
+  if (animation === 'blur-in') { opacity = ease; }
+  if (animation === 'typewriter' || animation === 'typewriter-reveal') opacity = p > .12 ? 1 : 0.35;
+  if (animation === 'split-reveal' || animation === 'mask-wipe') opacity = ease;
+  return (
+    <button type="button" onClick={onClick}
+      className={`relative overflow-hidden rounded-xl border p-2 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/15 shadow-[0_0_0_1px_rgba(229,121,143,.2)]' : 'border-white/10 bg-white/[0.035] hover:border-white/25'}`}
+      aria-pressed={active}>
+      <div className="flex h-12 items-center justify-center overflow-hidden rounded-lg bg-black/35">
+        <span className="max-w-full truncate px-1 text-[11px] font-black text-white transition-none"
+          style={{ opacity, transform, filter: animation === 'blur-in' ? `blur(${(1-ease)*5}px)` : undefined }}>
+          Aa
+        </span>
+      </div>
+      <span className="mt-1 block truncate text-[9px] font-semibold text-white/70">{label}</span>
+    </button>
+  );
+}
+
 function ElementInspector({ el, duration, playhead, updateElement, onChange, onDuplicate, onDelete, onCrop }: {
   el: TimelineElement;
   duration: number;
@@ -8426,12 +8478,78 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                 </button>
               </div>
             </div>
-            <label className="space-y-1">
-              <span className="text-white/60">Animation</span>
-              <select value={el.animation || 'none'} onChange={(e) => onChange({ animation: e.target.value as TimelineElement['animation'] }, 'Text animation')} className="w-full rounded bg-white/10 px-2 py-1.5" aria-label="Text animation">
-                {['none', 'fade', 'pop', 'slide-up', 'slide-down', 'slide-left', 'slide-right', 'zoom-in', 'zoom-out', 'bounce', 'typewriter', 'shake', 'blur-in', 'blur-up', 'blur-down', 'fade-up', 'fade-down', 'rotate-in', 'elastic', 'elastic-in', 'elastic-out', 'flip-in', 'flip-out', 'glitch-in', 'glitch-out', 'wave', 'tracking', 'mask-wipe', 'split-reveal', 'typewriter-reveal'].map((a) => <option key={a} value={a} className="text-black">{a}</option>)}
-              </select>
-            </label>
+            <div className="space-y-2 rounded-xl border border-white/10 bg-black/15 p-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold text-white/80">Text motion</span>
+                  <p className="text-[9px] text-white/35">Separate in, out and looping motion.</p>
+                </div>
+                <Sparkles className="h-3.5 w-3.5 text-[#E5798F]" />
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-white/35">Entrance · tap to preview/apply</p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {TEXT_ANIMATION_PRESETS.map((preset) => (
+                    <TextMotionPreview
+                      key={preset.id}
+                      animation={preset.id}
+                      label={preset.name}
+                      active={(el.animation_in ?? el.animation ?? 'none') === preset.id}
+                      onClick={() => onChange({ animation_in: preset.id, animation: preset.id }, 'Text entrance')}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <label className="space-y-1">
+                  <span className="text-[9px] text-white/55">Entrance duration</span>
+                  <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_in_duration ?? 0.55}
+                    onChange={(e) => onChange({ animation_in_duration: Number(e.target.value) }, 'Text entrance duration', `tin-${el.id}`)} className="w-full accent-[#E5798F]" />
+                  <span className="block text-[8px] text-white/30">{(el.animation_in_duration ?? 0.55).toFixed(2)}s</span>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[9px] text-white/55">Exit duration</span>
+                  <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_out_duration ?? 0.35}
+                    onChange={(e) => onChange({ animation_out_duration: Number(e.target.value) }, 'Text exit duration', `tout-${el.id}`)} className="w-full accent-[#E5798F]" />
+                  <span className="block text-[8px] text-white/30">{(el.animation_out_duration ?? 0.35).toFixed(2)}s</span>
+                </label>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-white/35">Exit</p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {TEXT_ANIMATION_PRESETS.filter((p) => ['none','fade','pop','slide-up','slide-down','slide-left','slide-right','zoom-in','zoom-out','blur-in','rotate-in','flip-in','glitch-in'].includes(p.id)).map((preset) => (
+                    <button key={preset.id} type="button"
+                      onClick={() => onChange({ animation_out: preset.id }, 'Text exit animation')}
+                      className={`rounded-lg border px-2 py-1.5 text-[9px] font-semibold ${(el.animation_out ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}>
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-[9px] font-semibold uppercase tracking-wide text-white/35">Loop</p>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {TEXT_LOOP_PRESETS.map((preset) => (
+                    <button key={preset.id} type="button"
+                      onClick={() => onChange({ animation_loop: preset.id }, 'Text loop animation')}
+                      className={`rounded-lg border px-2 py-1.5 text-[9px] font-semibold ${(el.animation_loop ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}>
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+                {(el.animation_loop && el.animation_loop !== 'none') && (
+                  <label className="mt-2 block text-[9px] text-white/55">
+                    Loop amount
+                    <input type="range" min="0" max="2" step="0.05" value={el.animation_loop_amount ?? 1}
+                      onChange={(e) => onChange({ animation_loop_amount: Number(e.target.value) }, 'Text loop amount', `tloop-${el.id}`)} className="mt-1 w-full accent-[#E5798F]" />
+                  </label>
+                )}
+              </div>
+            </div>
           </div>
         </>
       )}
