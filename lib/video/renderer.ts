@@ -869,75 +869,120 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   ctx.save();
   ctx.globalAlpha = v.opacity;
 
-  // entry + exit animation
+  // Professional text motion: legacy animation remains the fallback,
+  // while new projects can control entrance, exit and looping motion independently.
+  const entryAnimation = el.animation_in ?? el.animation ?? 'none';
+  const exitAnimation = el.animation_out ?? 'none';
+  const loopAnimation = el.animation_loop ?? 'none';
   let progress = 1;
   let exitProgress = 1;
-  if (el.animation && el.animation !== 'none') {
-    const ANIM = 0.55; // seconds
+  if (entryAnimation && entryAnimation !== 'none') {
+    const ANIM = Math.max(0.08, Math.min(2.5, el.animation_in_duration ?? 0.55));
     progress = Math.min(1, timeIn / ANIM);
-    if (el.animation === 'fade') ctx.globalAlpha = v.opacity * progress;
-    if (el.animation === 'pop') ctx.scale(0.8 + 0.2 * easeOut(progress), 0.8 + 0.2 * easeOut(progress));
-    if (el.animation === 'slide-up') ctx.translate(0, (1 - easeOut(progress)) * 40);
-    if (el.animation === 'slide-down') ctx.translate(0, -(1 - easeOut(progress)) * 40);
-    if (el.animation === 'slide-left') ctx.translate((1 - easeOut(progress)) * 60, 0);
-    if (el.animation === 'slide-right') ctx.translate(-(1 - easeOut(progress)) * 60, 0);
-    if (el.animation === 'zoom-in') ctx.scale(1 + (1 - easeOut(progress)) * 0.45, 1 + (1 - easeOut(progress)) * 0.45);
-    if (el.animation === 'zoom-out') ctx.scale(1 - (1 - easeOut(progress)) * 0.3, 1 - (1 - easeOut(progress)) * 0.3);
-    if (el.animation === 'bounce') {
+    if (entryAnimation === 'fade') ctx.globalAlpha = v.opacity * progress;
+    if (entryAnimation === 'pop') ctx.scale(0.8 + 0.2 * easeOut(progress), 0.8 + 0.2 * easeOut(progress));
+    if (entryAnimation === 'slide-up') ctx.translate(0, (1 - easeOut(progress)) * 40);
+    if (entryAnimation === 'slide-down') ctx.translate(0, -(1 - easeOut(progress)) * 40);
+    if (entryAnimation === 'slide-left') ctx.translate((1 - easeOut(progress)) * 60, 0);
+    if (entryAnimation === 'slide-right') ctx.translate(-(1 - easeOut(progress)) * 60, 0);
+    if (entryAnimation === 'zoom-in') ctx.scale(1 + (1 - easeOut(progress)) * 0.45, 1 + (1 - easeOut(progress)) * 0.45);
+    if (entryAnimation === 'zoom-out') ctx.scale(1 - (1 - easeOut(progress)) * 0.3, 1 - (1 - easeOut(progress)) * 0.3);
+    if (entryAnimation === 'bounce') {
       /* Damped spring: overshoots then settles — no double-draw tricks. */
       const overshoot = 1 + Math.sin(progress * Math.PI * 2.2) * (1 - progress) * 0.35;
       ctx.scale(0.6 + 0.4 * easeOut(progress) * overshoot, 0.6 + 0.4 * easeOut(progress) * overshoot);
     }
-    if (el.animation === 'blur-in') {
+    if (entryAnimation === 'blur-in') {
       ctx.globalAlpha = v.opacity * progress;
       /* Blur comes from the ctx filter stack; amount decays. */
       ctx.filter = `blur(${((1 - progress) * 8).toFixed(2)}px)`;
     }
-    if (el.animation === 'rotate-in') {
+    if (entryAnimation === 'rotate-in') {
       ctx.globalAlpha = v.opacity * progress;
       ctx.rotate((1 - easeOut(progress)) * -0.35);
       ctx.scale(0.7 + 0.3 * easeOut(progress), 0.7 + 0.3 * easeOut(progress));
     }
-    if (el.animation === 'elastic') {
+    if (entryAnimation === 'elastic') {
       /* Under-damped spring on scale — the kinetic-typography staple. */
       const k = 1 - Math.pow(1 - progress, 2);
       const spring = 1 + Math.sin(progress * Math.PI * 3) * (1 - progress) * 0.28;
       ctx.scale(k * spring || 0.001, k * spring || 0.001);
       ctx.globalAlpha = v.opacity * Math.min(1, progress * 2.5);
     }
-    if (el.animation === 'fade-up' || el.animation === 'blur-up') ctx.translate(0, (1 - easeOut(progress)) * 55);
-    if (el.animation === 'fade-down' || el.animation === 'blur-down') ctx.translate(0, -(1 - easeOut(progress)) * 55);
-    if (el.animation === 'elastic-in' || el.animation === 'elastic-out') {
+    if (entryAnimation === 'fade-up' || entryAnimation === 'blur-up') ctx.translate(0, (1 - easeOut(progress)) * 55);
+    if (entryAnimation === 'fade-down' || entryAnimation === 'blur-down') ctx.translate(0, -(1 - easeOut(progress)) * 55);
+    if (entryAnimation === 'elastic-in' || entryAnimation === 'elastic-out') {
       const spring = 1 + Math.sin(progress * Math.PI * 2.6) * (1 - progress) * 0.3;
-      const s = (el.animation === 'elastic-in' ? easeOut(progress) : 1 - (1 - easeOut(progress)) * 0.15) * spring;
+      const s = (entryAnimation === 'elastic-in' ? easeOut(progress) : 1 - (1 - easeOut(progress)) * 0.15) * spring;
       ctx.scale(Math.max(0.001, s), Math.max(0.001, s));
     }
-    if (el.animation === 'glitch-in' || el.animation === 'glitch-out') {
+    if (entryAnimation === 'glitch-in' || entryAnimation === 'glitch-out') {
       const jitter = (1 - progress) * 18;
       ctx.translate(Math.sin(timeIn * 60) * jitter, Math.cos(timeIn * 47) * jitter * 0.4);
       ctx.globalAlpha = v.opacity * Math.min(1, progress * 2);
     }
-    if (el.animation === 'flip-in' || el.animation === 'flip-out') {
-      const flip = el.animation === 'flip-in' ? (1 - progress) * Math.PI * 0.5 : progress * Math.PI * 0.15;
+    if (entryAnimation === 'flip-in' || entryAnimation === 'flip-out') {
+      const flip = entryAnimation === 'flip-in' ? (1 - progress) * Math.PI * 0.5 : progress * Math.PI * 0.15;
       ctx.rotate(flip);
       ctx.scale(Math.max(0.001, Math.cos(flip)), 1);
     }
-    if (el.animation === 'wave') {
+    if (entryAnimation === 'wave') {
       ctx.translate(0, Math.sin(timeIn * 8) * 7);
       ctx.rotate(Math.sin(timeIn * 7) * 0.025);
     }
   }
-  /* Exit fade across the last 0.35s so text never hard-pops off. */
+  /* Independent exit animation. */
   {
-    const EXIT = 0.35;
+    const EXIT = Math.max(0.08, Math.min(2.5, el.animation_out_duration ?? 0.35));
     const remaining = (el.end ?? Infinity) - el.start - timeIn;
     exitProgress = Math.max(0, Math.min(1, remaining / EXIT));
-    if (exitProgress < 1) ctx.globalAlpha *= exitProgress;
+    if (exitProgress < 1) {
+      const q = easeOut(exitProgress);
+      if (exitAnimation === 'fade') ctx.globalAlpha *= exitProgress;
+      if (exitAnimation === 'pop' || exitAnimation === 'zoom-in') ctx.scale(Math.max(0.001, q), Math.max(0.001, q));
+      if (exitAnimation === 'zoom-out') ctx.scale(1 + (1 - q) * 0.25, 1 + (1 - q) * 0.25);
+      if (exitAnimation === 'slide-up') ctx.translate(0, -(1 - q) * 55);
+      if (exitAnimation === 'slide-down') ctx.translate(0, (1 - q) * 55);
+      if (exitAnimation === 'slide-left') ctx.translate(-(1 - q) * 65, 0);
+      if (exitAnimation === 'slide-right') ctx.translate((1 - q) * 65, 0);
+      if (exitAnimation === 'blur-in') {
+        ctx.globalAlpha *= exitProgress;
+        ctx.filter = `blur(${((1 - q) * 8).toFixed(2)}px)`;
+      }
+      if (exitAnimation === 'rotate-in') ctx.rotate((1 - q) * 0.35);
+      if (exitAnimation === 'flip-in') ctx.scale(Math.max(0.001, q), 1);
+      if (exitAnimation === 'glitch-in') {
+        ctx.translate(Math.sin(timeIn * 70) * (1 - q) * 16, Math.cos(timeIn * 53) * (1 - q) * 8);
+        ctx.globalAlpha *= Math.min(1, exitProgress * 2);
+      }
+    }
   }
 
   ctx.translate(v.x + el.width / 2, v.y + el.height / 2);
   ctx.rotate((v.rotation * Math.PI) / 180);
   if (v.scale !== 1) ctx.scale(v.scale, v.scale);
+
+  // Loop motion runs after the static transform so it feels attached to the text.
+  if (loopAnimation !== 'none') {
+    const amount = Math.max(0, Math.min(2, el.animation_loop_amount ?? 1));
+    if (loopAnimation === 'pulse') {
+      const s = 1 + Math.sin(timeIn * 5.5) * 0.035 * amount;
+      ctx.scale(s, s);
+    } else if (loopAnimation === 'float') {
+      ctx.translate(0, Math.sin(timeIn * 2.6) * 7 * amount);
+    } else if (loopAnimation === 'shake') {
+      ctx.translate(Math.sin(timeIn * 38) * 2.5 * amount, Math.cos(timeIn * 43) * 1.5 * amount);
+    } else if (loopAnimation === 'wave') {
+      ctx.rotate(Math.sin(timeIn * 4.5) * 0.035 * amount);
+    } else if (loopAnimation === 'tracking') {
+      const spacing = (Math.sin(timeIn * 3.2) * 3.5 * amount);
+      const ctxSpacing = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
+      ctxSpacing.letterSpacing = `${spacing.toFixed(2)}px`;
+    } else if (loopAnimation === 'glitch') {
+      ctx.translate(Math.sin(timeIn * 31) * 2.5 * amount, Math.cos(timeIn * 37) * 1.5 * amount);
+      ctx.globalAlpha *= 0.92 + Math.sin(timeIn * 29) * 0.08 * amount;
+    }
+  }
 
   ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   ctx.textAlign = (el.align || 'center') as CanvasTextAlign;
@@ -965,8 +1010,8 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     if (radius > 0 && typeof ctx.roundRect === 'function') { ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, Math.min(radius, Math.min(bw, bh) / 2)); ctx.fill(); }
     else ctx.fillRect(bx, by, bw, bh);
   }
-  const isTypewriter = el.animation === 'typewriter';
-  const isMaskWipe = el.animation === 'mask-wipe';
+  const isTypewriter = entryAnimation === 'typewriter' || entryAnimation === 'typewriter-reveal';
+  const isMaskWipe = entryAnimation === 'mask-wipe';
   /* Typewriter reveals characters at ~28 cps; other animations draw full text. */
   const totalChars = (el.content || '').length;
   const revealed = isTypewriter ? Math.min(totalChars, Math.floor((timeIn / Math.max(0.05, totalChars / 28)) + 0.001)) : totalChars;
@@ -981,6 +1026,14 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
       const remaining = revealed - startIdx;
       if (remaining <= 0) return;
       visibleLine = line.slice(0, remaining);
+    }
+    if (entryAnimation === 'split-reveal') {
+      const p = Math.max(0, Math.min(1, progress));
+      const metricsW = ctx.measureText(line).width;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-metricsW * p / 2, y - lineHeight * 0.7, metricsW * p, lineHeight * 1.4);
+      ctx.clip();
     }
     if (isMaskWipe) {
       /* Per-line progressive reveal via clip rect (mask wipe). */
@@ -1018,6 +1071,7 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
         ctx.fillRect(caretX, y - fontSize * 0.55, Math.max(2, fontSize / 14), fontSize * 1.1);
       }
     }
+    if (entryAnimation === 'split-reveal') ctx.restore();
     if (isMaskWipe) ctx.restore();
   });
 
@@ -1063,7 +1117,7 @@ function drawImageElement(ctx: CanvasRenderingContext2D, el: TimelineElement, ti
   ctx.save();
   ctx.globalAlpha = v.opacity;
   let scale = v.scale;
-  if (el.animation === 'pop') {
+  if (entryAnimation === 'pop') {
     const progress = Math.min(1, timeIn / 0.35);
     scale *= 0.7 + 0.3 * easeOut(progress);
   }
