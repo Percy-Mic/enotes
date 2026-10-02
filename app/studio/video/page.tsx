@@ -4147,7 +4147,7 @@ function VideoEditor() {
     /* 1) handles of the current MAIN-clip selection win */
     if (selectedClip) {
       const pts = clipHandlePoints(selectedClip);
-      for (const g of ['resize-nw', 'resize-ne', 'resize-sw', 'resize-se', 'resize-n', 'resize-s', 'resize-w', 'resize-e', 'rotate'] as Gesture[]) {
+      for (const g of ['resize-nw', 'resize-ne', 'resize-sw', 'resize-se', 'resize-n', 'resize-s', 'resize-w', 'resize-e', 'resize-uniform', 'rotate'] as Gesture[]) {
         const pt = pts[g as keyof typeof pts];
         if (pt && Math.hypot(p.x - pt.x, p.y - pt.y) <= tol) {
           beginClipGesture(selectedClip, g, e);
@@ -5501,37 +5501,42 @@ function VideoEditor() {
                     outlineOffset: 0,
                   }}
                 >
-                  <span
-                    className="pointer-events-auto absolute left-0 top-0 z-40 h-10 w-10 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                  <button
+                    type="button"
+                    className="pointer-events-auto absolute left-1 top-1 z-40 flex h-11 w-11 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'rotate', e)}
                     aria-label="Rotate video"
-                    role="button"
+                    title="Rotate"
                   >
-                    <span className="sr-only">Rotate</span>
-                  </span>
-                  <span
-                    className="pointer-events-auto absolute left-1/2 top-0 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    <RotateCw className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="pointer-events-auto absolute left-1/2 top-1 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-n', e)}
-                    aria-label="Resize video vertically"
-                    role="button"
+                    aria-label="Stretch video vertically"
+                    title="Stretch vertically"
                   >
-                    <span className="sr-only">Resize vertically</span>
-                  </span>
-                  <span
-                    className="pointer-events-auto absolute right-0 top-1/2 z-40 h-10 w-10 -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    <span className="text-base font-bold leading-none">↕</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="pointer-events-auto absolute right-1 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-e', e)}
-                    aria-label="Resize video horizontally"
-                    role="button"
+                    aria-label="Stretch video horizontally"
+                    title="Stretch horizontally"
                   >
-                    <span className="sr-only">Resize horizontally</span>
-                  </span>
-                  <span
-                    className="pointer-events-auto absolute bottom-0 left-1/2 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    <span className="text-base font-bold leading-none">↔</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="pointer-events-auto absolute bottom-1 left-1/2 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-uniform', e)}
-                    aria-label="Resize video"
-                    role="button"
+                    aria-label="Resize video proportionally"
+                    title="Resize proportionally"
                   >
-                    <span className="sr-only">Resize</span>
+                    <Maximize2 className="h-4 w-4" />
+                  </button>
                   </span>
                   
                 </div>
