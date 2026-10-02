@@ -678,7 +678,8 @@ type Gesture =
   | 'move'
   | 'rotate'
   | 'resize-n' | 'resize-s' | 'resize-e' | 'resize-w'
-  | 'resize-ne' | 'resize-nw' | 'resize-se' | 'resize-sw';
+  | 'resize-ne' | 'resize-nw' | 'resize-se' | 'resize-sw'
+  | 'resize-uniform';
 
 const CORNER_SIGNS: Record<string, { sx: -1 | 1; sy: -1 | 1 }> = {
   'resize-nw': { sx: -1, sy: -1 },
@@ -3914,6 +3915,28 @@ function VideoEditor() {
         return;
       }
 
+      if (gesture === 'resize-uniform') {
+        const d0 = Math.hypot(startX - centerX, startY - centerY);
+        const d1 = Math.hypot(p.x - centerX, p.y - centerY);
+        const factor = clampNum(d1 / Math.max(8, d0), 0.05, 8);
+        const nw = clampNum(startGeometry.width * factor, minSize, 1400);
+        const nh = clampNum(startGeometry.height * factor, minSize, 1400);
+        const nextFont = scaledTextSize(nw, nh);
+        updateElement(
+          el.id,
+          {
+            width: Math.round(nw / Math.max(0.001, startGeometry.scale)),
+            height: Math.round(nh / Math.max(0.001, startGeometry.scale)),
+            x: Math.round(centerX - (nw / Math.max(0.001, startGeometry.scale)) / 2),
+            y: Math.round(centerY - (nh / Math.max(0.001, startGeometry.scale)) / 2),
+            ...(nextFont != null ? { font_size: nextFont } : {}),
+          },
+          'Resize overlay',
+          `uniform-size-${el.id}`
+        );
+        return;
+      }
+
       if (isCornerGesture(gesture)) {
         const { sx, sy } = CORNER_SIGNS[gesture];
         const rad = (startEl.rotation * Math.PI) / 180;
@@ -4040,6 +4063,19 @@ function VideoEditor() {
           },
           'Move video',
           `cmove-${clip.id}`
+        );
+        return;
+      }
+
+      if (gesture === 'resize-uniform') {
+        const d0 = Math.hypot(startX - box.cx, startY - box.cy);
+        const d1 = Math.hypot(p.x - box.cx, p.y - box.cy);
+        const r = clampNum(d1 / Math.max(8, d0), 0.1, 4);
+        updateClip(
+          clip.id,
+          { transform: { ...T, scale: clampNum(T.scale * r, 0.1, 4) } },
+          'Scale video',
+          `cuniform-${clip.id}`
         );
         return;
       }
@@ -5491,7 +5527,7 @@ function VideoEditor() {
                   </span>
                   <span
                     className="pointer-events-auto absolute bottom-0 left-1/2 z-40 flex h-10 w-10 -translate-x-1/2 translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
-                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-se', e)}
+                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-uniform', e)}
                     aria-label="Resize video"
                     role="button"
                   >
@@ -5549,7 +5585,7 @@ function VideoEditor() {
                     </span>
                     <span
                       className="pointer-events-auto absolute bottom-0 left-1/2 z-40 flex h-10 w-10 -translate-x-1/2 translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
-                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-se', e)}
+                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-uniform', e)}
                       aria-label="Resize element"
                       role="button"
                     >
