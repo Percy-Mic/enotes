@@ -622,7 +622,10 @@ async function groqPlannerJsonOnce(
   if(!key) throw new Error('Groq is not configured. Add GROQ_API_KEY to Vercel.');
   if(!hasOnlyGroqSafeMedia(media)) throw new Error('Groq planner fallback supports image frames, but not video/audio media.');
   const images=(media || []).filter((item)=>item?.url && (item.type==='image' || item.url.startsWith('data:image/'))).slice(0,5);
-  const content:Array<Record<string,unknown>>=[{type:'text',text:prompt}];
+  // Groq's JSON-object response mode requires the prompt itself to mention JSON.
+  // Keep this value in scope for both the text-only and vision branches.
+  const jsonPrompt = prompt + '\n\nOUTPUT FORMAT: Return ONLY a valid JSON object. Do not wrap the JSON in markdown fences or prose.';
+  const content:Array<Record<string,unknown>>=[{type:'text',text:jsonPrompt}];
   for(const image of images) content.push({type:'image_url',image_url:{url:String(image.url)}});
   const model=process.env.GROQ_VISION_MODEL || 'qwen/qwen3.8-27b';
   const response=await fetch('https://api.groq.com/openai/v1/chat/completions',{
