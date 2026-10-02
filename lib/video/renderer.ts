@@ -2166,12 +2166,14 @@ export class VideoRenderer {
 
       /* ---------- media recorder ---------- */
       const canvasStream = canvas.captureStream(settings.fps);
-      const mixed = audioRunnable
-        ? new MediaStream([
-            ...canvasStream.getVideoTracks(),
-            ...destination.stream.getAudioTracks(),
-          ])
-        : canvasStream; /* audio unstartable → video-only export beats no export */
+      const mixedAudioTracks = destination.stream.getAudioTracks();
+      if (mixedAudioTracks.length === 0) {
+        throw new Error('The audio mixer produced no audio track. Export stopped to prevent a silent video.');
+      }
+      const mixed = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...mixedAudioTracks,
+      ]);
 
       const mimeCandidates = [
         'video/webm;codecs=vp9,opus',
