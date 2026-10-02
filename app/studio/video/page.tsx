@@ -1067,30 +1067,52 @@ function VideoEditor() {
 
   const ensurePreviewAudioGraph = useCallback((key: string, media: HTMLMediaElement, effects: AudioEffect[] | undefined) => {
     if (typeof window === 'undefined') return;
+
+    const activeEffects = (effects || []).filter((effect) => effect.type !== 'none' && effect.amount > 0);
+    let ctx = previewAudioContextRef.current;
+
+    /*
+     * Do not route ordinary audio through Web Audio. Native HTML media
+     * playback is more reliable for uploaded/cross-origin voiceovers and
+     * does not require the storage host to expose Web Audio CORS headers.
+     * Only create a MediaElementAudioSourceNode when an actual effect needs
+     * DSP processing.
+     */
+    if (activeEffects.length === 0) return;
+
     const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextCtor) return;
-    let ctx = previewAudioContextRef.current;
+
     if (!ctx) {
       ctx = new AudioContextCtor();
       previewAudioContextRef.current = ctx;
     }
     if (ctx.state === 'suspended') void ctx.resume();
+
     let source = previewAudioSourcesRef.current.get(key);
     if (!source) {
       try {
+        /*
+         * Effects require a CORS-readable media element. This must be set
+         * before the source URL is assigned by the caller.
+         */
+        media.crossOrigin = 'anonymous';
         source = ctx.createMediaElementSource(media);
         previewAudioSourcesRef.current.set(key, source);
       } catch {
         return;
       }
     }
-    const signature = JSON.stringify((effects || []).map((e) => [e.id, e.type, e.amount, e.mix]));
+
+    const signature = JSON.stringify(activeEffects.map((e) => [e.id, e.type, e.amount, e.mix]));
     const existing = previewAudioGraphRef.current.get(key);
     if (existing?.signature === signature) return;
+
     try { source.disconnect(); } catch {}
-    const output = connectAudioEffects(ctx, source, effects, ctx.destination) as GainNode;
+    const output = connectAudioEffects(ctx, source, activeEffects, ctx.destination) as GainNode;
     previewAudioGraphRef.current.set(key, { signature, output });
   }, []);
+
 
   const syncPreviewAudio = useCallback(async (time: number, shouldPlay: boolean) => {
     const p = docRef.current.project;
