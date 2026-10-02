@@ -8201,6 +8201,8 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
         <button onClick={onReset} className="rounded-full border border-white/25 bg-black/75 px-4 py-2 text-xs font-semibold backdrop-blur">Reset</button>
         <button onClick={onApply} className="flex items-center gap-1 rounded-full bg-[#E5798F] px-4 py-2 text-xs font-bold text-white shadow"><Check className="h-3.5 w-3.5" />Apply</button>
       </div>
+      </>
+      )}
     </div>
   );
 }
