@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowLeft, ArrowRight, Bot, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
   Image as ImageIcon, Layers, Loader2, Lock, Mic, MicOff, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw,
-  Scissors, Search, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Trash2, Type, Undo2,
+  Scissors, Search, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Trash2, Type, Undo2, Move,
   Upload, Users, VolumeX, Volume2, X, Save, Share2, Maximize2, Minimize2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
@@ -7406,7 +7406,7 @@ function VideoEditor() {
                           ['pos_y_kf', 'Position'],
                           ['scale_kf', 'Size'],
                           ['rotation_kf', 'Rotation'],
-                        ] as const).map(([prop, label], index) => {
+                        ] as const).map(([prop, label]) => {
                           const list = selectedClip.keyframes?.[prop] || [];
                           const active = list.some((k) => Math.abs(k.t - selectedClipTimeIn) < 0.05);
                           const uniqueLabel = prop === 'pos_x_kf' ? 'Position X' : prop === 'pos_y_kf' ? 'Position Y' : label;
