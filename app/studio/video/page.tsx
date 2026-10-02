@@ -5553,38 +5553,42 @@ function VideoEditor() {
                       outlineOffset: 0,
                     }}
                   >
-                    <span
-                      className="pointer-events-auto absolute left-0 top-0 z-40 h-10 w-10 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                    <button
+                      type="button"
+                      className="pointer-events-auto absolute left-1 top-1 z-40 flex h-11 w-11 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
                       aria-label="Rotate element"
-                      role="button"
+                      title="Rotate"
                     >
-                      <span className="sr-only">Rotate</span>
-                    </span>
-                    <span
-                      className="pointer-events-auto absolute left-1/2 top-0 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                      <RotateCw className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      className="pointer-events-auto absolute left-1/2 top-1 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-n', e)}
                       aria-label="Resize element vertically"
-                      role="button"
+                      title="Stretch vertically"
                     >
-                      <span className="sr-only">Resize vertically</span>
-                    </span>
-                    <span
-                      className="pointer-events-auto absolute right-0 top-1/2 z-40 h-10 w-10 -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                      <span className="text-base font-bold leading-none">↕</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pointer-events-auto absolute right-1 top-1/2 z-40 flex h-11 w-11 -translate-y-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-e', e)}
                       aria-label="Resize element horizontally"
-                      role="button"
+                      title="Stretch horizontally"
                     >
-                      <span className="sr-only">Resize horizontally</span>
-                    </span>
-                    <span
-                      className="pointer-events-auto absolute bottom-0 left-1/2 z-40 h-10 w-10 -translate-x-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)] opacity-0 bg-transparent border-transparent shadow-none"
+                      <span className="text-base font-bold leading-none">↔</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="pointer-events-auto absolute bottom-1 left-1/2 z-40 flex h-11 w-11 -translate-x-1/2 touch-none items-center justify-center rounded-full border border-white/90 bg-black/75 text-white shadow-lg backdrop-blur active:scale-90"
                       onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-uniform', e)}
-                      aria-label="Resize element"
-                      role="button"
+                      aria-label="Resize element proportionally"
+                      title="Resize proportionally"
                     >
-                      <span className="sr-only">Resize</span>
-                    </span>
+                      <Maximize2 className="h-4 w-4" />
+                    </button>
                     
                   </div>
                 );
@@ -5617,8 +5621,8 @@ function VideoEditor() {
               {selectedElement && !cropMode && (
                 <span className="pointer-events-none absolute left-2 top-2 max-w-[calc(100%-1rem)] rounded-full border border-white/10 bg-black/65 px-2.5 py-1 text-[9px] font-semibold text-white/75 shadow-lg backdrop-blur">
                   {selectedElement.kind === 'text'
-                    ? 'Drag to move · corners resize · top handle rotates'
-                    : 'Drag to move · corners resize · top handle rotates'}
+                    ? 'Drag text to move · ↕ ↔ stretch · ⤢ resize · ↻ rotate'
+                    : 'Drag to move · ↕ ↔ stretch · ⤢ resize · ↻ rotate'}
                 </span>
               )}
 
