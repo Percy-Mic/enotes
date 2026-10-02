@@ -37,7 +37,7 @@ export interface ExportSettings {
   resolutionHeight: number;      // 720 | 1080 | 1440 | 2160
   fps: number;                   // 24 | 30 | 60
   qualityBitrate: number;        // bits/sec
-  format: 'webm';                // MediaRecorder containers actually supported
+  format: 'mp4' | 'webm';        // MP4 preferred; WebM remains available when the browser cannot encode MP4
 }
 
 export const EXPORT_QUALITY_PRESETS: { id: string; name: string; bitrate: number }[] = [
@@ -2334,12 +2334,17 @@ export class VideoRenderer {
           ])
         : canvasStream;
 
-      const mimeCandidates = [
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm',
-        'video/mp4',
-      ];
+      const mimeCandidates = settings.format === 'mp4'
+        ? [
+            'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+            'video/mp4;codecs=avc1.4D401F,mp4a.40.2',
+            'video/mp4',
+          ]
+        : [
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=vp8,opus',
+            'video/webm',
+          ];
       const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
       let recorder: MediaRecorder;
       try {
@@ -2450,6 +2455,6 @@ export function defaultExportSettings(project: VideoProject): ExportSettings {
     resolutionHeight: shortSide >= 1300 ? 1080 : 720,
     fps: 30,
     qualityBitrate: 6_000_000,
-    format: 'webm',
+    format: 'mp4',
   };
 }
