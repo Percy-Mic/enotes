@@ -862,7 +862,7 @@ function filterCssFor(clip: VideoClip, adjustmentsOverride?: ClipAdjustments): s
 /* ---------- overlays ---------- */
 
 function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, canvasW: number, timeIn: number) {
-  const fontSize = el.font_size || 48;
+  const requestedFontSize = el.font_size || 48;
   const weight = el.font_weight || 700;
   /* keyframed values (fall back to the static fields when the property
      has no keyframes — identical behavior for keyframe-free elements) */
@@ -986,15 +986,29 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     }
   }
 
-  ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
+  ctx.font = `${weight} ${requestedFontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   ctx.textAlign = (el.align || 'center') as CanvasTextAlign;
   ctx.textBaseline = 'middle';
   const ctxWithSpacing = ctx as CanvasRenderingContext2D & { letterSpacing?: string };
   if (typeof el.letter_spacing === 'number') ctxWithSpacing.letterSpacing = `${el.letter_spacing}px`;
 
   const rawContent = el.content || '';
-  const content = el.text_case === 'uppercase' ? rawContent.toUpperCase() : el.text_case === 'lowercase' ? rawContent.toLowerCase() : el.text_case === 'capitalize' ? rawContent.replace(/\b\w/g, (m) => m.toUpperCase()) : rawContent;
+  const content = el.text_case === 'uppercase' ? rawContent.toUpperCase() : rawContent.toLowerCase() ? rawContent.toLowerCase() : rawContent;
   const lines = content.split('\n');
+
+  /* Typography is container-aware: the requested size is the design size,
+     but the renderer automatically fits it inside the element box. This
+     keeps long captions from escaping their handles and makes resize,
+     preview and export agree on the same text bounds. */
+  const longestLine = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
+  const lineHeightRequested = requestedFontSize * (el.line_height || 1.25);
+  const widthFit = longestLine > 0 ? (Math.max(24, el.width * 0.94) / longestLine) : 1;
+  const heightFit = lineHeightRequested * lines.length > 0
+    ? (Math.max(20, el.height * 0.88) / (lineHeightRequested * lines.length))
+    : 1;
+  const fitScale = Math.min(1, widthFit, heightFit);
+  const fontSize = Math.max(8, Math.min(240, requestedFontSize * fitScale));
+  ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   const lineHeight = fontSize * (el.line_height || 1.25);
   const totalHeight = lines.length * lineHeight;
 
