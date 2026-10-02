@@ -1143,6 +1143,7 @@ function VideoEditor() {
         if (!audio || audio.src !== clip.src) {
           audio?.pause();
           const videoAudio = document.createElement('video');
+          videoAudio.crossOrigin = 'anonymous';
           videoAudio.preload = 'auto';
           videoAudio.playsInline = true;
           videoAudio.setAttribute('playsinline', '');
@@ -1196,6 +1197,7 @@ function VideoEditor() {
       if (!audio || audio.src !== el.src) {
         audio?.pause();
         const videoAudio = document.createElement('video');
+        videoAudio.crossOrigin = 'anonymous';
         videoAudio.preload = 'auto';
         videoAudio.playsInline = true;
         videoAudio.setAttribute('playsinline', '');
@@ -1227,8 +1229,10 @@ function VideoEditor() {
       let audio = previewAudioRef.current.get(key);
       if (!audio || audio.src !== track.src) {
         audio?.pause();
-        audio = new Audio(track.src);
+        audio = new Audio();
+        audio.crossOrigin = 'anonymous';
         audio.preload = 'auto';
+        audio.src = track.src;
         previewAudioRef.current.set(key, audio);
       }
 
