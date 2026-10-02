@@ -1154,10 +1154,6 @@ function drawImageElement(ctx: CanvasRenderingContext2D, el: TimelineElement, ti
   ctx.save();
   ctx.globalAlpha = v.opacity;
   let scale = v.scale;
-  if (entryAnimation === 'pop') {
-    const progress = Math.min(1, timeIn / 0.35);
-    scale *= 0.7 + 0.3 * easeOut(progress);
-  }
   ctx.translate(v.x + el.width / 2, v.y + el.height / 2);
   ctx.rotate((v.rotation * Math.PI) / 180);
   ctx.scale(scale * (el.flip_h ? -1 : 1), scale * (el.flip_v ? -1 : 1));
