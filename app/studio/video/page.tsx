@@ -3609,8 +3609,13 @@ function VideoEditor() {
     const el: TimelineElement = {
       id: makeVideoId('el'), kind: 'text', content: 'Your text', src: null, track_id: project.tracks[0]?.id,
       start: playheadRef.current, end: hasContent ? Math.min(duration, playheadRef.current + 3) : playheadRef.current + 3,
-      x: project.canvas.width / 2 - 200, y: project.canvas.height - 220,
-      width: 400, height: 80, rotation: 0, opacity: 1, z: project.elements.length + 1,
+      /* New text is created around the canvas center, not near the bottom.
+         x/y are the element's top-left coordinates throughout the editor. */
+      width: Math.min(520, Math.max(320, project.canvas.width * 0.56)),
+      height: 110,
+      x: (project.canvas.width - Math.min(520, Math.max(320, project.canvas.width * 0.56))) / 2,
+      y: (project.canvas.height - 110) / 2,
+      rotation: 0, opacity: 1, z: project.elements.length + 1,
       font_size: 54, font_family: 'Poppins, sans-serif', font_weight: 700, color: '#FFFFFF',
       align: 'center', background: null, stroke_color: '#000000', shadow: true, animation: 'pop',
     };
