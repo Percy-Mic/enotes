@@ -3964,8 +3964,8 @@ function VideoEditor() {
           {
             width: Math.round(nw / Math.max(0.001, startGeometry.scale)),
             height: Math.round(nh / Math.max(0.001, startGeometry.scale)),
-            x: Math.round((ncx - nw / 2) / Math.max(0.001, startGeometry.scale)),
-            y: Math.round((ncy - nh / 2) / Math.max(0.001, startGeometry.scale)),
+            x: Math.round(ncx - (nw / Math.max(0.001, startGeometry.scale)) / 2),
+            y: Math.round(ncy - (nh / Math.max(0.001, startGeometry.scale)) / 2),
             ...(nextFont != null ? { font_size: nextFont } : {}),
           },
           'Resize overlay',
