@@ -146,6 +146,43 @@ export interface VideoClip {
 }
 
 /** Extensible effect ids — new effects append here; renderer switches on id. */
+export type TextAnimationType = 'none' | 'fade' | 'pop' | 'slide-up' | 'slide-down' | 'slide-left' | 'slide-right' | 'zoom-in' | 'zoom-out' | 'bounce' | 'typewriter' | 'blur-in' | 'blur-up' | 'blur-down' | 'fade-up' | 'fade-down' | 'rotate-in' | 'elastic' | 'flip-in' | 'glitch-in' | 'split-reveal' | 'mask-wipe';
+
+export type TextLoopAnimationType = 'none' | 'shake' | 'wave' | 'tracking' | 'pulse' | 'float' | 'glitch';
+
+export type TextPresetType = 'none' | 'bold' | 'caption' | 'subtitle' | 'neon' | 'retro' | 'impact' | 'minimal';
+
+export const TEXT_ANIMATION_PRESETS: { id: TextAnimationType; name: string; hint: string }[] = [
+  { id: 'none', name: 'None', hint: 'No entrance animation' },
+  { id: 'fade', name: 'Fade', hint: 'Clean fade in' },
+  { id: 'pop', name: 'Pop', hint: 'Fast scale pop' },
+  { id: 'slide-up', name: 'Slide Up', hint: 'Rise into place' },
+  { id: 'slide-down', name: 'Slide Down', hint: 'Drop into place' },
+  { id: 'slide-left', name: 'Slide Left', hint: 'Enter from the side' },
+  { id: 'slide-right', name: 'Slide Right', hint: 'Enter from the side' },
+  { id: 'zoom-in', name: 'Zoom In', hint: 'Cinematic scale in' },
+  { id: 'zoom-out', name: 'Zoom Out', hint: 'Settle from large' },
+  { id: 'bounce', name: 'Bounce', hint: 'Damped spring' },
+  { id: 'typewriter', name: 'Typewriter', hint: 'Character reveal' },
+  { id: 'blur-in', name: 'Blur In', hint: 'Sharpens into focus' },
+  { id: 'rotate-in', name: 'Rotate', hint: 'Rotate into place' },
+  { id: 'elastic', name: 'Elastic', hint: 'Springy entrance' },
+  { id: 'flip-in', name: 'Flip', hint: '3D-style flip' },
+  { id: 'glitch-in', name: 'Glitch', hint: 'Digital jitter' },
+  { id: 'split-reveal', name: 'Split Reveal', hint: 'Reveal from the center' },
+  { id: 'mask-wipe', name: 'Mask Wipe', hint: 'Directional reveal' },
+];
+
+export const TEXT_LOOP_PRESETS: { id: TextLoopAnimationType; name: string; hint: string }[] = [
+  { id: 'none', name: 'None', hint: 'No loop' },
+  { id: 'pulse', name: 'Pulse', hint: 'Soft breathing scale' },
+  { id: 'float', name: 'Float', hint: 'Gentle vertical drift' },
+  { id: 'shake', name: 'Shake', hint: 'Impact jitter' },
+  { id: 'wave', name: 'Wave', hint: 'Rhythmic tilt' },
+  { id: 'tracking', name: 'Tracking', hint: 'Animated letter spacing' },
+  { id: 'glitch', name: 'Glitch', hint: 'Digital jitter' },
+];
+
 export type EffectType = 'none' | 'zoom' | 'shake' | 'pulse' | 'vignette' | 'flash' | 'glitch' | 'vhs' | 'dream' | 'film' | 'chromatic' | 'ken-burns' | 'dolly-out' | 'handheld' | 'light-leak' | 'letterbox' | 'film-grain' | 'rgb-split' | 'glow' | 'bloom' | 'motion-blur' | 'scanlines' | 'noise' | 'negative' | 'posterize' | 'old-film' | 'crt' | 'halftone' | 'duotone' | 'solarize' | 'threshold' | 'pixelate' | 'thermal' | 'blueprint' | 'cyberpunk' | 'dreamy-glow' | 'flicker' | 'film-burn' | 'prism' | 'lens-flare' | 'light-rays' | 'bokeh' | 'dust' | 'scratches' | 'tape-warp' | 'chromatic-aberration' | 'displacement' | 'glitch-blocks' | 'edge-glow' | 'radial-blur' | 'tilt-shift' | 'film-gate' | 'colorize' | 'kaleidoscope';
 
 export type EffectCategory = 'Popular' | 'Motion' | 'Retro' | 'Cinematic' | 'Glitch' | 'Stylize' | 'Style Lab';
@@ -421,6 +458,7 @@ export interface TimelineElement {
   line_height?: number;
   text_case?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   text_effect?: 'none' | 'neon' | 'outline' | 'glow' | '3d' | 'hollow' | 'gradient' | 'retro' | 'glitch';
+  /** Legacy single animation. Kept for old projects. */
   animation?:
     | 'none'
     | 'fade'
@@ -452,6 +490,15 @@ export interface TimelineElement {
     | 'split-reveal'
     | 'typewriter-reveal'
     | 'mask-wipe';
+  /** Professional text motion: independent entrance, exit and looping motion. */
+  animation_in?: TextAnimationType;
+  animation_out?: TextAnimationType;
+  animation_loop?: TextLoopAnimationType;
+  animation_in_duration?: number;
+  animation_out_duration?: number;
+  animation_loop_amount?: number;
+  /** Optional named style preset for fast typography workflows. */
+  text_preset?: TextPresetType;
   // Optional video-overlay fields kept for backward-compatible project JSON.
   media_type?: string;
   source_duration?: number;
