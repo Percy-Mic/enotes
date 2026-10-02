@@ -5526,8 +5526,8 @@ function VideoEditor() {
                 <div
                   className="pointer-events-none absolute"
                   style={{
-                    left: rv.x * previewScale,
-                    top: rv.y * previewScale,
+                    left: (rv.x + selectedElement.width / 2 - (selectedElement.width * rv.scale) / 2) * previewScale,
+                    top: (rv.y + selectedElement.height / 2 - (selectedElement.height * rv.scale) / 2) * previewScale,
                     width: selectedElement.width * rv.scale * previewScale,
                     height: selectedElement.height * rv.scale * previewScale,
                     transform: `rotate(${rv.rotation}deg)`,
