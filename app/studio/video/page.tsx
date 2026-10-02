@@ -4,7 +4,7 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
-  ArrowLeft, ArrowRight, Bot, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
+  ArrowLeft, ArrowRight, ArrowUpDown, ArrowLeftRight, Bot, Check, Copy, Crop, Download, Film, FlipHorizontal, FlipVertical,
   Image as ImageIcon, Layers, Loader2, Lock, Mic, MicOff, Music, Pause, Play, Plus, Redo2, RotateCcw, RotateCw,
   Scissors, Search, SkipBack, SkipForward, SlidersHorizontal, Sparkles, Trash2, Type, Undo2, Move,
   Upload, Users, VolumeX, Volume2, X, Save, Share2, Maximize2, Minimize2,
@@ -5451,7 +5451,7 @@ function VideoEditor() {
                 style={{ width: previewSize?.width, height: previewSize?.height, maxWidth: '100%', maxHeight: '100%', touchAction: 'none' }}
                 aria-label="Video preview — tap the video or an overlay to select, drag to move, corner to resize, edge to stretch, top handle to rotate"
               />
-              {/* selection frame for the MAIN clip — same box the export uses */}
+              {/* Reference-style transform controls for the MAIN clip. */}
               {clipFrame && previewScale > 0 && selectedClip && (
                 <div
                   className="pointer-events-none absolute"
@@ -5460,124 +5460,106 @@ function VideoEditor() {
                     top: (clipFrame.cy - clipFrame.h / 2) * previewScale,
                     width: clipFrame.w * previewScale,
                     height: clipFrame.h * previewScale,
-                    transform: `rotate(${selectedClip.transform.rotation}deg)`,
-                    outline: '1.5px dashed rgba(255,182,193,0.95)',
+                    transform: 'rotate(' + selectedClip.transform.rotation + 'deg)',
+                    outline: '2px solid rgba(34,211,238,0.95)',
+                    outlineOffset: 0,
                   }}
                 >
-                  {/* Real touch targets: the visible dots are only visual. */}
-                  {([
-                    { gesture: 'resize-nw' as Gesture, cls: 'left-2 top-2', label: 'Resize video top-left' },
-                    { gesture: 'resize-ne' as Gesture, cls: 'right-2 top-2', label: 'Resize video top-right' },
-                    { gesture: 'resize-sw' as Gesture, cls: 'left-2 bottom-2', label: 'Resize video bottom-left' },
-                    { gesture: 'resize-se' as Gesture, cls: 'right-2 bottom-2', label: 'Resize video bottom-right' },
-                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 top-2 -translate-x-1/2', label: 'Stretch video top' },
-                    { gesture: 'resize-s' as Gesture, cls: 'bottom-2 left-1/2 -translate-x-1/2', label: 'Stretch video bottom' },
-                    { gesture: 'resize-w' as Gesture, cls: 'left-2 top-1/2 -translate-y-1/2', label: 'Stretch video left' },
-                    { gesture: 'resize-e' as Gesture, cls: 'right-2 top-1/2 -translate-y-1/2', label: 'Stretch video right' },
-                  ]).map((h) => (
-                    <span
-                      key={h.gesture}
-                      className={'pointer-events-auto absolute z-40 h-9 w-9 touch-none ' + h.cls}
-                      onPointerDown={(e) => beginClipGesture(selectedClip, h.gesture, e)}
-                      aria-label={h.label}
-                      role="button"
-                    />
-                  ))}
                   <span
-                    className="pointer-events-auto absolute z-40 left-1/2 top-2 h-9 w-9 -translate-x-1/2 touch-none"
+                    className="pointer-events-auto absolute left-0 top-0 z-40 flex h-10 w-10 -translate-x-[calc(100%+8px)] -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
                     onPointerDown={(e) => beginClipGesture(selectedClip, 'rotate', e)}
                     aria-label="Rotate video"
                     role="button"
-                  />
-
-                  {([
-                    { cls: 'left-0 top-0' },
-                    { cls: 'right-0 top-0' },
-                    { cls: 'left-0 bottom-0' },
-                    { cls: 'right-0 bottom-0' },
-                  ]).map((c, i) => (
-                    <span
-                      key={i}
-                      className={`absolute h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow ${c.cls}`}
-                    />
-                  ))}
-                  <span className="absolute left-1/2 top-0 h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute bottom-0 left-1/2 h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute left-0 top-1/2 h-5 w-5 sm:h-3.5 sm:w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute right-0 top-1/2 h-5 w-5 sm:h-3.5 sm:w-3.5 translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#FFB6C1] shadow" />
-                  <span className="absolute left-1/2 top-0 flex h-9 w-9 sm:h-7 sm:w-7 -translate-x-1/2 -translate-y-[34px] items-center justify-center rounded-full border-2 border-white bg-[#FFB6C1] shadow">
-                    <RotateCw className="h-3.5 w-3.5 text-white" />
+                  >
+                    <RotateCw className="h-5 w-5" />
                   </span>
-                  <span className="absolute -top-5 left-0 rounded bg-black/60 px-1.5 py-0.5 text-[9px] font-bold text-white/90">
+                  <span
+                    className="pointer-events-auto absolute left-1/2 top-0 z-40 flex h-10 w-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
+                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-n', e)}
+                    aria-label="Resize video vertically"
+                    role="button"
+                  >
+                    <ArrowUpDown className="h-5 w-5" />
+                  </span>
+                  <span
+                    className="pointer-events-auto absolute right-0 top-1/2 z-40 flex h-10 w-10 translate-x-[calc(100%+8px)] -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
+                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-e', e)}
+                    aria-label="Resize video horizontally"
+                    role="button"
+                  >
+                    <ArrowLeftRight className="h-5 w-5" />
+                  </span>
+                  <span
+                    className="pointer-events-auto absolute bottom-0 left-1/2 z-40 flex h-10 w-10 -translate-x-1/2 translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
+                    onPointerDown={(e) => beginClipGesture(selectedClip, 'resize-se', e)}
+                    aria-label="Resize video"
+                    role="button"
+                  >
+                    <Maximize2 className="h-5 w-5" />
+                  </span>
+                  <span
+                    className="pointer-events-none absolute left-1/2 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-black/35 shadow-[0_1px_6px_rgba(0,0,0,.55)]"
+                    aria-hidden="true"
+                  />
+                  <span className="pointer-events-none absolute -top-7 left-0 rounded-full bg-black/65 px-2 py-1 text-[9px] font-bold text-white/85 shadow backdrop-blur">
                     Video
                   </span>
                 </div>
               )}
 
-              {/* selection frame + handles for overlays — screen-space overlay
-                  matching the canvas box. Positions resolve KEYFRAMES at the
-                  playhead (same as drawTextElement/drawVideoElement), so the
-                  frame follows animated elements instead of lagging behind at
-                  the static x/y. */}
+              {/* Reference-style transform controls for text, images, stickers and other overlays. */}
               {selectedElement && previewScale > 0 && !cropMode && (() => {
-                const timeIn = Math.max(0, Math.min(selectedElement.end - selectedElement.start, playhead - selectedElement.start));
-                const rv = resolveElementValues(selectedElement, timeIn);
+                const g = elementVisualGeometry(selectedElement);
                 return (
-                <div
-                  className="pointer-events-none absolute"
-                  style={{
-                    left: (rv.x + selectedElement.width / 2 - (selectedElement.width * rv.scale) / 2) * previewScale,
-                    top: (rv.y + selectedElement.height / 2 - (selectedElement.height * rv.scale) / 2) * previewScale,
-                    width: selectedElement.width * rv.scale * previewScale,
-                    height: selectedElement.height * rv.scale * previewScale,
-                    transform: `rotate(${rv.rotation}deg)`,
-                    outline: '1.5px solid rgba(229,121,143,0.95)',
-                    outlineOffset: 0,
-                  }}
-                >
-                  {([
-                    { gesture: 'resize-nw' as Gesture, cls: 'left-2 top-2', label: 'Resize overlay top-left' },
-                    { gesture: 'resize-ne' as Gesture, cls: 'right-2 top-2', label: 'Resize overlay top-right' },
-                    { gesture: 'resize-sw' as Gesture, cls: 'left-2 bottom-2', label: 'Resize overlay bottom-left' },
-                    { gesture: 'resize-se' as Gesture, cls: 'right-2 bottom-2', label: 'Resize overlay bottom-right' },
-                    { gesture: 'resize-n' as Gesture, cls: 'left-1/2 top-2 -translate-x-1/2', label: 'Stretch overlay top' },
-                    { gesture: 'resize-s' as Gesture, cls: 'bottom-2 left-1/2 -translate-x-1/2', label: 'Stretch overlay bottom' },
-                    { gesture: 'resize-w' as Gesture, cls: 'left-2 top-1/2 -translate-y-1/2', label: 'Stretch overlay left' },
-                    { gesture: 'resize-e' as Gesture, cls: 'right-2 top-1/2 -translate-y-1/2', label: 'Stretch overlay right' },
-                  ]).map((h) => (
+                  <div
+                    className="pointer-events-none absolute"
+                    style={{
+                      left: g.x * previewScale,
+                      top: g.y * previewScale,
+                      width: g.width * previewScale,
+                      height: g.height * previewScale,
+                      transform: 'rotate(' + g.rotation + 'deg)',
+                      outline: '2px solid rgba(229,121,143,0.98)',
+                      outlineOffset: 0,
+                    }}
+                  >
                     <span
-                      key={h.gesture}
-                      className={'pointer-events-auto absolute z-40 h-9 w-9 touch-none ' + h.cls}
-                      onPointerDown={(e) => beginElementGesture(selectedElement, h.gesture, e)}
-                      aria-label={h.label}
+                      className="pointer-events-auto absolute left-0 top-0 z-40 flex h-10 w-10 -translate-x-[calc(100%+8px)] -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
+                      onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
+                      aria-label="Rotate element"
                       role="button"
-                    />
-                  ))}
-                  <span
-                    className="pointer-events-auto absolute z-40 left-1/2 top-2 h-9 w-9 -translate-x-1/2 touch-none"
-                    onPointerDown={(e) => beginElementGesture(selectedElement, 'rotate', e)}
-                    aria-label="Rotate overlay"
-                    role="button"
-                  />
-                  {([
-                    { cls: 'left-0 top-0' },
-                    { cls: 'right-0 top-0' },
-                    { cls: 'left-0 bottom-0' },
-                    { cls: 'right-0 bottom-0' },
-                  ]).map((c, i) => (
+                    >
+                      <RotateCw className="h-5 w-5" />
+                    </span>
                     <span
-                      key={i}
-                      className={`absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)] ${c.cls}`}
+                      className="pointer-events-auto absolute left-1/2 top-0 z-40 flex h-10 w-10 -translate-x-1/2 -translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
+                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-n', e)}
+                      aria-label="Resize element vertically"
+                      role="button"
+                    >
+                      <ArrowUpDown className="h-5 w-5" />
+                    </span>
+                    <span
+                      className="pointer-events-auto absolute right-0 top-1/2 z-40 flex h-10 w-10 translate-x-[calc(100%+8px)] -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
+                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-e', e)}
+                      aria-label="Resize element horizontally"
+                      role="button"
+                    >
+                      <ArrowLeftRight className="h-5 w-5" />
+                    </span>
+                    <span
+                      className="pointer-events-auto absolute bottom-0 left-1/2 z-40 flex h-10 w-10 -translate-x-1/2 translate-y-[calc(100%+8px)] touch-none items-center justify-center rounded-full border-2 border-white bg-white text-black shadow-[0_3px_12px_rgba(0,0,0,.45)]"
+                      onPointerDown={(e) => beginElementGesture(selectedElement, 'resize-se', e)}
+                      aria-label="Resize element"
+                      role="button"
+                    >
+                      <Maximize2 className="h-5 w-5" />
+                    </span>
+                    <span
+                      className="pointer-events-none absolute left-1/2 top-1/2 z-30 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-black/35 shadow-[0_1px_6px_rgba(0,0,0,.55)]"
+                      aria-hidden="true"
                     />
-                  ))}
-                  <span className="absolute left-1/2 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
-                  <span className="absolute bottom-0 left-1/2 h-2.5 w-2.5 -translate-x-1/2 translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
-                  <span className="absolute left-0 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
-                  <span className="absolute right-0 top-1/2 h-2.5 w-2.5 translate-x-1/2 -translate-y-1/2 rounded-full border border-white bg-[#E5798F] shadow-[0_1px_5px_rgba(0,0,0,.5)]" />
-                  <span className="absolute left-1/2 top-0 flex h-7 w-7 -translate-x-1/2 -translate-y-[30px] items-center justify-center rounded-full border border-white bg-[#E5798F] shadow-[0_2px_7px_rgba(0,0,0,.55)]">
-                    <RotateCw className="h-3.5 w-3.5 text-white" />
-                  </span>
-                </div>
+                  </div>
                 );
               })()}
 
