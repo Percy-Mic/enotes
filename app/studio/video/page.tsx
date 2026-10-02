@@ -171,10 +171,9 @@ function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewP
   const { rendererRef, render } = useLatestPreviewRenderer();
 
   useEffect(() => {
-    const render = async () => {
+    const draw = async () => {
       const canvas = canvasRef.current;
-      const renderer = rendererRef.current;
-      if (!canvas || !renderer) return;
+      if (!canvas) return;
       const previewProject: VideoProject = {
         ...project,
         clips: project.clips.map((clip) =>
@@ -186,7 +185,7 @@ function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewP
       const previewTime = previewTimeForClip(previewProject, clipId, playhead);
       await render(canvas, previewProject, previewTime);
     };
-    void render();
+    void draw();
   }, [project, clipId, playhead, effect, filter, render]);
 
   return (
