@@ -120,24 +120,28 @@ function previewClipStart(project: VideoProject, clipId: string): number {
 function useLatestPreviewRenderer() {
   const rendererRef = useRef<VideoRenderer | null>(null);
   const renderingRef = useRef(false);
-  const queuedTimeRef = useRef<number | null>(null);
+  const queuedRequestRef = useRef<{
+    canvas: HTMLCanvasElement;
+    project: VideoProject;
+    time: number;
+  } | null>(null);
 
   const render = useCallback(async (
     canvas: HTMLCanvasElement,
     project: VideoProject,
     time: number,
   ) => {
-    queuedTimeRef.current = time;
+    queuedRequestRef.current = { canvas, project, time };
     if (renderingRef.current) return;
 
     renderingRef.current = true;
     try {
-      while (queuedTimeRef.current !== null) {
-        const nextTime = queuedTimeRef.current;
-        queuedTimeRef.current = null;
+      while (queuedRequestRef.current) {
+        const next = queuedRequestRef.current;
+        queuedRequestRef.current = null;
         if (!rendererRef.current) rendererRef.current = new VideoRenderer();
         try {
-          await rendererRef.current.drawFrame(canvas, project, nextTime, {
+          await rendererRef.current.drawFrame(next.canvas, next.project, next.time, {
             previewing: true,
             playing: false,
             isolatedPreview: true,
