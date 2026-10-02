@@ -8276,7 +8276,7 @@ function TextMotionPreview({ animation, label, active, onClick }: {
   if (animation === 'elastic') transform = `scale(${Math.max(.05, ease + Math.sin(p*Math.PI*3)*(1-p)*.12)})`;
   if (animation === 'glitch-in') transform = `translate(${Math.sin(p*60)*(1-p)*3}px,${Math.cos(p*45)*(1-p)*2}px)`;
   if (animation === 'blur-in') { opacity = ease; }
-  if (animation === 'typewriter' || animation === 'typewriter-reveal') opacity = p > .12 ? 1 : 0.35;
+  if (animation === 'typewriter') opacity = p > .12 ? 1 : 0.35;
   if (animation === 'split-reveal' || animation === 'mask-wipe') opacity = ease;
   return (
     <button type="button" onClick={onClick}
