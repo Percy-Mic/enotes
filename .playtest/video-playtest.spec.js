@@ -7,9 +7,12 @@ test('real-surface smoke and careless sign-in attempt', async ({ page }) => {
   page.on('pageerror', err => errors.push('pageerror: ' + err.message));
   page.on('requestfailed', req => failedRequests.push(req.url() + ' :: ' + (req.failure()?.errorText || 'failed')));
   page.on('response', res => {
-    const url = res.url();
-    if (res.request().resourceType() === 'script' && res.status() >= 300) {
-      errors.push('script response ' + res.status() + ': ' + url);
+    const req = res.request();
+    if (req.resourceType() === 'script' && res.status() >= 300) {
+      errors.push('script response ' + res.status() + ': ' + res.url());
+    }
+    if (req.resourceType() === 'script' && req.redirectedFrom()) {
+      errors.push('script redirect chain: ' + req.redirectedFrom().url() + ' -> ' + res.url() + ' (' + res.status() + ')');
     }
   });
 
