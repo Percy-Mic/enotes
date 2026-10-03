@@ -3894,16 +3894,42 @@ function VideoEditor() {
     const onMove = (ev: PointerEvent) => {
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
       if (edge === 'start') {
-        const ns = Math.max(0, Math.min(startTrimE - 0.2, startTrimS + d));
-        updateAudio(a.id, { trimStart: ns }, 'Trim audio start', `audtrim-${a.id}`);
+        /*
+         * The left edge is a PROJECT-TIMELINE edge, so moving it must move
+         * both the track start and the source trim start by the same amount.
+         * Previously only trimStart changed while CSS left stayed fixed,
+         * making a "drag the left handle" gesture visually trim the wrong side.
+         */
+        const sourceDuration = Math.max(startTrimE, Number(a.sourceDuration) || startTrimE);
+        const maxDelta = Math.max(-startTrimS, startTrimE - startTrimS - 0.2);
+        const delta = Math.max(-startTrimS, Math.min(maxDelta, d));
+        const rawStart = Math.max(0, a.start + delta);
+        const snappedStart = snapTimelineTime(rawStart);
+        const snappedDelta = snappedStart - a.start;
+        const safeDelta = Math.max(-startTrimS, Math.min(startTrimE - startTrimS - 0.2, snappedDelta));
+        const ns = Math.max(0, Math.min(sourceDuration - 0.2, startTrimS + safeDelta));
+        const nextStart = Math.max(0, a.start + (ns - startTrimS));
+        updateAudio(
+          a.id,
+          { start: nextStart, trimStart: ns },
+          'Trim audio start',
+          `audtrim-${a.id}`
+        );
       } else {
         const sourceDuration = Math.max(
           startTrimE,
           Number(a.sourceDuration) || startTrimE
         );
-        const ne = Math.max(
+        const neRaw = Math.max(
           startTrimS + 0.2,
           Math.min(sourceDuration, startTrimE + d)
+        );
+        const endProject = a.start + Math.max(0.1, neRaw - startTrimS);
+        const snappedEnd = snapTimelineTime(endProject);
+        const snappedDelta = snappedEnd - (a.start + Math.max(0.1, startTrimE - startTrimS));
+        const ne = Math.max(
+          startTrimS + 0.2,
+          Math.min(sourceDuration, startTrimE + snappedDelta)
         );
         updateAudio(a.id, { trimEnd: ne }, 'Trim audio end', `audtrim-${a.id}`);
       }
