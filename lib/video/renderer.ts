@@ -644,6 +644,44 @@ function effectTransform(clip: VideoClip, timeIn: number, dur: number): EffectOf
   return { scaleMul, dx, dy };
 }
 
+function clipMotionTransform(clip: VideoClip, timeIn: number, dur: number) {
+  const preset = clip.motion_preset || 'none';
+  if (preset === 'none') return { scale: 1, dx: 0, dy: 0, rotation: 0, opacity: 1 };
+  const amount = Math.max(0, Math.min(2, clip.motion_amount ?? 1));
+  const p = Math.min(1, Math.max(0, timeIn / Math.max(0.1, dur)));
+  const phase = timeIn * Math.PI * 2;
+  switch (preset) {
+    case 'zoom-in':
+      return { scale: 1 + 0.35 * amount * p, dx: 0, dy: 0, rotation: 0, opacity: 1 };
+    case 'zoom-out':
+      return { scale: 1 + 0.35 * amount * (1 - p), dx: 0, dy: 0, rotation: 0, opacity: 1 };
+    case 'spin':
+      return { scale: 1.03, dx: 0, dy: 0, rotation: 360 * amount * p, opacity: 1 };
+    case 'float':
+      return {
+        scale: 1.04 + Math.abs(Math.sin(phase * 0.5)) * 0.01 * amount,
+        dx: 0,
+        dy: Math.sin(phase * 0.65) * 22 * amount,
+        rotation: Math.sin(phase * 0.65) * 2 * amount,
+        opacity: 1,
+      };
+    case 'pop': {
+      const q = p < 0.2 ? p / 0.2 : 1 - ((p - 0.2) / 0.8) * 0.08;
+      return { scale: 0.82 + 0.26 * Math.min(1, q) * amount, dx: 0, dy: 0, rotation: 0, opacity: 1 };
+    }
+    case 'shake':
+      return {
+        scale: 1.04,
+        dx: Math.sin(timeIn * Math.PI * 10) * 14 * amount,
+        dy: Math.sin(timeIn * Math.PI * 8) * 8 * amount,
+        rotation: Math.sin(timeIn * Math.PI * 8) * 2 * amount,
+        opacity: 1,
+      };
+    default:
+      return { scale: 1, dx: 0, dy: 0, rotation: 0, opacity: 1 };
+  }
+}
+
 function effectFilterCss(clip: VideoClip, timeIn: number): string {
   const parts: string[] = [];
   for (const layer of effectLayers(clip)) {
@@ -1970,6 +2008,33 @@ export class VideoRenderer {
              if (maskSaved) sctx.restore();
              sctx.filter = 'none';
              sctx.restore();
+
+             /* Motion presets are deliberately applied AFTER the media has
+                been rasterized into the fixed clip surface. This means Float,
+                Spin, Zoom, etc. animate the pixels inside the clip frame while
+                the frame itself stays exactly where the editor controls put it. */
+             const motion = clipMotionTransform(clip, timeIn, dur);
+             if (motion.scale !== 1 || motion.dx !== 0 || motion.dy !== 0 || motion.rotation !== 0) {
+               filterCtx.setTransform(1, 0, 0, 1, 0, 0);
+               filterCtx.globalAlpha = 1;
+               filterCtx.globalCompositeOperation = 'copy';
+               filterCtx.filter = 'none';
+               filterCtx.clearRect(0, 0, filterCanvas.width, filterCanvas.height);
+               filterCtx.drawImage(surface, 0, 0);
+
+               sctx.setTransform(1, 0, 0, 1, 0, 0);
+               sctx.globalAlpha = 1;
+               sctx.globalCompositeOperation = 'source-over';
+               sctx.filter = 'none';
+               sctx.clearRect(0, 0, surface.width, surface.height);
+               sctx.translate(surface.width / 2 + motion.dx, surface.height / 2 + motion.dy);
+               sctx.rotate((motion.rotation * Math.PI) / 180);
+               sctx.scale(motion.scale, motion.scale);
+               sctx.translate(-surface.width / 2, -surface.height / 2);
+               sctx.drawImage(filterCanvas, 0, 0);
+               sctx.setTransform(1, 0, 0, 1, 0, 0);
+               sctx.globalCompositeOperation = 'source-over';
+             }
            }
 
            /* Filters are deliberately a second pass over rasterized pixels.
