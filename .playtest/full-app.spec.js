@@ -1,4 +1,4 @@
-const { test, expect } = require('@playwright/test');
+const { test, expect, chromium } = require('@playwright/test');
 const fs = require('fs');
 
 const targets = [
@@ -90,7 +90,8 @@ async function scan(page, label) {
 }
 
 async function testRoutes(target, viewport) {
-  const context = await test.browser.newContext({ baseURL: target.baseURL, viewport });
+  const browser = await chromium.launch();
+  const context = await browser.newContext({ baseURL: target.baseURL, viewport });
   const page = await context.newPage();
   const consoleErrors=[];
   const pageErrors=[];
@@ -184,6 +185,7 @@ async function testRoutes(target, viewport) {
   }
 
   await context.close();
+  await browser.close();
 }
 
 test.describe.configure({ mode:'serial' });
