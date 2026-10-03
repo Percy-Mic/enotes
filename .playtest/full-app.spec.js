@@ -1,5 +1,5 @@
 const { test, expect, chromium } = require('@playwright/test');
-test.setTimeout(180000);
+test.setTimeout(120000);
 const fs = require('fs');
 
 const targets = [
@@ -76,7 +76,7 @@ function rec(x){ evidence.push(x); }
 
 async function settle(page) {
   await page.waitForLoadState('domcontentloaded', {timeout:15000}).catch(()=>{});
-  await page.waitForTimeout(450);
+  await page.waitForTimeout(150);
 }
 
 async function scan(page, label) {
@@ -102,7 +102,7 @@ async function testRoutes(target, viewport) {
   page.on('requestfailed',r=>requestErrors.push({url:r.url(),error:r.failure()?.errorText||'unknown'}));
 
   for (const route of publicRoutes) {
-    const response=await page.goto(route,{waitUntil:'domcontentloaded',timeout:20000}).catch(()=>null);
+    const response=await page.goto(route,{waitUntil:'domcontentloaded',timeout:8000}).catch(()=>null);
     await settle(page);
     const status=response?.status()||0;
     const final=new URL(page.url());
@@ -115,7 +115,7 @@ async function testRoutes(target, viewport) {
   }
 
   for (const route of protectedRoutes) {
-    const response=await page.goto(route,{waitUntil:'domcontentloaded',timeout:20000}).catch(()=>null);
+    const response=await page.goto(route,{waitUntil:'domcontentloaded',timeout:8000}).catch(()=>null);
     await settle(page);
     const status=response?.status()||0;
     const final=new URL(page.url());
@@ -125,7 +125,7 @@ async function testRoutes(target, viewport) {
   }
 
   // Auth forms: native validation + bad credentials + reload while loading.
-  await page.goto('/auth/sign-in',{waitUntil:'domcontentloaded',timeout:20000});
+  await page.goto('/auth/sign-in',{waitUntil:'domcontentloaded',timeout:8000});
   await settle(page);
   await expect(page.locator('input[type=email]')).toBeVisible();
   const email=page.locator('input[type=email]');
@@ -136,30 +136,30 @@ async function testRoutes(target, viewport) {
   await email.fill('playtest.invalid.20261004@example.invalid');
   await password.fill('wrong-password-20261004');
   await Promise.all([submit.click().catch(()=>{}),submit.click().catch(()=>{}),submit.click().catch(()=>{})]);
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(500);
   rec({kind:'bad-auth',target:target.name,viewport,body:(await page.locator('body').innerText()).slice(-900)});
-  await page.reload({waitUntil:'domcontentloaded',timeout:20000});
+  await page.reload({waitUntil:'domcontentloaded',timeout:8000});
   await settle(page);
   await expect(page.locator('input[type=email]')).toBeVisible();
 
   // Sign-up careless inputs.
-  await page.goto('/auth/sign-up',{waitUntil:'domcontentloaded',timeout:20000});
+  await page.goto('/auth/sign-up',{waitUntil:'domcontentloaded',timeout:8000});
   await settle(page);
   const inputs=page.locator('input');
   const counts=await inputs.count();
   for(let i=0;i<Math.min(counts,5);i++) await inputs.nth(i).fill('x').catch(()=>{});
   const signup=page.locator('form button[type=submit]').first();
   await signup.click().catch(()=>{});
-  await page.reload({waitUntil:'domcontentloaded',timeout:20000});
+  await page.reload({waitUntil:'domcontentloaded',timeout:8000});
   await settle(page);
 
   // Public feed drill-down: click first internal-looking post/profile link without assuming data exists.
-  await page.goto('/feed',{waitUntil:'domcontentloaded',timeout:20000});
+  await page.goto('/feed',{waitUntil:'domcontentloaded',timeout:8000});
   await settle(page);
   const feedLinks=await page.locator('a[href]').evaluateAll(els=>els.map(a=>a.getAttribute('href')).filter(Boolean).filter(h=>/^\/(posts|u)\//.test(h)).slice(0,4));
   rec({kind:'feed-drilldown-candidates',target:target.name,viewport,links:feedLinks});
   for(const href of feedLinks){
-    await page.goto(href,{waitUntil:'domcontentloaded',timeout:20000}).catch(()=>{});
+    await page.goto(href,{waitUntil:'domcontentloaded',timeout:8000}).catch(()=>{});
     await settle(page);
     const body=(await page.locator('body').innerText()).replace(/\s+/g,' ').trim();
     if (body.length<10) failures.push({target:target.name,viewport,route:href,issue:'public drill-down rendered essentially empty'});
@@ -168,8 +168,8 @@ async function testRoutes(target, viewport) {
 
   // Careless reloads on entry points.
   for(const route of ['/','/feed','/auth/sign-in','/studio/video']){
-    await page.goto(route,{waitUntil:'domcontentloaded',timeout:20000}).catch(()=>{});
-    await Promise.all([page.reload({waitUntil:'domcontentloaded',timeout:20000}).catch(()=>{}),page.reload({waitUntil:'domcontentloaded',timeout:20000}).catch(()=>{})]);
+    await page.goto(route,{waitUntil:'domcontentloaded',timeout:8000}).catch(()=>{});
+    await Promise.all([page.reload({waitUntil:'domcontentloaded',timeout:8000}).catch(()=>{}),page.reload({waitUntil:'domcontentloaded',timeout:8000}).catch(()=>{})]);
     await settle(page);
   }
 
@@ -189,7 +189,7 @@ async function testRoutes(target, viewport) {
   await browser.close();
 }
 
-test.describe.configure({ mode:'serial' });
+test.describe.configure({ mode:'parallel' });
 for(const target of targets){
   test(target.name+' desktop full surface', async()=>{ await testRoutes(target,{width:1440,height:900}); });
   test(target.name+' mobile full surface', async()=>{ await testRoutes(target,{width:390,height:844}); });
