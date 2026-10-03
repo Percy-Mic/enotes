@@ -5260,8 +5260,9 @@ function VideoEditor() {
     setExportError(null);
     setExportProgress({ phase: 'preparing', percent: 0, message: 'Checking project…' });
 
-    /* validate BEFORE recording so users get a clear reason, not a dead webm */
-    const invalid = rendererRef.current.validateForExport(project);
+    /* validate BEFORE recording so users get a clear reason, not a dead MP4 */
+    const exportProject = docRef.current.project;
+    const invalid = rendererRef.current.validateForExport(exportProject);
     if (invalid) {
       setExportProgress({ phase: 'failed', percent: 100, message: invalid });
       setExportError(invalid);
@@ -5279,16 +5280,34 @@ function VideoEditor() {
 
     setExporting(true);
     try {
-      const result = await rendererRef.current.export(project, settings, setExportProgress);
+      /*
+       * Export from the exact project snapshot currently driving the editor.
+       * The renderer uses the same drawFrame() as the live canvas, so the
+       * exported pixels/effects/keyframes are the editor's pixels/effects/
+       * keyframes — not a second, simplified rendering path.
+       */
+      const result = await rendererRef.current.export(exportProject, settings, setExportProgress);
+
+      if (result.format !== 'mp4' || !result.blob.type.toLowerCase().includes('mp4')) {
+        throw new Error('The export was not encoded as MP4. Nothing was uploaded.');
+      }
+
+      /*
+       * Make the finished MP4 immediately available to Download/Share even
+       * if a storage configuration rejects the upload. The renderer already
+       * keeps the file below Supabase Free's 50 MB object ceiling.
+       */
+      if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current);
+      exportUrlRef.current = result.url;
+      setExportResult(result);
 
       // upload + register in the media library (reusable, not duplicated)
       // Normalize the MIME: MediaRecorder emits codec-suffixed types like
-      // "video/webm;codecs=vp9,opus" which storage validation must strip —
-      // passing them through raw makes the upload "Unsupported file type".
-      setExportProgress({ phase: 'uploading', percent: 99, message: 'Uploading to your library…' });
-      const ext = result.format === 'mp4' ? 'mp4' : 'webm';
-      const bareType = (result.blob.type || 'video/webm').split(';')[0].trim().toLowerCase();
-      const file = new File([result.blob], `export-${Date.now()}.${ext}`, { type: bareType });
+      // "video/mp4;codecs=..." which storage validation must strip.
+      setExportProgress({ phase: 'uploading', percent: 99, message: 'Saving MP4 to your library…' });
+      const ext = 'mp4';
+      const bareType = 'video/mp4';
+      const file = new File([result.blob], `export-${Date.now()}.mp4`, { type: bareType });
       const mediaUrl = await uploadStudioMedia(file);
       const up = { path: mediaUrl.split('/studio-media/').pop() || '' };
 
@@ -5315,11 +5334,8 @@ function VideoEditor() {
         if (updError) notify(`Could not link the export to this project — ${updError.message}`);
       }
 
-      if (exportUrlRef.current) URL.revokeObjectURL(exportUrlRef.current);
-      exportUrlRef.current = result.url;
-      setExportProgress({ phase: 'complete', percent: 100, message: 'Export complete' });
-      setExportResult(result);
-      notify('Export saved to your media library.');
+      setExportProgress({ phase: 'complete', percent: 100, message: 'MP4 export complete' });
+      notify('MP4 export saved to your media library.');
     } catch (e) {
       if (e instanceof ExportCancelledError || (e instanceof Error && e.name === 'ExportCancelledError')) {
         setExportProgress({ phase: 'cancelled', percent: 0, message: 'Export cancelled' });
