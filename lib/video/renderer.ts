@@ -2371,8 +2371,8 @@ export class VideoRenderer {
             gain.gain.exponentialRampToValueAtTime(0.0001, t0 + track.trackDuration);
           }
 
-          const processed = connectAudioEffects(audioCtx, source, track.effects, gain);
-          processed.connect(destination);
+          /* connectAudioEffects terminates at the supplied final gain and output. Do not connect the returned gain again: the old code passed the same gain as both final node and output, creating a gain -> gain cycle. */
+          connectAudioEffects(audioCtx, source, track.effects, destination, gain);
           source.start(t0, track.trimStart, Math.max(0.1, track.trackDuration));
         } catch {
           /* audio decode failure shouldn't kill the video export */
