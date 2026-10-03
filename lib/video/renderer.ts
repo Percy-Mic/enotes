@@ -106,7 +106,8 @@ const videoLoading = new Map<string, Promise<HTMLVideoElement>>();
 // clip changes or the playhead jumps. This prevents the seek/play/seek/play
 // loop that caused the preview to blink.
 interface PlaybackRecord { lastTarget: number; playing: boolean; rate: number }
-const playbackState = new Map<string, PlaybackRecord>();
+type PlaybackStateStore = Map<HTMLVideoElement, PlaybackRecord>;
+const playbackState: PlaybackStateStore = new Map();
 
 /**
  * Keep one cached <video> aligned with the project clock.
@@ -122,50 +123,114 @@ const playbackState = new Map<string, PlaybackRecord>();
  * PAUSED and holds each frame while drawFrame paints it at the editor's
  * frame rate, exactly like scrubbing.
  */
-function syncPlaybackVideo(
+async function syncPlaybackVideo(
   video: HTMLVideoElement,
-  src: string,
+  _src: string,
   target: number,
   playing: boolean,
   forceSeek = false,
   rate = 1,
   reverse = false,
-  stateStore: Map<string, PlaybackRecord> = playbackState
-) {
-  const state = stateStore.get(src);
+  stateStore: PlaybackStateStore = playbackState
+): Promise<void> {
+  const state = stateStore.get(video);
   const safeTarget = Math.max(0, target);
   const rateChanged = !state || Math.abs(state.rate - rate) > 0.001;
-  /* Reversed playback advances ONLY by seeking (per-frame), so it gets a
-     near-zero threshold — coarse thresholds would let the project clock run
-     ahead while the picture repeats the same frame (judder/freeze). */
+
+  /*
+   * IMPORTANT: playback state is keyed by the actual HTMLVideoElement, not
+   * by URL. The editor can have the same source in the main canvas,
+   * fullscreen canvas and effect previews at the same time. A URL-keyed
+   * state made those independent decoders fight each other.
+   */
   const needsSeek =
-    forceSeek || !state ||
-    Math.abs(video.currentTime - safeTarget) > (playing && !reverse ? 0.45 : playing && reverse ? 0.02 : 0.12) ||
-    (state && Math.abs(state.lastTarget - safeTarget) > 0.8);
+    forceSeek ||
+    !state ||
+    Math.abs(video.currentTime - safeTarget) >
+      (playing && !reverse ? 0.45 : playing && reverse ? 0.02 : 0.12) ||
+    Math.abs(state.lastTarget - safeTarget) > 0.8;
 
   if (rateChanged) {
-    try { video.playbackRate = Math.min(16, Math.max(0.0625, rate)); } catch { /* out of range */ }
+    try {
+      video.playbackRate = Math.min(16, Math.max(0.0625, rate));
+    } catch {}
   }
 
   if (!playing) {
     if (!video.paused) video.pause();
-    stateStore.set(src, { lastTarget: safeTarget, playing: false, rate });
-    return needsSeek ? seekAndWait(video, safeTarget) : Promise.resolve();
+    stateStore.set(video, { lastTarget: safeTarget, playing: false, rate });
+    if (needsSeek) await seekAndWait(video, safeTarget);
+    return;
   }
 
-  if (playing && reverse) {
+  /* Reverse playback cannot be driven by native play(). It remains paused
+     and seeks only when the requested frame changes. */
+  if (reverse) {
     if (!video.paused) video.pause();
-    const seeked = needsSeek ? seekAndWait(video, safeTarget) : Promise.resolve();
-    stateStore.set(src, { lastTarget: safeTarget, playing: false, rate });
-    return seeked;
+    if (needsSeek) await seekAndWait(video, safeTarget);
+    stateStore.set(video, { lastTarget: safeTarget, playing: false, rate });
+    return;
   }
 
+  /*
+   * On a real timeline jump, wait for the decoder to finish the seek before
+   * painting. During ordinary playback we do NOT seek every frame; the
+   * browser's decoder remains the clock and advances naturally.
+   */
   if (needsSeek) {
-    try { video.currentTime = safeTarget; } catch { /* decoder keeps its last frame */ }
+    await seekAndWait(video, safeTarget);
   }
-  if (video.paused) void video.play().catch(() => undefined);
-  stateStore.set(src, { lastTarget: safeTarget, playing: true, rate });
-  return Promise.resolve();
+
+  if (video.paused) {
+    try {
+      await video.play();
+    } catch {
+      stateStore.set(video, { lastTarget: safeTarget, playing: false, rate });
+      return;
+    }
+
+    /*
+     * play() resolving only means playback was accepted — not that a new
+     * decoded frame has reached the compositor. Wait for one presented frame
+     * before drawImage() so the canvas never paints the decoder's old/empty
+     * frame during startup.
+     */
+    await waitForPresentedVideoFrame(video);
+  }
+
+  stateStore.set(video, { lastTarget: safeTarget, playing: true, rate });
+}
+
+
+async function waitForPresentedVideoFrame(video: HTMLVideoElement): Promise<void> {
+  if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) {
+    return;
+  }
+
+  const rvfc = video as HTMLVideoElement & {
+    requestVideoFrameCallback?: (
+      callback: (now: number, metadata: VideoFrameCallbackMetadata) => void
+    ) => number;
+  };
+
+  if (typeof rvfc.requestVideoFrameCallback === 'function') {
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      try {
+        rvfc.requestVideoFrameCallback(() => finish());
+        window.setTimeout(finish, 120);
+      } catch {
+        finish();
+      }
+    });
+  } else {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+  }
 }
 
 function pauseInactiveVideos(activeSources: Set<string>) {
@@ -1648,7 +1713,7 @@ export class VideoRenderer {
    */
   private isolatedVideoCache = new Map<string, HTMLVideoElement>();
   private isolatedVideoLoading = new Map<string, Promise<HTMLVideoElement>>();
-  private isolatedPlaybackState = new Map<string, PlaybackRecord>();
+  private isolatedPlaybackState: PlaybackStateStore = new Map();
 
   /* Reused clip compositor surface. Creating a large canvas every playback
      frame causes allocation/GC spikes, especially with animated effects. */
@@ -1944,7 +2009,12 @@ export class VideoRenderer {
         const target = clip.reverse
           ? Math.max(clip.trimStart, sourceTime)
           : Math.min(sourceTime, Math.max(0, (clip.sourceDuration || 0) - 0.05));
-        const mediaReady = image ? image.complete : !!video && video.readyState >= 2;
+        const mediaReady = image
+          ? image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
+          : !!video &&
+            video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+            video.videoWidth > 0 &&
+            video.videoHeight > 0;
         if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
@@ -2012,10 +2082,13 @@ export class VideoRenderer {
            if (!paintedFromCache) {
              if (video) {
                if (opts.isolatedPreview) {
-                 await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
-               } else {
-                 await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
-               }
+                await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+              } else {
+                await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+              }
+              if (!image && (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0)) {
+                return;
+              }
                if (!isCurrent()) return;
              }
              sctx.save();
