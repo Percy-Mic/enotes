@@ -1252,9 +1252,9 @@ function VideoEditor() {
         if (!audio || audio.src !== clip.src) {
           audio?.pause();
           const videoAudio = document.createElement('video');
-          if ((clip.audioProcessing?.effects || []).some((effect) => effect.type !== 'none' && effect.amount > 0)) {
-            videoAudio.crossOrigin = 'anonymous';
-          }
+          /* Configure CORS before src so this element can safely enter the
+             Web Audio graph if an effect is added later. */
+          videoAudio.crossOrigin = 'anonymous';
           videoAudio.preload = 'auto';
           videoAudio.playsInline = true;
           videoAudio.setAttribute('playsinline', '');
@@ -1343,9 +1343,9 @@ function VideoEditor() {
       if (!audio || audio.src !== track.src) {
         audio?.pause();
         audio = new Audio();
-        if ((track.audioProcessing?.effects || []).some((effect) => effect.type !== 'none' && effect.amount > 0)) {
-          audio.crossOrigin = 'anonymous';
-        }
+        /* Effects may be enabled after playback has begun, so CORS must be
+           configured before src on the original media element. */
+        audio.crossOrigin = 'anonymous';
         audio.preload = 'auto';
         audio.src = track.src;
         previewAudioRef.current.set(key, audio);
