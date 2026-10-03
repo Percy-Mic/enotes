@@ -1637,22 +1637,43 @@ export class VideoRenderer {
   ) {
     if (!filter || filter === 'none') return;
 
-    /* Snapshot raw pixels first, then filter the snapshot. Never filter the
-       live video draw and never draw a canvas onto itself. */
-    filterCtx.setTransform(1, 0, 0, 1, 0, 0);
-    filterCtx.globalAlpha = 1;
-    filterCtx.globalCompositeOperation = 'source-over';
-    filterCtx.filter = 'none';
-    filterCtx.clearRect(0, 0, filterCanvas.width, filterCanvas.height);
-    filterCtx.drawImage(surface, 0, 0);
+    /* CanvasRenderingContext2D.filter is not universally available. Never
+       clear a valid source frame until the browser has accepted the filter. */
+    let supported = false;
+    try {
+      filterCtx.setTransform(1, 0, 0, 1, 0, 0);
+      filterCtx.globalAlpha = 1;
+      filterCtx.globalCompositeOperation = 'source-over';
+      filterCtx.filter = 'none';
+      filterCtx.clearRect(0, 0, filterCanvas.width, filterCanvas.height);
+      filterCtx.drawImage(surface, 0, 0);
 
-    surfaceCtx.setTransform(1, 0, 0, 1, 0, 0);
-    surfaceCtx.globalAlpha = 1;
-    surfaceCtx.globalCompositeOperation = 'source-over';
-    surfaceCtx.filter = filter;
-    surfaceCtx.clearRect(0, 0, surface.width, surface.height);
-    surfaceCtx.drawImage(filterCanvas, 0, 0);
-    surfaceCtx.filter = 'none';
+      surfaceCtx.filter = filter;
+      supported = surfaceCtx.filter !== 'none';
+    } catch {
+      supported = false;
+    }
+
+    if (!supported) {
+      surfaceCtx.filter = 'none';
+      return;
+    }
+
+    try {
+      surfaceCtx.setTransform(1, 0, 0, 1, 0, 0);
+      surfaceCtx.globalAlpha = 1;
+      surfaceCtx.globalCompositeOperation = 'source-over';
+      surfaceCtx.clearRect(0, 0, surface.width, surface.height);
+      surfaceCtx.drawImage(filterCanvas, 0, 0);
+    } catch {
+      try {
+        surfaceCtx.filter = 'none';
+        surfaceCtx.clearRect(0, 0, surface.width, surface.height);
+        surfaceCtx.drawImage(filterCanvas, 0, 0);
+      } catch {}
+    } finally {
+      surfaceCtx.filter = 'none';
+    }
   }
 
   /** Cooperative cancellation flag for the running export. */
@@ -2526,3 +2547,4 @@ export function defaultExportSettings(project: VideoProject): ExportSettings {
     format: 'mp4',
   };
 }
+
