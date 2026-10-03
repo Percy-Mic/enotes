@@ -125,22 +125,56 @@ function useLatestPreviewRenderer() {
   const rendererRef = useRef<VideoRenderer | null>(null);
   const renderingRef = useRef(false);
   const queuedRequestRef = useRef<{ canvas: HTMLCanvasElement; project: VideoProject; time: number } | null>(null);
+
+  /* Picker cards must be latest-wins. The old implementation rendered one
+     request and then stopped; every request arriving while that render was
+     running was silently dropped. During playback this happened constantly,
+     so effect/filter/motion thumbnails could remain black or stale forever. */
   const render = useCallback(async (canvas: HTMLCanvasElement, project: VideoProject, time: number) => {
     const maxPreviewEdge = 480;
     const edge = Math.max(project.canvas.width, project.canvas.height);
     const scale = edge > maxPreviewEdge ? maxPreviewEdge / edge : 1;
-    const previewProject: VideoProject = scale < 1 ? { ...project, canvas: { ...project.canvas, width: Math.max(1, Math.round(project.canvas.width * scale)), height: Math.max(1, Math.round(project.canvas.height * scale)) } } : project;
+    const previewProject: VideoProject = scale < 1
+      ? {
+          ...project,
+          canvas: {
+            ...project.canvas,
+            width: Math.max(1, Math.round(project.canvas.width * scale)),
+            height: Math.max(1, Math.round(project.canvas.height * scale)),
+          },
+        }
+      : project;
+
     queuedRequestRef.current = { canvas, project: previewProject, time };
     if (renderingRef.current) return;
+
     renderingRef.current = true;
     try {
-      const next = queuedRequestRef.current;
-      queuedRequestRef.current = null;
-      if (next) {
-        if (!rendererRef.current) rendererRef.current = new VideoRenderer();
-        try { await rendererRef.current.drawFrame(next.canvas, next.project, next.time, { previewing: true, playing: false, isolatedPreview: true }); } catch {}
+      if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+
+      while (queuedRequestRef.current) {
+        const next = queuedRequestRef.current;
+        queuedRequestRef.current = null;
+        try {
+          await rendererRef.current.drawFrame(next.canvas, next.project, next.time, {
+            previewing: true,
+            playing: false,
+            isolatedPreview: true,
+          });
+        } catch {
+          /* A picker is non-critical; keep the last successful frame. */
+        }
+        /* If several timer ticks arrived during the render, only the newest
+           one is rendered. Never build an unbounded preview backlog. */
       }
-    } finally { renderingRef.current = false; }
+    } finally {
+      renderingRef.current = false;
+      /* A request can arrive in the tiny gap between the loop condition and
+         finally. Hand it back to the same latest-wins worker. */
+      if (queuedRequestRef.current) {
+        void render(canvas, project, time);
+      }
+    }
   }, []);
   return { rendererRef, render };
 }
@@ -183,9 +217,9 @@ function LookPreview({ project, clipId, playhead, effect, filter }: LookPreviewP
 
 
 function FilterPreviewCard({
-  project, clipId, playhead, filter, active, onHover, onLeave, onApply,
+  project, clipId, playhead, filter, active, playing, onHover, onLeave, onApply,
 }: {
-  project: VideoProject; clipId: string; playhead: number; filter: string; active: boolean;
+  project: VideoProject; clipId: string; playhead: number; filter: string; active: boolean; playing: boolean;
   onHover: () => void; onLeave: () => void; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -208,7 +242,8 @@ function FilterPreviewCard({
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
     const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
     void renderAt(base);
-    if (!active) return;
+    if (!active || playing) return;
+    if (playing) return;
     const started = performance.now();
     const tick = () => {
       const elapsed = ((performance.now() - started) / 1000) % Math.min(duration, 3);
@@ -217,7 +252,7 @@ function FilterPreviewCard({
     };
     tick();
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
-  }, [active, clipId, playhead, project.clips, renderAt]);
+  }, [active, playing, clipId, playhead, project.clips, renderAt]);
 
   return (
     <button type="button" onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave}
@@ -233,10 +268,10 @@ function FilterPreviewCard({
 }
 
 function EffectPreviewCard({
-  project, clipId, playhead, effect, filter, active, onHover, onLeave, onApply,
+  project, clipId, playhead, effect, filter, active, playing, onHover, onLeave, onApply,
 }: {
   project: VideoProject; clipId: string; playhead: number; effect: VideoClip['effect']; filter: string;
-  active: boolean; onHover: () => void; onLeave: () => void; onApply: () => void;
+  active: boolean; playing: boolean; onHover: () => void; onLeave: () => void; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { render } = useLatestPreviewRenderer();
@@ -260,7 +295,7 @@ function EffectPreviewCard({
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
     const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
     void renderAt(base);
-    if (!active) return;
+    if (!active || playing) return;
     const started = performance.now();
     const tick = () => {
       const elapsed = ((performance.now() - started) / 1000) % Math.min(duration, 3);
@@ -269,7 +304,7 @@ function EffectPreviewCard({
     };
     tick();
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
-  }, [active, clipId, playhead, project.clips, renderAt]);
+  }, [active, playing, clipId, playhead, project.clips, renderAt]);
 
   return (
     <button type="button" onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave}
@@ -287,9 +322,9 @@ function EffectPreviewCard({
 }
 
 
-function TransitionPreviewCard({ project, clipId, transition, duration, active, onApply }: {
+function TransitionPreviewCard({ project, clipId, transition, duration, active, playing, onApply }: {
   project: VideoProject; clipId: string; transition: VideoClip['transitionIn']['type'];
-  duration: number; active: boolean; onApply: () => void;
+  duration: number; active: boolean; playing: boolean; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { render } = useLatestPreviewRenderer();
@@ -312,7 +347,7 @@ function TransitionPreviewCard({ project, clipId, transition, duration, active, 
     const tick = () => { void renderAt(((performance.now() - started) / 1000) % 1.4 / 1.4); timerRef.current = window.setTimeout(tick, 110); };
     tick();
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
-  }, [active, renderAt]);
+  }, [active, playing, renderAt]);
   return (
     <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
@@ -323,8 +358,8 @@ function TransitionPreviewCard({ project, clipId, transition, duration, active, 
   );
 }
 
-function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
-  project: VideoProject; clipId: string; preset: 'zoom-in' | 'zoom-out' | 'spin' | 'float' | 'pop' | 'shake'; onApply: () => void;
+function MotionPresetPreviewCard({ project, clipId, preset, playing, onApply }: {
+  project: VideoProject; clipId: string; preset: 'zoom-in' | 'zoom-out' | 'spin' | 'float' | 'pop' | 'shake'; playing: boolean; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { render } = useLatestPreviewRenderer();
@@ -352,7 +387,7 @@ function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
     const tick = () => { void renderAt(((performance.now() - started) / 1000) % 1.5 / 1.5); timerRef.current = window.setTimeout(tick, 110); };
     tick();
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
-  }, [renderAt]);
+  }, [playing, renderAt]);
   return (
     <button type="button" onClick={onApply} className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1 text-left transition hover:border-white/25">
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
@@ -363,8 +398,8 @@ function MotionPresetPreviewCard({ project, clipId, preset, onApply }: {
 }
 
 
-function EffectRecipePreviewCard({ project, clipId, name, layers, active, onApply }: {
-  project: VideoProject; clipId: string; name: string; layers: string[]; active: boolean; onApply: () => void;
+function EffectRecipePreviewCard({ project, clipId, name, layers, active, playing, onApply }: {
+  project: VideoProject; clipId: string; name: string; layers: string[]; active: boolean; playing: boolean; onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { render } = useLatestPreviewRenderer();
@@ -7458,7 +7493,7 @@ function VideoEditor() {
                       ['zoom-in','Zoom in'],['zoom-out','Zoom out'],['spin','Spin'],
                       ['float','Float'],['pop','Pop'],['shake','Shake'],
                     ] as const).map(([id]) => (
-                      <MotionPresetPreviewCard key={id} project={project} clipId={selectedClip.id} preset={id} onApply={() => applyMotionPreset(id)} />
+                      <MotionPresetPreviewCard key={id} project={project} clipId={selectedClip.id} preset={id} playing={playing} onApply={() => applyMotionPreset(id)} />
                     ))}
                   </div>
                 </div>
@@ -7617,6 +7652,7 @@ function VideoEditor() {
                         playhead={playhead}
                         filter={f.id}
                         active={selectedClip.filter === f.id}
+                        playing={playing}
                         onHover={() => setLookPreviewFilter(f.id)}
                         onLeave={() => setLookPreviewFilter(null)}
                         onApply={() => updateClip(selectedClip.id, { filter: f.id }, 'Apply filter')}
@@ -7729,6 +7765,7 @@ function VideoEditor() {
                               effect={fx.id}
                               filter={selectedClip.filter}
                               active={(lookPreviewEffect ?? selectedClip.effect) === fx.id}
+                              playing={playing}
                               onHover={() => setLookPreviewEffect(fx.id)}
                               onLeave={() => setLookPreviewEffect(null)}
                               onApply={() => {
@@ -7822,6 +7859,7 @@ function VideoEditor() {
                             name={String(name)}
                             layers={ids}
                             active={ids.every((id) => (selectedClip.effects || []).some((layer) => layer.type === id))}
+                            playing={playing}
                             onApply={() => {
                               const current = selectedClip.effects || [];
                               const next = [...current];
@@ -7853,7 +7891,7 @@ function VideoEditor() {
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Transition in</p>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {(['none', 'fade', 'crossfade', 'slide', 'push', 'zoom', 'zoom-blur', 'whip-pan', 'spin', 'wipe', 'luma-wipe', 'dip-black', 'blur', 'glitch-cut', 'film-burn'] as const).map((t) => (
-                      <TransitionPreviewCard key={t} project={project} clipId={selectedClip.id} transition={t} duration={selectedClip.transitionIn.duration} active={selectedClip.transitionIn.type === t}
+                      <TransitionPreviewCard key={t} project={project} clipId={selectedClip.id} transition={t} duration={selectedClip.transitionIn.duration} active={selectedClip.transitionIn.type === t} playing={playing}
                         onApply={() => updateClip(selectedClip.id, { transitionIn: { type: t, duration: selectedClip.transitionIn.duration } }, 'Transition')} />
                     ))}
                   </div>
