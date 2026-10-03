@@ -3324,6 +3324,21 @@ function VideoEditor() {
     updateProject((p) => ({ ...p, markers: (p.markers || []).filter((m) => m.id !== id) }), 'Delete timeline marker');
   }, [updateProject]);
 
+  const jumpToBeat = useCallback((direction: -1 | 1) => {
+    const beats = Array.from(new Set((docRef.current.project.beatMarkers || []).filter((t) => Number.isFinite(t))))
+      .sort((a, b) => a - b);
+    if (!beats.length) {
+      notify('Detect beats on an audio track first.');
+      return;
+    }
+    const now = playheadRef.current;
+    const epsilon = 0.025;
+    const target = direction < 0
+      ? [...beats].reverse().find((t) => t < now - epsilon) ?? beats[beats.length - 1]
+      : beats.find((t) => t > now + epsilon) ?? beats[0];
+    seekTo(target);
+  }, [notify, seekTo]);
+
   /** Convert a clientX into timeline seconds (accounts for scroll + labels). */
   const timeAtClientX = useCallback(
     (clientX: number): number => {
@@ -6159,6 +6174,13 @@ function VideoEditor() {
               <button onClick={addTimelineMarker} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add marker at playhead">
                 <Plus className="h-3.5 w-3.5" /> Marker
               </button>
+              <button onClick={() => jumpToBeat(-1)} disabled={!project.beatMarkers?.length} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] font-semibold text-white/70 disabled:opacity-30" title="Previous detected beat" aria-label="Previous beat">Beat ‹</button>
+              <button onClick={() => jumpToBeat(1)} disabled={!project.beatMarkers?.length} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] font-semibold text-white/70 disabled:opacity-30" title="Next detected beat" aria-label="Next beat">›</button>
+              {project.beatMarkers?.length ? (
+                <span className="rounded-lg bg-[#E5798F]/10 px-2 py-1.5 text-[10px] font-semibold text-[#FFB6C1]" title="Detected beats are magnetic Snap points">
+                  {project.beatMarkers.length} beats
+                </span>
+              ) : null}
               <button onClick={() => history.undo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Undo"><Undo2 className="h-3.5 w-3.5" /></button>
               <button onClick={() => history.redo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Redo"><Redo2 className="h-3.5 w-3.5" /></button>
               <button onClick={addEditorTrack} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
@@ -6195,6 +6217,25 @@ function VideoEditor() {
                       <span className="absolute top-0 h-2 w-px bg-white/25" />
                       <span className="absolute left-1 top-0.5 text-[8px] tabular-nums text-white/35">{fmt(t)}</span>
                     </div>
+                  ))}
+                  {(project.beatMarkers || []).map((t, index) => (
+                    <button key={`beat-${t}-${index}`} type="button"
+                      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); seekTo(t); }}
+                      className="absolute bottom-0 z-20 h-4 w-2 -translate-x-1/2 rounded-t bg-[#FFB6C1]/80 hover:bg-[#FFB6C1]"
+                      style={{ left: t * pxPerSec }}
+                      title={`Beat at ${fmt(t)} — click to jump`}
+                      aria-label={`Beat at ${fmt(t)}`}
+                    />
+                  ))}
+                  {(project.markers || []).map((marker) => (
+                    <button key={marker.id} type="button"
+                      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); seekTo(marker.time); }}
+                      onDoubleClick={(e) => { e.preventDefault(); e.stopPropagation(); removeTimelineMarker(marker.id); }}
+                      className="absolute bottom-0 z-30 h-5 w-3 -translate-x-1/2 rounded-t bg-amber-300/90 hover:bg-amber-200"
+                      style={{ left: marker.time * pxPerSec }}
+                      title={`${marker.label} · ${fmt(marker.time)} · double-click to delete`}
+                      aria-label={`${marker.label} at ${fmt(marker.time)}`}
+                    />
                   ))}
                 </div>
               </div>
@@ -7068,7 +7109,7 @@ function VideoEditor() {
                 kind: 'image',
                 content: name,
                 src: url,
-                track_id: project.tracks[0]?.id,
+                track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
                 start: playheadRef.current,
                 end: Math.min(duration, playheadRef.current + 4),
                 x: Math.round((project.canvas.width - w) / 2),
@@ -7114,7 +7155,7 @@ function VideoEditor() {
                 kind: 'text',
                 content: caption.text,
                 src: null,
-                track_id: project.tracks[0]?.id,
+                track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
                 start: captionClip ? captionTimelineStart + localStart : caption.start,
                 end: captionClip ? captionTimelineStart + localEnd : Math.max(caption.start + 0.25, caption.end),
                 x: project.canvas.width * 0.08,
