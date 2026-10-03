@@ -95,9 +95,24 @@ export function connectAudioEffects(
     const type = effect.type;
     if (type === 'deep' || type === 'high' || type === 'chipmunk') {
       const f = ctx.createBiquadFilter();
-      f.type = 'lowshelf';
-      f.frequency.value = type === 'deep' ? 220 : 3200;
-      f.gain.value = type === 'deep' ? -8 * amount : 5 * amount;
+
+      if (type === 'deep') {
+        /* Warm/deep voice: gently attenuate the upper presence range. */
+        f.type = 'highshelf';
+        f.frequency.value = 3200;
+        f.gain.value = -5 * amount;
+      } else if (type === 'high') {
+        /* "High" means treble/high-frequency boost, not a low shelf. */
+        f.type = 'highshelf';
+        f.frequency.value = 3000;
+        f.gain.value = 5 * amount;
+      } else {
+        /* Keep chipmunk bright without deleting the voice body. */
+        f.type = 'highshelf';
+        f.frequency.value = 2600;
+        f.gain.value = 4 * amount;
+      }
+
       current.connect(f);
       current = f;
       continue;
@@ -208,7 +223,19 @@ export function connectAudioEffects(
       continue;
     }
   }
-  current.connect(finish);
+  /*
+   * Effects such as distortion, bass boost and multiple stacked shelves can
+   * create peaks above 0 dBFS. Keep the signal audible instead of letting a
+   * hard clipped graph collapse into harsh/noisy silence.
+   */
+  const safety = ctx.createDynamicsCompressor();
+  safety.threshold.value = -3;
+  safety.knee.value = 6;
+  safety.ratio.value = 3;
+  safety.attack.value = 0.003;
+  safety.release.value = 0.12;
+
+  current.connect(safety).connect(finish);
   finish.connect(output);
   return finish;
 }
