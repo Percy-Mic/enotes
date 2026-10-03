@@ -1139,6 +1139,11 @@ function VideoEditor() {
      playback. This is preview-only; export mixing remains in renderer.ts. */
   const previewAudioRef = useRef<Map<string, HTMLMediaElement>>(new Map());
   const previewAudioUnlockedRef = useRef(false);
+  /* A play() promise can take a few milliseconds to settle. Without this
+     guard, the 30fps timeline can issue play() repeatedly while `paused`
+     is still true, and an older async sync can later pause/reposition a newer
+     playback attempt. */
+  const previewAudioPlayRequestedRef = useRef<Set<string>>(new Set());
   const previewAudioContextRef = useRef<AudioContext | null>(null);
   const previewAudioSourcesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   const previewAudioGraphRef = useRef<Map<string, { signature: string; output: GainNode }>>(new Map());
@@ -1220,7 +1225,7 @@ function VideoEditor() {
   }, []);
 
 
-  const syncPreviewAudio = useCallback(async (time: number, shouldPlay: boolean) => {
+  const syncPreviewAudio = useCallback((time: number, shouldPlay: boolean) => {
     const p = docRef.current.project;
     const lanes = p.tracks.filter((t) => t.kind === 'audio');
     const soloActive = lanes.some((t) => t.solo);
@@ -1284,18 +1289,22 @@ function VideoEditor() {
         if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
           try { audio.currentTime = target; } catch { /* wait for metadata */ }
         }
-        if (shouldPlay && audio.paused) {
-          /*
-           * Do not await play() here. syncPreviewAudio runs from the 30–60fps
-           * timeline clock; awaiting the browser's play promise made the next
-           * clock tick invalidate the previous attempt, so audio could remain
-           * permanently paused even after clicking Play.
-           */
-          void audio.play()
-            .then(() => { previewAudioUnlockedRef.current = true; })
-            .catch(() => { /* retried by the next sync pass / user gesture */ });
-        } else if (!shouldPlay) {
-          audio.pause();
+        if (shouldPlay) {
+          const requested = previewAudioPlayRequestedRef.current.has(clipId);
+          if (audio.paused && !requested) {
+            previewAudioPlayRequestedRef.current.add(clipId);
+            void audio.play()
+              .then(() => {
+                previewAudioUnlockedRef.current = true;
+                previewAudioPlayRequestedRef.current.delete(clipId);
+              })
+              .catch(() => {
+                previewAudioPlayRequestedRef.current.delete(clipId);
+              });
+          }
+        } else {
+          previewAudioPlayRequestedRef.current.delete(clipId);
+          if (!audio.paused) audio.pause();
         }
       }
 
@@ -1372,28 +1381,36 @@ function VideoEditor() {
       audio.volume = volume;
 
       if (!inRange || !shouldPlay) {
-        audio.pause();
+        previewAudioPlayRequestedRef.current.delete(key);
+        if (!audio.paused) audio.pause();
         if (!inRange) {
           try { audio.currentTime = target; } catch { /* media may not be ready */ }
         }
         continue;
       }
 
-      if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
+      if (Math.abs(audio.currentTime - target) > 0.18) {
         try { audio.currentTime = target; } catch { /* wait for metadata */ }
       }
-      if (audio.paused) {
-        try {
-          await audio.play();
-          previewAudioUnlockedRef.current = true;
-        } catch {
-          /* Browser autoplay policy: the next user play click retries. */
-        }
+      const requested = previewAudioPlayRequestedRef.current.has(key);
+      if (audio.paused && !requested) {
+        previewAudioPlayRequestedRef.current.add(key);
+        void audio.play()
+          .then(() => {
+            previewAudioUnlockedRef.current = true;
+            previewAudioPlayRequestedRef.current.delete(key);
+          })
+          .catch(() => {
+            previewAudioPlayRequestedRef.current.delete(key);
+          });
       }
     }
 
     previewAudioRef.current.forEach((audio, id) => {
-      if (!activeIds.has(id)) audio.pause();
+      if (!activeIds.has(id)) {
+        previewAudioPlayRequestedRef.current.delete(id);
+        if (!audio.paused) audio.pause();
+      }
     });
   }, [ensurePreviewAudioGraph]);
 
@@ -1403,6 +1420,7 @@ function VideoEditor() {
       audio.src = '';
     });
     previewAudioRef.current.clear();
+    previewAudioPlayRequestedRef.current.clear();
     previewAudioSourcesRef.current.clear();
     previewAudioGraphRef.current.clear();
     const ctx = previewAudioContextRef.current;
