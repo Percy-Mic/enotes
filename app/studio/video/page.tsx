@@ -793,8 +793,81 @@ function clipBoxRect(clip: VideoClip, canvasW: number, canvasH: number) {
   return {
     cx: canvasW / 2 + clip.transform.offset_x,
     cy: canvasH / 2 + clip.transform.offset_y,
-    w,
-    h,
+    w: Math.max(1, w),
+    h: Math.max(1, h),
+  };
+}
+
+function clipControlState(clip: VideoClip, canvasW: number, canvasH: number, time: number) {
+  const timeIn = Math.max(0, Math.min(clipDuration(clip), time));
+  const v = resolveClipValues(clip, timeIn);
+  return {
+    ...clip,
+    transform: {
+      ...clip.transform,
+      scale: Number.isFinite(v.scale) ? v.scale : clip.transform.scale,
+      offset_x: Number.isFinite(v.offset_x) ? v.offset_x : clip.transform.offset_x,
+      offset_y: Number.isFinite(v.offset_y) ? v.offset_y : clip.transform.offset_y,
+      rotation: Number.isFinite(v.rotation) ? v.rotation : clip.transform.rotation,
+    },
+  };
+}
+
+function rotatedHalfExtents(width: number, height: number, rotation: number) {
+  const rad = (rotation * Math.PI) / 180;
+  const c = Math.abs(Math.cos(rad));
+  const s = Math.abs(Math.sin(rad));
+  return {
+    x: (Math.abs(width) * c + Math.abs(height) * s) / 2,
+    y: (Math.abs(width) * s + Math.abs(height) * c) / 2,
+  };
+}
+
+/** Keep the complete main-video control frame inside the editor canvas. */
+function maxContainedClipScale(clip: VideoClip, canvasW: number, canvasH: number) {
+  const base = {
+    ...clip,
+    transform: {
+      ...clip.transform,
+      scale: 1,
+      offset_x: 0,
+      offset_y: 0,
+    },
+  };
+  const box = clipBoxRect(base, canvasW, canvasH);
+  const ext = rotatedHalfExtents(box.w, box.h, clip.transform.rotation);
+  return Math.max(
+    0.05,
+    Math.min(
+      4,
+      canvasW / Math.max(1, ext.x * 2),
+      canvasH / Math.max(1, ext.y * 2),
+    ),
+  );
+}
+
+function containClipTransform(
+  clip: VideoClip,
+  transform: VideoClip['transform'],
+  canvasW: number,
+  canvasH: number,
+) {
+  const next = {
+    ...transform,
+    scale: clampNum(
+      Number.isFinite(transform.scale) ? transform.scale : 1,
+      0.05,
+      maxContainedClipScale({ ...clip, transform }, canvasW, canvasH),
+    ),
+  };
+  const box = clipBoxRect({ ...clip, transform: next }, canvasW, canvasH);
+  const ext = rotatedHalfExtents(box.w, box.h, next.rotation);
+  const cx = clampNum(box.cx, ext.x, Math.max(ext.x, canvasW - ext.x));
+  const cy = clampNum(box.cy, ext.y, Math.max(ext.y, canvasH - ext.y));
+  return {
+    ...next,
+    offset_x: Math.round(cx - canvasW / 2),
+    offset_y: Math.round(cy - canvasH / 2),
   };
 }
 
@@ -4220,8 +4293,9 @@ function VideoEditor() {
 
   /* handle positions for the selected main clip, in canvas units */
   const clipHandlePoints = (clip: VideoClip) => {
-    const box = clipBoxRect(clip, project.canvas.width, project.canvas.height);
-    const rad = (clip.transform.rotation * Math.PI) / 180;
+    const controlClip = clipControlState(clip, project.canvas.width, project.canvas.height, Math.max(0, playheadRef.current));
+    const box = clipBoxRect(controlClip, project.canvas.width, project.canvas.height);
+    const rad = (controlClip.transform.rotation * Math.PI) / 180;
     const rot = (lx: number, ly: number) => ({
       x: box.cx + lx * Math.cos(rad) - ly * Math.sin(rad),
       y: box.cy + lx * Math.sin(rad) + ly * Math.cos(rad),
@@ -4453,7 +4527,12 @@ function VideoEditor() {
 
     const startX = start.x;
     const startY = start.y;
-    const startClip = { ...clip, transform: { ...clip.transform } };
+    const startClip = clipControlState(
+      { ...clip, transform: { ...clip.transform } },
+      project.canvas.width,
+      project.canvas.height,
+      Math.max(0, playheadRef.current),
+    );
     const box = clipBoxRect(startClip, project.canvas.width, project.canvas.height);
     const rad = (startClip.transform.rotation * Math.PI) / 180;
     const startAngle = Math.atan2(startY - box.cy, startX - box.cx);
@@ -4468,18 +4547,19 @@ function VideoEditor() {
       const T = startClip.transform;
 
       if (gesture === 'move') {
-        /* keep ≥25% of the box visible on either axis */
-        const ncx = clampNum(box.cx + dx, -box.w * 0.25, project.canvas.width + box.w * 0.25);
-        const ncy = clampNum(box.cy + dy, -box.h * 0.25, project.canvas.height + box.h * 0.25);
+        const nextTransform = containClipTransform(
+          clip,
+          {
+            ...T,
+            offset_x: Math.round(box.cx + dx - project.canvas.width / 2),
+            offset_y: Math.round(box.cy + dy - project.canvas.height / 2),
+          },
+          project.canvas.width,
+          project.canvas.height,
+        );
         updateClip(
           clip.id,
-          {
-            transform: {
-              ...T,
-              offset_x: Math.round(ncx - project.canvas.width / 2),
-              offset_y: Math.round(ncy - project.canvas.height / 2),
-            },
-          },
+          { transform: nextTransform },
           'Move video',
           `cmove-${clip.id}`
         );
@@ -4490,9 +4570,15 @@ function VideoEditor() {
         const d0 = Math.hypot(startX - box.cx, startY - box.cy);
         const d1 = Math.hypot(p.x - box.cx, p.y - box.cy);
         const r = clampNum(d1 / Math.max(8, d0), 0.1, 4);
+        const nextTransform = containClipTransform(
+          clip,
+          { ...T, scale: T.scale * r },
+          project.canvas.width,
+          project.canvas.height,
+        );
         updateClip(
           clip.id,
-          { transform: { ...T, scale: clampNum(T.scale * r, 0.1, 4) } },
+          { transform: nextTransform },
           'Scale video',
           `cuniform-${clip.id}`
         );
@@ -4500,13 +4586,19 @@ function VideoEditor() {
       }
 
       if (isCornerGesture(gesture)) {
-        /* uniform scale: pointer distance from center vs at start */
+        /* Corner controls preserve the source frame shape and stay contained. */
         const d0 = Math.hypot(startX - box.cx, startY - box.cy);
         const d1 = Math.hypot(p.x - box.cx, p.y - box.cy);
         const r = clampNum(d1 / Math.max(8, d0), 0.1, 4);
+        const nextTransform = containClipTransform(
+          clip,
+          { ...T, scale: T.scale * r },
+          project.canvas.width,
+          project.canvas.height,
+        );
         updateClip(
           clip.id,
-          { transform: { ...T, scale: clampNum(T.scale * r, 0.1, 4) } },
+          { transform: nextTransform },
           'Scale video',
           `cscale-${clip.id}`
         );
@@ -4514,20 +4606,24 @@ function VideoEditor() {
       }
 
       if (isEdgeGesture(gesture)) {
-        /* stretch one axis in the clip's rotated frame */
-        const dx0 = startX - box.cx;
-        const dy0 = startY - box.cy;
-        const l0x = dx0 * Math.cos(rad) + dy0 * Math.sin(rad);
-        const l0y = -dx0 * Math.sin(rad) + dy0 * Math.cos(rad);
-        const l1x = (p.x - box.cx) * Math.cos(rad) + (p.y - box.cy) * Math.sin(rad);
-        const l1y = -(p.x - box.cx) * Math.sin(rad) + (p.y - box.cy) * Math.cos(rad);
-        if (gesture === 'resize-e' || gesture === 'resize-w') {
-          const r = clampNum(Math.abs(l1x) / Math.max(8, Math.abs(l0x)), 0.05, 4);
-          updateClip(clip.id, { transform: { ...T, scale_x: clampNum(T.scale_x * r, 0.05, 4) } }, 'Stretch video', `csx-${clip.id}`);
-        } else {
-          const r = clampNum(Math.abs(l1y) / Math.max(8, Math.abs(l0y)), 0.05, 4);
-          updateClip(clip.id, { transform: { ...T, scale_y: clampNum(T.scale_y * r, 0.05, 4) } }, 'Stretch video', `csy-${clip.id}`);
-        }
+        /* Edge controls resize the complete video proportionally instead of
+           squeezing one axis. The video and its control frame therefore remain
+           the same shape at every size. */
+        const d0 = Math.hypot(startX - box.cx, startY - box.cy);
+        const d1 = Math.hypot(p.x - box.cx, p.y - box.cy);
+        const r = clampNum(d1 / Math.max(8, d0), 0.1, 4);
+        const nextTransform = containClipTransform(
+          clip,
+          { ...T, scale: T.scale * r },
+          project.canvas.width,
+          project.canvas.height,
+        );
+        updateClip(
+          clip.id,
+          { transform: nextTransform },
+          'Resize video',
+          `cresize-${clip.id}`
+        );
         return;
       }
 
@@ -4536,7 +4632,13 @@ function VideoEditor() {
       let deg = startClip.transform.rotation + ((angle - startAngle) * 180) / Math.PI;
       const snapped = Math.round(deg / 15) * 15;
       if (Math.abs(deg - snapped) < 4) deg = snapped;
-      updateClip(clip.id, { transform: { ...T, rotation: Math.round(deg) } }, 'Rotate video', `crot-${clip.id}`);
+      const nextTransform = containClipTransform(
+        clip,
+        { ...T, rotation: Math.round(deg) },
+        project.canvas.width,
+        project.canvas.height,
+      );
+      updateClip(clip.id, { transform: nextTransform }, 'Rotate video', `crot-${clip.id}`);
     };
 
     const onUp = () => {
@@ -4672,7 +4774,14 @@ function VideoEditor() {
       if (clip) {
         updateClip(
           clip.id,
-          { transform: { ...clip.transform, scale: clampNum(clip.transform.scale * factor, 0.1, 4) } },
+          {
+            transform: containClipTransform(
+              clip,
+              { ...clip.transform, scale: clip.transform.scale * factor },
+              project.canvas.width,
+              project.canvas.height,
+            ),
+          },
           'Pinch resize video',
           `pinch-scale-${clip.id}`,
         );
@@ -4726,11 +4835,16 @@ function VideoEditor() {
         updateClip(
           clip.id,
           {
-            transform: {
-              ...clip.transform,
-              offset_x: Math.round(clip.transform.offset_x + delta.x * scaleX),
-              offset_y: Math.round(clip.transform.offset_y + delta.y * scaleY),
-            },
+            transform: containClipTransform(
+              clip,
+              {
+                ...clip.transform,
+                offset_x: Math.round(clip.transform.offset_x + delta.x * scaleX),
+                offset_y: Math.round(clip.transform.offset_y + delta.y * scaleY),
+              },
+              project.canvas.width,
+              project.canvas.height,
+            ),
           },
           'Two-finger move video',
           `pinch-pan-clip-${clip.id}`,
@@ -5788,8 +5902,12 @@ function VideoEditor() {
   const inspectorTool: Tool = selectedElement?.kind === 'text' ? 'text' : 'overlays';
 
   /* geometry for the on-canvas clip frame */
-  const clipFrame = selectedClip && !playing && !cropMode
-    ? clipBoxRect(selectedClip, project.canvas.width, project.canvas.height)
+  const clipControlClip = selectedClip
+    ? clipControlState(selectedClip, project.canvas.width, project.canvas.height, Math.max(0, playheadRef.current))
+    : null;
+
+  const clipFrame = clipControlClip && !playing && !cropMode
+    ? clipBoxRect(clipControlClip, project.canvas.width, project.canvas.height)
     : null;
 
   /* Media aspect cache for the crop workspace: crop fractions are relative
