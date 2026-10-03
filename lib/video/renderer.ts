@@ -1761,11 +1761,17 @@ export class VideoRenderer {
     filterCtx: CanvasRenderingContext2D,
     filter: string,
   ) {
-    if (!filter || filter === 'none') return;
+    if (!filter || filter === 'none') {
+      surfaceCtx.filter = 'none';
+      return;
+    }
 
-    /* CanvasRenderingContext2D.filter is not universally available. Never
-       clear a valid source frame until the browser has accepted the filter. */
-    let supported = false;
+    /*
+     * Filter syntax is user/project data. Browsers differ in how strictly
+     * CanvasRenderingContext2D.filter validates CSS filter strings. Test the
+     * filter on the disposable filter context first; never clear the source
+     * surface until the filter has been accepted.
+     */
     try {
       filterCtx.setTransform(1, 0, 0, 1, 0, 0);
       filterCtx.globalAlpha = 1;
@@ -1774,31 +1780,29 @@ export class VideoRenderer {
       filterCtx.clearRect(0, 0, filterCanvas.width, filterCanvas.height);
       filterCtx.drawImage(surface, 0, 0);
 
-      surfaceCtx.filter = filter;
-      supported = surfaceCtx.filter !== 'none';
-    } catch {
-      supported = false;
-    }
+      filterCtx.filter = filter;
+      if (filterCtx.filter === 'none' && filter.trim() !== 'none') {
+        surfaceCtx.filter = 'none';
+        return;
+      }
 
-    if (!supported) {
+      filterCtx.clearRect(0, 0, filterCanvas.width, filterCanvas.height);
+      filterCtx.drawImage(surface, 0, 0);
+
       surfaceCtx.filter = 'none';
-      return;
-    }
-
-    try {
       surfaceCtx.setTransform(1, 0, 0, 1, 0, 0);
       surfaceCtx.globalAlpha = 1;
       surfaceCtx.globalCompositeOperation = 'source-over';
       surfaceCtx.clearRect(0, 0, surface.width, surface.height);
       surfaceCtx.drawImage(filterCanvas, 0, 0);
     } catch {
-      try {
-        surfaceCtx.filter = 'none';
-        surfaceCtx.clearRect(0, 0, surface.width, surface.height);
-        surfaceCtx.drawImage(filterCanvas, 0, 0);
-      } catch {}
+      /*
+       * The clean source surface is intentionally left alone whenever
+       * possible. Reset state only; do not attempt a risky recovery draw.
+       */
     } finally {
-      surfaceCtx.filter = 'none';
+      try { surfaceCtx.filter = 'none'; } catch {}
+      try { filterCtx.filter = 'none'; } catch {}
     }
   }
 
@@ -2133,17 +2137,63 @@ export class VideoRenderer {
              }
            }
 
-           /* Filters are deliberately a second pass over rasterized pixels.
-              This keeps filter selection from turning the source frame black. */
-           const clipFilter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)]
-             .filter(Boolean)
-             .join(' ');
-           this.applyClipFilter(surface, sctx, filterCanvas, filterCtx, clipFilter);
+           /*
+            * EFFECT SAFETY BOUNDARY
+            * ---------------------
+            * A malformed/unsupported filter, blend mode, GPU canvas operation,
+            * or newly-added effect must NEVER destroy the decoded base frame.
+            * Previously every effect lived inside the outer media try/catch, so
+            * one throwing effect made the whole editor report "Media cannot be
+            * played" and left a black monitor.
+            *
+            * Keep an untouched raster backup, then restore it if any effect
+            * fails. This also makes experimental effects safe to add later.
+            */
+           const effectBackup = document.createElement('canvas');
+           effectBackup.width = surface.width;
+           effectBackup.height = surface.height;
+           const effectBackupCtx = effectBackup.getContext('2d');
+           if (effectBackupCtx) {
+             effectBackupCtx.drawImage(surface, 0, 0);
+           }
 
-           // Legacy and advanced effects are clipped to the media surface.
-           drawEffectOverlay(sctx, clip, timeIn, surface.width, surface.height);
-           if (clip.effects?.length) {
-             drawAdvancedEffectStack(sctx, clip.effects, timeIn, surface.width, surface.height);
+           try {
+             /* Filters are deliberately a second pass over rasterized pixels.
+                This keeps filter selection from turning the source frame black. */
+             const adjustments = resolveClipAdjustments(clip, timeIn);
+             const clipFilter = [filterCssFor(clip, adjustments), effectFilterCss(clip, timeIn)]
+               .filter((value) => typeof value === 'string' && value.trim().length > 0)
+               .join(' ');
+             this.applyClipFilter(surface, sctx, filterCanvas, filterCtx, clipFilter);
+
+             // Legacy effects are clipped to the media surface.
+             drawEffectOverlay(sctx, clip, timeIn, surface.width, surface.height);
+
+             // Advanced effects are optional. A bad layer is isolated so the
+             // base video remains visible instead of crashing the compositor.
+             if (clip.effects?.length) {
+               const safeLayers = clip.effects.filter((layer) =>
+                 layer &&
+                 layer.type &&
+                 layer.type !== 'none' &&
+                 Number.isFinite(Number(layer.intensity ?? 1))
+               );
+               if (safeLayers.length) {
+                 drawAdvancedEffectStack(sctx, safeLayers, timeIn, surface.width, surface.height);
+               }
+             }
+           } catch (effectError) {
+             /* Restore the clean media pixels and continue rendering. */
+             if (effectBackupCtx) {
+               sctx.setTransform(1, 0, 0, 1, 0, 0);
+               sctx.globalAlpha = 1;
+               sctx.globalCompositeOperation = 'source-over';
+               sctx.filter = 'none';
+               sctx.clearRect(0, 0, surface.width, surface.height);
+               sctx.drawImage(effectBackup, 0, 0);
+             }
+             this.lastSourceError = null;
+             void effectError;
            }
 
            // The finished clip surface is now transformed into project space.
