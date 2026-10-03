@@ -166,16 +166,39 @@ export function connectAudioEffects(
       current = mixNode;
       continue;
     }
-    if (type === 'tremolo' || type === 'vibrato') {
+    if (type === 'tremolo') {
+      /* Keep amplitude modulation bounded so it cannot create harsh flutter. */
       const gain = ctx.createGain();
       const osc = ctx.createOscillator();
-      osc.frequency.value = type === 'tremolo' ? 5 + amount * 7 : 4 + amount * 4;
-      const depth = ctx.createGain(); depth.gain.value = type === 'tremolo' ? amount * 0.45 : amount * 0.01;
+      const depth = ctx.createGain();
+      osc.frequency.value = 4 + amount * 6;
+      depth.gain.value = amount * 0.28;
+      gain.gain.value = 1 - amount * 0.14;
       osc.connect(depth).connect(gain.gain);
-      gain.gain.value = 1;
       osc.start();
       current.connect(gain);
       current = gain;
+      continue;
+    }
+    if (type === 'vibrato') {
+      /* Real pitch movement via a short modulated delay; the old code
+         modulated gain instead, producing the vibrating/fluttering sound. */
+      const delay = ctx.createDelay(0.05);
+      const mixNode = ctx.createGain();
+      const dry = ctx.createGain();
+      const wet = ctx.createGain();
+      const lfo = ctx.createOscillator();
+      const depth = ctx.createGain();
+      delay.delayTime.value = 0.012;
+      lfo.frequency.value = 4 + amount * 4;
+      depth.gain.value = 0.003 + amount * 0.006;
+      lfo.connect(depth).connect(delay.delayTime);
+      lfo.start();
+      dry.gain.value = 1 - mix * 0.5;
+      wet.gain.value = mix * 0.5;
+      current.connect(dry).connect(mixNode);
+      current.connect(delay).connect(wet).connect(mixNode);
+      current = mixNode;
       continue;
     }
     if (type === 'vinyl') {
