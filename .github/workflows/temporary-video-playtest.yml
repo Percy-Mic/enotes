@@ -28,8 +28,9 @@ jobs:
           curl -fsS http://127.0.0.1:3000/auth/sign-in >/dev/null
       - name: Headless smoke playtest
         run: |
-          npx -y playwright@1.51.0 install chromium --with-deps
-          npx -y playwright@1.51.0 test .playtest/video-playtest.spec.js --reporter=line
+          npm install --no-save --no-audit --no-fund @playwright/test@1.51.0
+          npx playwright install chromium --with-deps
+          npx playwright test .playtest/video-playtest.spec.js --reporter=line
       - name: Print server log on failure
         if: failure()
         run: cat /tmp/enotes-next.log || true
