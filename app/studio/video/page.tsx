@@ -871,6 +871,47 @@ function containClipTransform(
   };
 }
 
+/**
+ * Direct canvas manipulation must edit the same values the renderer resolves.
+ *
+ * When a transform property is already animated, changing the static transform
+ * alone only moves the selection frame; the renderer continues to read the
+ * property's keyframe curve. In that case, write the current value into the
+ * keyframe at the current clip-local time as well. Unkeyed properties remain
+ * ordinary static transforms.
+ */
+function clipTransformPatchAtTime(
+  clip: VideoClip,
+  transform: VideoClip['transform'],
+  timeIn: number,
+): Partial<VideoClip> {
+  const patch: Partial<VideoClip> = { transform };
+  const keyframePairs: Array<[KeyframeProperty, number]> = [
+    ['pos_x_kf', transform.offset_x],
+    ['pos_y_kf', transform.offset_y],
+    ['scale_kf', transform.scale],
+    ['rotation_kf', transform.rotation],
+  ];
+
+  const animatedProps = keyframePairs.filter(([prop]) => (clip.keyframes?.[prop]?.length || 0) > 0);
+  if (!animatedProps.length) return patch;
+
+  let keyframes = { ...(clip.keyframes || {}) };
+  const t = Math.max(0, Math.min(clipDuration(clip), Number.isFinite(timeIn) ? timeIn : 0));
+
+  for (const [prop, value] of animatedProps) {
+    keyframes = upsertClipKeyframe(
+      { ...clip, keyframes },
+      prop,
+      t,
+      Number.isFinite(value) ? value : 0,
+    );
+  }
+
+  patch.keyframes = keyframes;
+  return patch;
+}
+
 type TimelineKeyframeRef = {
   owner: 'clip' | 'element';
   ownerId: string;
@@ -4534,9 +4575,13 @@ function VideoEditor() {
 
     const startX = start.x;
     const startY = start.y;
+    const clipLocalTime = Math.max(
+      0,
+      playheadRef.current - previewClipStart(project, clip.id),
+    );
     const startClip = clipControlState(
       { ...clip, transform: { ...clip.transform } },
-      Math.max(0, playheadRef.current - previewClipStart(project, clip.id)),
+      clipLocalTime,
     );
     const box = clipBoxRect(startClip, project.canvas.width, project.canvas.height);
     const rad = (startClip.transform.rotation * Math.PI) / 180;
@@ -4564,7 +4609,7 @@ function VideoEditor() {
         );
         updateClip(
           clip.id,
-          { transform: nextTransform },
+          clipTransformPatchAtTime(clip, nextTransform, clipLocalTime),
           'Move video',
           `cmove-${clip.id}`
         );
@@ -4583,7 +4628,7 @@ function VideoEditor() {
         );
         updateClip(
           clip.id,
-          { transform: nextTransform },
+          clipTransformPatchAtTime(clip, nextTransform, clipLocalTime),
           'Scale video',
           `cuniform-${clip.id}`
         );
@@ -4625,7 +4670,7 @@ function VideoEditor() {
         );
         updateClip(
           clip.id,
-          { transform: nextTransform },
+          clipTransformPatchAtTime(clip, nextTransform, clipLocalTime),
           'Resize video',
           `cresize-${clip.id}`
         );
@@ -4643,7 +4688,7 @@ function VideoEditor() {
         project.canvas.width,
         project.canvas.height,
       );
-      updateClip(clip.id, { transform: nextTransform }, 'Rotate video', `crot-${clip.id}`);
+      updateClip(clip.id, clipTransformPatchAtTime(clip, nextTransform, clipLocalTime), 'Rotate video', `crot-${clip.id}`);
     };
 
     const onUp = () => {
@@ -6105,7 +6150,7 @@ function VideoEditor() {
                 onPointerCancel={canvasPointerUp}
                 className="block select-none bg-black"
                 style={{ width: previewSize?.width, height: previewSize?.height, maxWidth: '100%', maxHeight: '100%', touchAction: 'none' }}
-                aria-label="Video preview — tap the video or an overlay to select, drag to move, corner to resize, edge to stretch, top handle to rotate"
+                aria-label="Video preview — tap the video or an overlay to select, drag to move, corners to resize, edge to resize proportionally, top handle to rotate"
               />
               {/* Selection frame only. Transform hit-testing is handled by the
                   canvas itself so the invisible controllers can never cover the
@@ -6118,7 +6163,7 @@ function VideoEditor() {
                     top: (clipFrame.cy - clipFrame.h / 2) * previewScale,
                     width: clipFrame.w * previewScale,
                     height: clipFrame.h * previewScale,
-                    transform: 'rotate(' + selectedClip.transform.rotation + 'deg)',
+                    transform: 'rotate(' + clipControlClip.transform.rotation + 'deg)',
                     outline: '2px solid rgba(34,211,238,0.95)',
                     outlineOffset: 0,
                   }}
