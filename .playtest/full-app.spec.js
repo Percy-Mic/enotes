@@ -13,9 +13,6 @@ const publicRoutes = [
   '/feed',
   '/posts/not-a-real-post',
   '/posts/not-a-real-post/comments',
-  '/u/not-a-real-user',
-  '/users/not-a-real-user/followers',
-  '/users/not-a-real-user/following',
   '/auth/sign-in',
   '/auth/sign-up',
   '/auth/forgot-password',
@@ -52,6 +49,9 @@ const protectedRoutes = [
   '/studio/templates',
   '/studio/video',
   '/videos',
+  '/u/not-a-real-user',
+  '/users/not-a-real-user/followers',
+  '/users/not-a-real-user/following',
 ];
 
 const apiRoutes = [
