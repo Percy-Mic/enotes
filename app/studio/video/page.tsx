@@ -1431,16 +1431,50 @@ function VideoEditor() {
   const drawOnce = useCallback(async (t: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    if (drawingRef.current) { pendingRef.current = t; return; }
+
+    /* Latest-frame-wins compositor. Playback can advance several ticks while
+       a decoder seek/effect render is finishing. Never drop the newest frame
+       just because an older frame is still being painted. */
+    if (drawingRef.current) {
+      pendingRef.current = t;
+      return;
+    }
+
     drawingRef.current = true;
     try {
-      await rendererRef.current.drawFrame(canvas, docRef.current.project, t, { previewing: true, playing });
-      const err = rendererRef.current.lastSourceError;
-      if (err && err !== lastSrcErrRef.current) {
-        lastSrcErrRef.current = err;
-        notify('A clip in the timeline cannot be played in this browser — see the preview for which one.');
-      } else if (!err) lastSrcErrRef.current = null;
-    } finally { drawingRef.current = false; }
+      let nextTime: number | null = t;
+      while (nextTime !== null) {
+        const renderTime = nextTime;
+        pendingRef.current = null;
+
+        await rendererRef.current.drawFrame(
+          canvas,
+          docRef.current.project,
+          renderTime,
+          { previewing: true, playing }
+        );
+
+        const err = rendererRef.current.lastSourceError;
+        if (err && err !== lastSrcErrRef.current) {
+          lastSrcErrRef.current = err;
+          notify('A clip in the timeline cannot be played in this browser — see the preview for which one.');
+        } else if (!err) {
+          lastSrcErrRef.current = null;
+        }
+
+        nextTime = pendingRef.current;
+      }
+    } finally {
+      drawingRef.current = false;
+      /* A timeline tick can arrive in the tiny gap before the finally block.
+         Preserve it and let the next call consume it instead of leaving the
+         canvas stuck on an old/black frame. */
+      const queued = pendingRef.current;
+      if (queued !== null) {
+        pendingRef.current = null;
+        void drawOnce(queued);
+      }
+    }
   }, [playing, notify]);
 
   useEffect(() => {
