@@ -1440,30 +1440,80 @@ function VideoEditor() {
 
   useEffect(() => {
     if (!playing) return;
-    let raf = 0, timer = 0;
-    let last = performance.now(), lastUiPaint = last, lastVisualPaint = last - 1000;
-    let stop = false;
+    let raf = 0;
+    let timer = 0;
+    let frameWait = 0;
+    let last = performance.now();
+    let lastUiPaint = last;
+    let stopped = false;
+    let visualBusy = false;
+    let visualToken = 0;
+
+    /*
+     * The playhead/audio clock is intentionally independent from composition.
+     * Composition waits for an actual decoded video frame, rather than
+     * pretending every display tick is a new video frame.
+     */
+    const renderVisual = async (t: number) => {
+      const token = ++visualToken;
+      if (visualBusy) return;
+      visualBusy = true;
+      try {
+        await rendererRef.current.waitForPlaybackFrame(docRef.current.project, t);
+        if (stopped || token !== visualToken) return;
+        await drawOnce(t);
+      } finally {
+        visualBusy = false;
+      }
+    };
+
     const loop = () => {
-      if (stop) return;
+      if (stopped) return;
       const now = performance.now();
       const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
+
       const total = projectDuration(docRef.current.project);
       let next = playheadRef.current + dt;
-      if (next >= total) { next = total; setPlaying(false); }
+      if (next >= total) {
+        next = total;
+        playheadRef.current = next;
+        setPlayhead(next);
+        setPlaying(false);
+        return;
+      }
+
       playheadRef.current = next;
-      if (now - lastUiPaint >= 33) { lastUiPaint = now; setPlayhead(next); }
-      if (now - lastVisualPaint >= 1000 / 30) { lastVisualPaint = now; void drawOnce(next); }
+      if (now - lastUiPaint >= 33) {
+        lastUiPaint = now;
+        setPlayhead(next);
+      }
+
+      /*
+       * rAF remains only the high-resolution clock. The compositor itself
+       * waits for the decoder's next presented frame. Hidden tabs use a
+       * slower clock tick because browsers throttle rAF there.
+       */
+      void renderVisual(next);
       void syncPreviewAudio(next, true);
-      schedule();
+
+      if (document.hidden) {
+        timer = window.setTimeout(loop, 33);
+      } else {
+        raf = requestAnimationFrame(loop);
+      }
     };
-    const schedule = () => {
-      if (stop) return;
-      if (document.hidden) timer = window.setTimeout(() => void loop(), 33);
-      else raf = requestAnimationFrame(loop);
+
+    if (document.hidden) timer = window.setTimeout(loop, 0);
+    else raf = requestAnimationFrame(loop);
+
+    return () => {
+      stopped = true;
+      visualToken += 1;
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+      cancelAnimationFrame(frameWait);
     };
-    schedule();
-    return () => { stop = true; cancelAnimationFrame(raf); clearTimeout(timer); };
   }, [playing, drawOnce, syncPreviewAudio]);
 
   /* ---------- load template / existing project ---------- */
