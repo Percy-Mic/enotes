@@ -2592,12 +2592,26 @@ export class VideoRenderer {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const array = await res.arrayBuffer();
           const decoded = await audioCtx.decodeAudioData(array);
+          const speed = Math.max(0.0625, Math.min(16, el.speed || 1));
           const source = audioCtx.createBufferSource();
-          source.buffer = decoded;
-          source.playbackRate.value = Math.max(0.0625, Math.min(16, el.speed || 1));
-          const gain = audioCtx.createGain();
+          source.playbackRate.value = speed;
           const elStart = audioCtx.currentTime + startDelay + el.start;
           const elLen = Math.max(0.1, el.end - el.start);
+          const trimStart = Math.max(0, el.trim_start || 0);
+          const trimEnd = Math.min(decoded.duration, Math.max(trimStart + 0.05, el.trim_end || decoded.duration));
+          const availableSource = Math.max(0.05, trimEnd - trimStart);
+          const scheduledSourceDuration = Math.min(availableSource, elLen * speed);
+
+          /*
+           * Overlay video audio must follow the same trim/speed/reverse window
+           * as the picture. Reverse uses a reversed buffer so the audio direction
+           * cannot accidentally remain forward while the video runs backward.
+           */
+          source.buffer = el.reverse
+            ? reverseAudioSegment(audioCtx, decoded, trimStart, trimStart + scheduledSourceDuration)
+            : decoded;
+
+          const gain = audioCtx.createGain();
           /* sample the volume curve (static + keyframes) into automation */
           const steps = Math.max(2, Math.ceil(elLen * 20));
           for (let i = 0; i <= steps; i++) {
@@ -2607,9 +2621,7 @@ export class VideoRenderer {
             else gain.gain.linearRampToValueAtTime(Math.max(0.0001, vol), elStart + u * elLen);
           }
           source.connect(gain).connect(destination);
-          const trimStart = Math.max(0, el.trim_start || 0);
-          const trimEnd = Math.min(decoded.duration, Math.max(trimStart + 0.05, el.trim_end || decoded.duration));
-          source.start(elStart, trimStart, Math.max(0.05, trimEnd - trimStart));
+          source.start(elStart, el.reverse ? 0 : trimStart, scheduledSourceDuration);
         } catch {
           /* overlay without decodable audio simply contributes silence */
         }
