@@ -1,0 +1,47 @@
+name: Temporary full app playtest
+
+on:
+  push:
+    branches:
+      - playtest/full-app
+
+permissions:
+  contents: read
+
+jobs:
+  playtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright
+        run: |
+          npm install --no-save @playwright/test@1.51.0
+          npx playwright install --with-deps chromium
+      - name: Production build
+        run: npm run build
+      - name: Start server
+        run: |
+          npm run start > /tmp/enotes-next.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/enotes-next.log
+          exit 1
+      - name: Full app browser playtest
+        run: npx playwright test .playtest/full-app.spec.js --reporter=line
+      - name: Save evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-app-playtest-evidence
+          path: |
+            playtest-results/
+            /tmp/enotes-next.log
+          if-no-files-found: ignore
