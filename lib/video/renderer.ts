@@ -46,6 +46,29 @@ export const EXPORT_QUALITY_PRESETS: { id: string; name: string; bitrate: number
   { id: 'high', name: 'High quality', bitrate: 12_000_000 },
 ];
 
+/*
+ * Supabase Free projects have a 50 MB global object limit. Keep rendered
+ * exports comfortably below that ceiling so an otherwise-valid MP4 is not
+ * rejected after the expensive client-side render has already finished.
+ *
+ * This only applies to the final export. Source media can still be much
+ * larger because it is not re-encoded here.
+ */
+export const MAX_STUDIO_EXPORT_BYTES = 45 * 1024 * 1024;
+const EXPORT_AUDIO_BITRATE = 128_000;
+
+function storageSafeVideoBitrate(durationSeconds: number, requested: number): number {
+  const duration = Math.max(0.25, durationSeconds);
+  const totalBits = MAX_STUDIO_EXPORT_BYTES * 8;
+  const videoBudget = Math.floor(totalBits / duration) - EXPORT_AUDIO_BITRATE;
+
+  /*
+   * Do not artificially lower very short exports. For longer exports, reduce
+   * only as much as necessary to fit the storage budget.
+   */
+  return Math.max(250_000, Math.min(requested, videoBudget));
+}
+
 export type ExportPhase = 'preparing' | 'processing' | 'rendering' | 'uploading' | 'complete' | 'failed' | 'cancelled';
 
 export interface ExportProgress {
@@ -2534,11 +2557,26 @@ export class VideoRenderer {
             'video/webm',
           ];
       const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+
+      /*
+       * The editor's product format is MP4. Do not silently produce WebM and
+       * rename it .mp4: that creates a corrupt/mislabelled download.
+       */
+      if (settings.format === 'mp4' && !mimeType.includes('mp4')) {
+        throw new Error(
+          'MP4 export is not supported by this browser. Please use the latest Chrome or Edge to export MP4.'
+        );
+      }
+
+      const effectiveVideoBitrate = storageSafeVideoBitrate(duration, settings.qualityBitrate);
+      const bitrateWasReduced = effectiveVideoBitrate < settings.qualityBitrate;
+
       let recorder: MediaRecorder;
       try {
         recorder = new MediaRecorder(mixed, {
           ...(mimeType ? { mimeType } : {}),
-          videoBitsPerSecond: settings.qualityBitrate,
+          videoBitsPerSecond: effectiveVideoBitrate,
+          audioBitsPerSecond: EXPORT_AUDIO_BITRATE,
         });
       } catch {
         throw new Error('This browser cannot record video (MediaRecorder unavailable). Try Chrome, Edge or Firefox.');
@@ -2553,7 +2591,13 @@ export class VideoRenderer {
         recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType || 'video/webm' }));
       });
 
-      onProgress?.({ phase: 'rendering', percent: 10, message: 'Rendering frames…' });
+      onProgress?.({
+        phase: 'rendering',
+        percent: 10,
+        message: bitrateWasReduced
+          ? `Rendering MP4 at ${(effectiveVideoBitrate / 1_000_000).toFixed(2)} Mbps to keep the export storage-safe…`
+          : 'Rendering MP4 frames…',
+      });
       recorder.start(250);
 
       /* realtime playback render loop (canvas.captureStream picks up draws).
@@ -2628,7 +2672,7 @@ export class VideoRenderer {
         durationSeconds: duration,
         width: outW,
         height: outH,
-        format: (mimeType || 'video/webm').includes('mp4') ? 'mp4' : 'webm',
+        format: 'mp4',
       };
     } finally {
       this.isExporting = false;
