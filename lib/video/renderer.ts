@@ -2517,25 +2517,43 @@ export class VideoRenderer {
               if (clip.reverse) {
                 source.buffer = reverseAudioSegment(audioCtx, decoded, clip.trimStart, clip.trimEnd);
                 source.playbackRate.value = Math.max(0.0625, Math.min(16, clip.speed));
-                const processed = connectAudioProcessing(audioCtx, source, clip.volume, {
+                const processed = connectAudioProcessing(audioCtx, source, 1, {
                   noiseReduction: clip.audioProcessing?.noiseReduction || 0,
                   highPassHz: clip.audioProcessing?.highPassHz || 80,
                   lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
                   compressor: clip.audioProcessing?.compressor || false,
                 });
-                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
-                source.start(audioCtx.currentTime + startDelay + clipStart, 0, trimLength);
+                const volumeGain = audioCtx.createGain();
+                const audioStart = audioCtx.currentTime + startDelay + clipStart;
+                const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
+                for (let i = 0; i <= audioSteps; i++) {
+                  const u = i / audioSteps;
+                  const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                  if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
+                  else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
+                }
+                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination, volumeGain);
+                source.start(audioStart, 0, trimLength);
               } else {
                 source.buffer = decoded;
                 source.playbackRate.value = Math.max(0.0625, Math.min(16, clip.speed));
-                const processed = connectAudioProcessing(audioCtx, source, clip.volume, {
+                const processed = connectAudioProcessing(audioCtx, source, 1, {
                   noiseReduction: clip.audioProcessing?.noiseReduction || 0,
                   highPassHz: clip.audioProcessing?.highPassHz || 80,
                   lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
                   compressor: clip.audioProcessing?.compressor || false,
                 });
-                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination);
-                source.start(audioCtx.currentTime + startDelay + clipStart, clip.trimStart, trimLength);
+                const volumeGain = audioCtx.createGain();
+                const audioStart = audioCtx.currentTime + startDelay + clipStart;
+                const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
+                for (let i = 0; i <= audioSteps; i++) {
+                  const u = i / audioSteps;
+                  const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                  if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
+                  else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
+                }
+                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination, volumeGain);
+                source.start(audioStart, clip.trimStart, trimLength);
               }
             } catch {
               // Some video containers/codecs expose no decodable audio track.
