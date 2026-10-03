@@ -2,7 +2,6 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 
 const targets = [
-  { name: 'local', baseURL: 'http://127.0.0.1:3000' },
   { name: 'production', baseURL: 'https://enotes-amber.vercel.app' },
 ];
 
