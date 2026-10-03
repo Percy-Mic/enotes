@@ -65,6 +65,21 @@ interface EditorDoc {
   project: VideoProject;
 }
 
+/* Keep uploaded media available to the editor without another network read.
+   Cache API stores the local File under its durable remote URL, so a later
+   preview can reopen the media even when the connection is poor/offline. */
+async function cacheLocalMediaForPreview(url: string, file: File) {
+  if (!url || typeof window === 'undefined' || !('caches' in window)) return;
+  try {
+    const cache = await window.caches.open('enotes-video-media-v1');
+    await cache.put(url, new Response(file, {
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    }));
+  } catch {
+    /* Offline cache is an optimization; the durable upload remains authoritative. */
+  }
+}
+
 const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'ai', 'crop', 'export'] as const;
 type Tool = (typeof TOOLS)[number];
 
@@ -1525,6 +1540,12 @@ function VideoEditor() {
       return false;
     }
     if (!history.dirty && savedProjectId) return true;
+    /* Never persist a temporary blob: it only exists in this browser tab.
+       The background upload replaces it with the durable URL, after which
+       autosave can safely persist the project. */
+    if (docRef.current.project.clips.some((clip) => clip.src.startsWith('blob:'))) {
+      return false;
+    }
     setSaving(true);
     const body = {
       user_id: meId,
@@ -1752,6 +1773,7 @@ function VideoEditor() {
             try {
               const up = await uploadFile(file, 'studio-media', meId);
               let mediaUrl = up.url;
+              await cacheLocalMediaForPreview(mediaUrl, file);
               try {
                 const cloudinaryResponse = await fetch('/api/video/cloudinary', {
                   method: 'POST', headers: { 'content-type': 'application/json' },
@@ -1779,6 +1801,7 @@ function VideoEditor() {
             try {
               const up = await uploadFile(file, 'studio-media', meId);
               let mediaUrl = up.url;
+              await cacheLocalMediaForPreview(mediaUrl, file);
               try {
                 const cloudinaryResponse = await fetch('/api/video/cloudinary', {
                   method: 'POST', headers: { 'content-type': 'application/json' },
@@ -1815,6 +1838,7 @@ function VideoEditor() {
             try {
               const up = await uploadFile(file, 'studio-media', meId);
               let mediaUrl = up.url;
+              await cacheLocalMediaForPreview(mediaUrl, file);
               try {
                 const cloudinaryResponse = await fetch('/api/video/cloudinary', {
                   method: 'POST', headers: { 'content-type': 'application/json' },
