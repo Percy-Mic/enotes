@@ -4826,9 +4826,10 @@ function VideoEditor() {
           0,
           playheadRef.current - previewClipStart(docRef.current.project, clip.id),
         );
+        const resolvedClip = clipControlState(clip, localTime);
         const nextTransform = containClipTransform(
           clip,
-          { ...clip.transform, scale: clip.transform.scale * factor },
+          { ...resolvedClip.transform, scale: resolvedClip.transform.scale * factor },
           project.canvas.width,
           project.canvas.height,
         );
@@ -4855,10 +4856,11 @@ function VideoEditor() {
           0,
           playheadRef.current - previewClipStart(docRef.current.project, clip.id),
         );
-        const rotation = Math.round(clip.transform.rotation + degrees);
+        const resolvedClip = clipControlState(clip, localTime);
+        const rotation = Math.round(resolvedClip.transform.rotation + degrees);
         const nextTransform = containClipTransform(
           clip,
-          { ...clip.transform, rotation },
+          { ...resolvedClip.transform, rotation },
           project.canvas.width,
           project.canvas.height,
         );
@@ -4899,12 +4901,13 @@ function VideoEditor() {
           0,
           playheadRef.current - previewClipStart(docRef.current.project, clip.id),
         );
+        const resolvedClip = clipControlState(clip, localTime);
         const nextTransform = containClipTransform(
           clip,
           {
-            ...clip.transform,
-            offset_x: Math.round(clip.transform.offset_x + delta.x * scaleX),
-            offset_y: Math.round(clip.transform.offset_y + delta.y * scaleY),
+            ...resolvedClip.transform,
+            offset_x: Math.round(resolvedClip.transform.offset_x + delta.x * scaleX),
+            offset_y: Math.round(resolvedClip.transform.offset_y + delta.y * scaleY),
           },
           project.canvas.width,
           project.canvas.height,
