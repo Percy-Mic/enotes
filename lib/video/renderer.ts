@@ -77,6 +77,28 @@ export class ExportCancelledError extends Error {
 const videoCache = new Map<string, HTMLVideoElement>();
 const videoLoading = new Map<string, Promise<HTMLVideoElement>>();
 
+/* The editor may already have a complete local copy of a clip while its
+   durable upload lives at the remote URL. Reopen that local copy from the
+   browser Cache API before touching the network. */
+const cachedMediaObjectUrls = new Map<string, string>();
+async function resolveCachedMediaSource(src: string): Promise<string> {
+  if (!src || src.startsWith('blob:') || typeof window === 'undefined' || !('caches' in window)) return src;
+  const existing = cachedMediaObjectUrls.get(src);
+  if (existing) return existing;
+  try {
+    const cache = await window.caches.open('enotes-video-media-v1');
+    const response = await cache.match(src);
+    if (!response) return src;
+    const blob = await response.blob();
+    if (!blob.size) return src;
+    const objectUrl = URL.createObjectURL(blob);
+    cachedMediaObjectUrls.set(src, objectUrl);
+    return objectUrl;
+  } catch {
+    return src;
+  }
+}
+
 // Playback state is deliberately separate from the project clock. The browser
 // decoder owns the clock while playing; the editor only seeks when the active
 // clip changes or the playhead jumps. This prevents the seek/play/seek/play
@@ -226,15 +248,15 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
 
   const promise = new Promise<HTMLVideoElement>((resolve, reject) => {
     const video = document.createElement('video');
-    // CORS MUST be set before src, otherwise some CDN/Supabase responses
-    // become unusable by canvas and can appear as intermittent blank frames.
+    // CORS MUST be set before a remote src. Cached/local blob sources do not
+    // depend on the network and remain canvas-safe for the current origin.
     video.crossOrigin = 'anonymous';
     video.preload = 'auto';
     video.muted = true;
     video.playsInline = true;
     video.setAttribute('playsinline', '');
-    video.src = src;
 
+    let resolvedSource = src;
     const timeout = window.setTimeout(() => {
       videoLoading.delete(src);
       reject(new Error('Timed out loading video — the source may be unreachable or in a format this browser cannot decode.'));
@@ -247,6 +269,15 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
     };
 
     video.onerror = fail;
+    void resolveCachedMediaSource(src).then((source) => {
+      if (video.src && video.src !== location.href && video.readyState > 0) return;
+      resolvedSource = source;
+      video.src = source;
+    }).catch(() => {
+      resolvedSource = src;
+      video.src = src;
+    });
+
     video.onloadeddata = async () => {
       try {
         window.clearTimeout(timeout);
