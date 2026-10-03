@@ -1256,6 +1256,8 @@ function VideoEditor() {
              Web Audio graph if an effect is added later. */
           videoAudio.crossOrigin = 'anonymous';
           videoAudio.preload = 'auto';
+          videoAudio.muted = false;
+          videoAudio.defaultMuted = false;
           videoAudio.playsInline = true;
           videoAudio.setAttribute('playsinline', '');
           audio = videoAudio;
@@ -1272,8 +1274,16 @@ function VideoEditor() {
           )
         );
         audio.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
-        ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
+        /*
+         * The canvas renderer uses a muted video element for pixels. This
+         * separate element is the authoritative audible copy of the clip.
+         * Keep native audio explicitly enabled; Web Audio is optional DSP,
+         * never a prerequisite for hearing the original soundtrack.
+         */
+        audio.muted = false;
+        audio.defaultMuted = false;
         audio.volume = 1;
+        ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
         if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
           try { audio.currentTime = target; } catch { /* wait for metadata */ }
         }
