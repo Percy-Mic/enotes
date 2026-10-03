@@ -1593,6 +1593,15 @@ export class VideoRenderer {
      frame causes allocation/GC spikes, especially with animated effects. */
   private clipSurface: HTMLCanvasElement | null = null;
   private clipSurfaceCtx: CanvasRenderingContext2D | null = null;
+  /*
+   * Keep filtering on a second surface. Applying ctx.filter directly while
+   * drawing a live <video> is unreliable on some Chromium GPU paths and was
+   * the source of the "effect selected -> black frame" failure. The media is
+   * now always decoded/painted normally first; CSS filters are a second-pass
+   * operation over already-rasterized pixels.
+   */
+  private clipFilterSurface: HTMLCanvasElement | null = null;
+  private clipFilterSurfaceCtx: CanvasRenderingContext2D | null = null;
 
   private getClipSurface(width: number, height: number) {
     const w = Math.max(1, Math.ceil(width));
@@ -1604,7 +1613,46 @@ export class VideoRenderer {
       this.clipSurface = canvas;
       this.clipSurfaceCtx = canvas.getContext('2d');
     }
-    return { canvas: this.clipSurface, ctx: this.clipSurfaceCtx };
+    if (!this.clipFilterSurface || !this.clipFilterSurfaceCtx || this.clipFilterSurface.width !== w || this.clipFilterSurface.height !== h) {
+      const canvas = this.clipFilterSurface || document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      this.clipFilterSurface = canvas;
+      this.clipFilterSurfaceCtx = canvas.getContext('2d');
+    }
+    return {
+      canvas: this.clipSurface,
+      ctx: this.clipSurfaceCtx,
+      filterCanvas: this.clipFilterSurface,
+      filterCtx: this.clipFilterSurfaceCtx,
+    };
+  }
+
+  private applyClipFilter(
+    surface: HTMLCanvasElement,
+    surfaceCtx: CanvasRenderingContext2D,
+    filterCanvas: HTMLCanvasElement,
+    filterCtx: CanvasRenderingContext2D,
+    filter: string,
+  ) {
+    if (!filter || filter === 'none') return;
+
+    /* Snapshot raw pixels first, then filter the snapshot. Never filter the
+       live video draw and never draw a canvas onto itself. */
+    filterCtx.setTransform(1, 0, 0, 1, 0, 0);
+    filterCtx.globalAlpha = 1;
+    filterCtx.globalCompositeOperation = 'source-over';
+    filterCtx.filter = 'none';
+    filterCtx.clearRect(0, 0, filterCanvas.width, filterCanvas.height);
+    filterCtx.drawImage(surface, 0, 0);
+
+    surfaceCtx.setTransform(1, 0, 0, 1, 0, 0);
+    surfaceCtx.globalAlpha = 1;
+    surfaceCtx.globalCompositeOperation = 'source-over';
+    surfaceCtx.filter = filter;
+    surfaceCtx.clearRect(0, 0, surface.width, surface.height);
+    surfaceCtx.drawImage(filterCanvas, 0, 0);
+    surfaceCtx.filter = 'none';
   }
 
   /** Cooperative cancellation flag for the running export. */
@@ -1810,7 +1858,9 @@ export class VideoRenderer {
            const surfaceState = this.getClipSurface(t.dw, t.dh);
            const surface = surfaceState.canvas;
            const sctx = surfaceState.ctx;
-           if (!surface || !sctx) return;
+           const filterCanvas = surfaceState.filterCanvas;
+           const filterCtx = surfaceState.filterCtx;
+           if (!surface || !sctx || !filterCanvas || !filterCtx) return;
            sctx.setTransform(1, 0, 0, 1, 0, 0);
            sctx.globalAlpha = 1;
            sctx.globalCompositeOperation = 'source-over';
@@ -1837,9 +1887,8 @@ export class VideoRenderer {
              entry = reverseCache.get(key);
              const frame = entry ? nearestReverseFrame(entry, sourceTime) : null;
              if (frame) {
-               sctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
-               sctx.drawImage(frame.bmp as CanvasImageSource, 0, 0, surface.width, surface.height);
                sctx.filter = 'none';
+               sctx.drawImage(frame.bmp as CanvasImageSource, 0, 0, surface.width, surface.height);
                paintedFromCache = true;
              }
            }
@@ -1854,17 +1903,26 @@ export class VideoRenderer {
                if (!isCurrent()) return;
              }
              sctx.save();
-             sctx.filter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)].filter(Boolean).join(' ') || 'none';
+             sctx.filter = 'none';
              const maskSaved = applyMaskClip(sctx, clip.transform.mask, surface.width, surface.height);
              if (image) {
                sctx.drawImage(image, t.sx, t.sy, t.sw, t.sh, 0, 0, surface.width, surface.height);
              } else {
+               /* IMPORTANT: never apply CSS filters while rasterizing a live
+                  video frame. Paint the decoded frame normally first. */
                sctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, 0, 0, surface.width, surface.height);
              }
              if (maskSaved) sctx.restore();
              sctx.filter = 'none';
              sctx.restore();
            }
+
+           /* Filters are deliberately a second pass over rasterized pixels.
+              This keeps filter selection from turning the source frame black. */
+           const clipFilter = [filterCssFor(clip, resolveClipAdjustments(clip, timeIn)), effectFilterCss(clip, timeIn)]
+             .filter(Boolean)
+             .join(' ');
+           this.applyClipFilter(surface, sctx, filterCanvas, filterCtx, clipFilter);
 
            // Legacy and advanced effects are clipped to the media surface.
            drawEffectOverlay(sctx, clip, timeIn, surface.width, surface.height);
