@@ -2833,7 +2833,41 @@ function VideoEditor() {
     updateClip(clip.id, { keyframes: removeKeyframe({ id: clip.id, kind: 'video', content: '', src: clip.src, start: 0, end: clipDuration(clip), x: 0, y: 0, width: 1, height: 1, rotation: 0, opacity: 1, z: 1, keyframes: clip.keyframes }, prop, hit.id) }, 'Remove clip keyframe', `clip-kf-${clip.id}-${prop}`);
   }, [selectedClipId, selectedClipTimeIn, updateClip]);
 
-  const toggleSelectedId = (id: string, additive = true) => {
+  const addAllMainClipKeyframes = useCallback(() => {
+    if (!selectedClipId) return;
+    (['pos_x_kf', 'pos_y_kf', 'scale_kf', 'rotation_kf', 'opacity_kf'] as KeyframeProperty[]).forEach((prop) => {
+      const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
+      if (!clip) return;
+      const graded = resolveClipAdjustments(clip, selectedClipTimeIn);
+      const values = resolveClipValues(clip, selectedClipTimeIn);
+      const value =
+        prop === 'pos_x_kf' ? values.offset_x :
+        prop === 'pos_y_kf' ? values.offset_y :
+        prop === 'scale_kf' ? values.scale :
+        prop === 'rotation_kf' ? values.rotation :
+        values.opacity;
+      updateClip(clip.id, { keyframes: upsertClipKeyframe(clip, prop, selectedClipTimeIn, value) }, 'Set transform keyframe', `clip-kf-all-${clip.id}-${Math.round(selectedClipTimeIn * 100)}`);
+      void graded;
+    });
+    notify(`Keyframe added at ${fmt(selectedClipTimeIn)}`);
+  }, [notify, selectedClipId, selectedClipTimeIn, updateClip]);
+
+  const jumpToMainClipKeyframe = useCallback((direction: -1 | 1) => {
+    const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
+    if (!clip) return;
+    const times = Array.from(new Set(
+      Object.values(clip.keyframes || {}).flatMap((list) => (list || []).map((k) => k.t))
+    )).sort((a, b) => a - b);
+    if (!times.length) return;
+    const epsilon = 0.03;
+    const target = direction < 0
+      ? [...times].reverse().find((t) => t < selectedClipTimeIn - epsilon) ?? times[0]
+      : times.find((t) => t > selectedClipTimeIn + epsilon) ?? times[times.length - 1];
+    const clipStart = previewClipStart(docRef.current.project, clip.id);
+    seekTo(clipStart + target);
+  }, [selectedClipId, selectedClipTimeIn, seekTo]);
+
+    const toggleSelectedId = (id: string, additive = true) => {
     setSelectedIds((prev) => additive ? (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]) : [id]);
   };
 
@@ -5827,6 +5861,15 @@ function VideoEditor() {
                 aria-pressed={rippleEnabled}
                 title="Ripple delete selected clips"
               >Ripple</button>
+              {selectedClipId && (
+                <>
+                  <button onClick={addAllMainClipKeyframes} className="flex items-center gap-1 rounded-lg bg-[#E5798F]/20 px-2.5 py-1.5 text-[11px] font-bold text-[#FFB6C1] hover:bg-[#E5798F]/30 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add transform keyframes at the current playhead">
+                    ◆ Keyframe
+                  </button>
+                  <button onClick={() => jumpToMainClipKeyframe(-1)} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] text-white/70 hover:bg-white/15" title="Previous keyframe" aria-label="Previous keyframe">‹◆</button>
+                  <button onClick={() => jumpToMainClipKeyframe(1)} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] text-white/70 hover:bg-white/15" title="Next keyframe" aria-label="Next keyframe">◆›</button>
+                </>
+              )}
               <button onClick={addTimelineMarker} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add marker at playhead">
                 <Plus className="h-3.5 w-3.5" /> Marker
               </button>
@@ -5951,6 +5994,35 @@ function VideoEditor() {
                           <span className="absolute right-0 top-0 z-20 rounded-bl bg-black/70 px-1 py-px text-[7px] font-bold text-[#FFB6C1]" title={`Speed ${clip.speed}×`}>
                             {clip.speed}×
                           </span>
+                        )}
+                        {/* visible keyframe diamonds — like a professional editor timeline.
+                            Clicking a diamond moves the playhead to that exact keyframe. */}
+                        {clip.keyframes && Object.entries(clip.keyframes).some(([, list]) => (list || []).length > 0) && (
+                          <div className="pointer-events-none absolute inset-x-0 bottom-1 z-30 h-2">
+                            {Array.from(new Set(
+                              Object.values(clip.keyframes).flatMap((list) => (list || []).map((k) => k.t))
+                            )).map((t) => {
+                              const pct = clipDuration(clip) > 0 ? Math.max(0, Math.min(100, (t / clipDuration(clip)) * 100)) : 0;
+                              const active = Math.abs(selectedClipTimeIn - t) < 0.05 && selectedClipId === clip.id;
+                              return (
+                                <button
+                                  key={`kf-${clip.id}-${t}`}
+                                  type="button"
+                                  className="pointer-events-auto absolute top-0 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border border-white/80 bg-[#FFB6C1] shadow-[0_0_7px_rgba(255,182,193,.75)]"
+                                  style={{ left: `${pct}%`, opacity: active ? 1 : 0.8 }}
+                                  onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setSelectedClipId(clip.id);
+                                    setSelectedElementId(null);
+                                    seekTo(previewClipStart(project, clip.id) + t);
+                                  }}
+                                  title={`Keyframe at ${fmt(t)}`}
+                                  aria-label={`Keyframe at ${fmt(t)}`}
+                                />
+                              );
+                            })}
+                          </div>
                         )}
                         {/* crop badge */}
                         {clip.transform.crop && (
@@ -7472,14 +7544,15 @@ function VideoEditor() {
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
                         {([
-                          ['pos_x_kf', 'Position'],
-                          ['pos_y_kf', 'Position'],
-                          ['scale_kf', 'Size'],
+                          ['pos_x_kf', 'Position X'],
+                          ['pos_y_kf', 'Position Y'],
+                          ['scale_kf', 'Scale'],
                           ['rotation_kf', 'Rotation'],
+                          ['opacity_kf', 'Opacity'],
                         ] as const).map(([prop, label]) => {
                           const list = selectedClip.keyframes?.[prop] || [];
                           const active = list.some((k) => Math.abs(k.t - selectedClipTimeIn) < 0.05);
-                          const uniqueLabel = prop === 'pos_x_kf' ? 'Position X' : prop === 'pos_y_kf' ? 'Position Y' : label;
+                          const uniqueLabel = label;
                           return (
                             <button
                               key={prop}
