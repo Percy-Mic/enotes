@@ -256,7 +256,6 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
     video.playsInline = true;
     video.setAttribute('playsinline', '');
 
-    let resolvedSource = src;
     const timeout = window.setTimeout(() => {
       videoLoading.delete(src);
       reject(new Error('Timed out loading video — the source may be unreachable or in a format this browser cannot decode.'));
@@ -271,10 +270,8 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
     video.onerror = fail;
     void resolveCachedMediaSource(src).then((source) => {
       if (video.src && video.src !== location.href && video.readyState > 0) return;
-      resolvedSource = source;
       video.src = source;
     }).catch(() => {
-      resolvedSource = src;
       video.src = src;
     });
 
