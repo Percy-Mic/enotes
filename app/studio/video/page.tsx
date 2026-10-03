@@ -4990,21 +4990,28 @@ function VideoEditor() {
 
   /* voiceover recording */
   const [recording, setRecording] = useState(false);
-  const recRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceContextRef = useRef<AudioContext | null>(null);
+  const voiceSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const voiceProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const voiceSamplesRef = useRef<Float32Array[]>([]);
+  const voiceSampleRateRef = useRef(48000);
+  const voiceStartedAtRef = useRef(0);
 
   const startVoiceover = async () => {
     try {
-      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      if (!navigator.mediaDevices?.getUserMedia || typeof window === 'undefined' || !window.AudioContext) {
         notify('Voice recording is not supported by this browser.');
         return;
       }
 
       /*
-       * Prefer Opus/WebM for browser voice recording. Do not select audio/mp4
-       * here: browsers can report partial MP4 support while still producing a
-       * container that is unreliable for subsequent Web Audio/HTMLAudio
-       * decoding. The old implementation could also upload an MP4 recording
-       * under a .webm filename.
+       * Record PCM directly and wrap it as WAV instead of relying on
+       * MediaRecorder's browser-dependent WebM/Opus decoder. Some Chromium
+       * configurations can successfully record WebM but then fail when the
+       * same blob is handed to HTMLAudioElement/Web Audio for decoding.
+       * WAV PCM is intentionally boring: it is natively decodable and works
+       * consistently in the preview, timeline and export pipeline.
        */
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -5016,113 +5023,34 @@ function VideoEditor() {
         },
       });
 
-      const mimeCandidates = [
-        'audio/webm;codecs=opus',
-        'audio/webm',
-        'audio/ogg;codecs=opus',
-      ];
-      const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
-      const rec = mimeType
-        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 128000 })
-        : new MediaRecorder(stream);
+      const AudioCtx = window.AudioContext;
+      const audioContext = new AudioCtx();
+      if (audioContext.state === 'suspended') await audioContext.resume();
 
-      const actualMime = rec.mimeType || mimeType || 'audio/webm';
-      const chunks: Blob[] = [];
+      const source = audioContext.createMediaStreamSource(stream);
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+      const samples: Float32Array[] = [];
 
-      rec.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        samples.push(new Float32Array(input));
       };
 
-      rec.onerror = () => {
-        stream.getTracks().forEach((t) => t.stop());
-        recRef.current = null;
-        setRecording(false);
-        notify('Voice recording failed. Please check your microphone and try again.');
-      };
+      source.connect(processor);
+      /* Keep the processor alive without routing the microphone back to the
+         speakers, which would create feedback. */
+      const silentGain = audioContext.createGain();
+      silentGain.gain.value = 0;
+      processor.connect(silentGain);
+      silentGain.connect(audioContext.destination);
 
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-
-        if (!chunks.length) {
-          notify('No audio was captured. Please try recording again.');
-          return;
-        }
-
-        const bareMime = actualMime.split(';')[0].toLowerCase();
-        const extension =
-          bareMime === 'audio/ogg' ? 'ogg' :
-          bareMime === 'audio/mp4' ? 'm4a' :
-          'webm';
-
-        const blob = new Blob(chunks, { type: actualMime });
-        if (!blob.size) {
-          notify('The recording was empty. Please try again.');
-          return;
-        }
-
-        if (!meId) {
-          notify('Sign in to save your voiceover.');
-          return;
-        }
-
-        try {
-          /*
-           * Voice recordings go directly to Supabase. They do not need the
-           * optional Cloudinary optimization layer, which also avoids turning
-           * a valid audio recording into an incorrectly typed/optimized URL.
-           */
-          const file = new File(
-            [blob],
-            `voiceover-${Date.now()}.${extension}`,
-            { type: bareMime }
-          );
-          const up = await uploadFile(file, 'studio-media', meId);
-
-          const objectUrl = URL.createObjectURL(blob);
-          const dur = await new Promise<number>((resolve) => {
-            const a = document.createElement('audio');
-            const cleanup = () => URL.revokeObjectURL(objectUrl);
-            a.preload = 'metadata';
-            a.onloadedmetadata = () => {
-              const value = Number.isFinite(a.duration) && a.duration > 0 ? a.duration : 0;
-              cleanup();
-              resolve(value);
-            };
-            a.onerror = () => {
-              cleanup();
-              resolve(0);
-            };
-            a.src = objectUrl;
-          });
-
-          if (dur <= 0) {
-            notify('The recording was created, but the browser could not decode it. Please record again.');
-            return;
-          }
-
-          addSoundTrack(
-            {
-              title: 'Voiceover',
-              url: up.url,
-              duration_seconds: dur,
-              provider: 'upload',
-            },
-            'voiceover'
-          );
-          notify('Voiceover added to the timeline.');
-        } catch (error) {
-          notify(`Could not save the voiceover — ${error instanceof Error ? error.message : 'the upload failed'}.`);
-        }
-      };
-
-      recRef.current = rec;
-
-      /*
-       * Emit chunks every 250 ms instead of waiting for stop(). This makes
-       * short recordings reliable and gives MediaRecorder a chance to flush
-       * its Opus packet before the stream is closed.
-       */
-      rec.start(250);
+      voiceStreamRef.current = stream;
+      voiceContextRef.current = audioContext;
+      voiceSourceRef.current = source;
+      voiceProcessorRef.current = processor;
+      voiceSamplesRef.current = samples;
+      voiceSampleRateRef.current = audioContext.sampleRate;
+      voiceStartedAtRef.current = performance.now();
       setRecording(true);
     } catch (error) {
       if (error instanceof DOMException && error.name === 'NotAllowedError') {
@@ -5133,11 +5061,134 @@ function VideoEditor() {
     }
   };
 
-  const stopVoiceover = () => {
-    recRef.current?.stop();
-    recRef.current = null;
+  const stopVoiceover = async () => {
+    const stream = voiceStreamRef.current;
+    const context = voiceContextRef.current;
+    const source = voiceSourceRef.current;
+    const processor = voiceProcessorRef.current;
+    const samples = voiceSamplesRef.current;
+    const sampleRate = voiceSampleRateRef.current;
+
+    voiceStreamRef.current = null;
+    voiceContextRef.current = null;
+    voiceSourceRef.current = null;
+    voiceProcessorRef.current = null;
+    voiceSamplesRef.current = [];
     setRecording(false);
+
+    try { processor?.disconnect(); } catch {}
+    try { source?.disconnect(); } catch {}
+    stream?.getTracks().forEach((track) => track.stop());
+
+    if (!context || !samples.length) {
+      try { await context?.close(); } catch {}
+      notify('No audio was captured. Please try recording again.');
+      return;
+    }
+
+    const totalSamples = samples.reduce((sum, chunk) => sum + chunk.length, 0);
+    if (!totalSamples) {
+      try { await context.close(); } catch {}
+      notify('No audio was captured. Please try recording again.');
+      return;
+    }
+
+    const pcm = new Float32Array(totalSamples);
+    let offset = 0;
+    for (const chunk of samples) {
+      pcm.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    /* 16-bit little-endian PCM WAV. */
+    const dataBytes = pcm.length * 2;
+    const buffer = new ArrayBuffer(44 + dataBytes);
+    const view = new DataView(buffer);
+    const writeAscii = (at: number, value: string) => {
+      for (let i = 0; i < value.length; i++) view.setUint8(at + i, value.charCodeAt(i));
+    };
+    writeAscii(0, 'RIFF');
+    view.setUint32(4, 36 + dataBytes, true);
+    writeAscii(8, 'WAVE');
+    writeAscii(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeAscii(36, 'data');
+    view.setUint32(40, dataBytes, true);
+
+    for (let i = 0; i < pcm.length; i++) {
+      const sample = Math.max(-1, Math.min(1, pcm[i]));
+      view.setInt16(44 + i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+
+    const blob = new Blob([buffer], { type: 'audio/wav' });
+    const duration = pcm.length / sampleRate;
+    try { await context.close(); } catch {}
+
+    if (!blob.size || duration <= 0.01) {
+      notify('The recording was empty. Please try again.');
+      return;
+    }
+
+    if (!meId) {
+      notify('Sign in to save your voiceover.');
+      return;
+    }
+
+    try {
+      const file = new File(
+        [blob],
+        `voiceover-${Date.now()}.wav`,
+        { type: 'audio/wav' }
+      );
+      const up = await uploadFile(file, 'studio-media', meId);
+
+      /* Verify the exact WAV blob locally before adding it to the timeline. */
+      const objectUrl = URL.createObjectURL(blob);
+      const decodedDuration = await new Promise<number>((resolve) => {
+        const audio = document.createElement('audio');
+        let settled = false;
+        const finish = (value: number) => {
+          if (settled) return;
+          settled = true;
+          URL.revokeObjectURL(objectUrl);
+          resolve(value);
+        };
+        audio.preload = 'metadata';
+        audio.onloadedmetadata = () => {
+          const value = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
+          finish(value);
+        };
+        audio.onerror = () => finish(0);
+        audio.src = objectUrl;
+      });
+
+      if (decodedDuration <= 0) {
+        notify('The recording was created, but the browser could not decode the WAV audio.');
+        return;
+      }
+
+      addSoundTrack(
+        {
+          title: 'Voiceover',
+          url: up.url,
+          duration_seconds: decodedDuration,
+          provider: 'upload',
+        },
+        'voiceover'
+      );
+      notify('Voiceover added to the timeline.');
+    } catch (error) {
+      notify(`Could not save the voiceover — ${error instanceof Error ? error.message : 'the upload failed'}.`);
+    }
   };
+
+
 
   /* ---------- export ---------- */
   const [exportSettings, setExportSettings] = useState<ExportSettings | null>(null);
