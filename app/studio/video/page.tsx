@@ -616,55 +616,161 @@ function AudioWaveformPreview({ src, duration, start, onSeek }: { src: string; d
 
 async function detectBeatMarkers(audio: AudioTrack): Promise<number[]> {
   if (!audio.src) return [];
+
   const response = await fetch(audio.src, { mode: 'cors' });
   if (!response.ok) throw new Error('The audio file could not be read for beat detection.');
+
   const buffer = await response.arrayBuffer();
-  const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  const AudioContextCtor =
+    window.AudioContext ||
+    (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) throw new Error('Beat detection is not supported in this browser.');
+
   const ctx = new AudioContextCtor();
   try {
     const decoded = await ctx.decodeAudioData(buffer.slice(0));
-    const channels = decoded.numberOfChannels;
     const sampleRate = decoded.sampleRate;
+    const channels = decoded.numberOfChannels;
     const start = Math.max(0, audio.trimStart || 0);
     const end = Math.min(decoded.duration, audio.trimEnd || decoded.duration);
-    const from = Math.floor(start * sampleRate);
-    const to = Math.max(from + 1, Math.floor(end * sampleRate));
-    const step = 1024;
+    if (end - start < 0.35) return [];
+
+    /*
+     * This is intentionally an onset/tempo detector rather than simply
+     * calling every loud peak a "beat". The old implementation marked any
+     * strong local RMS peak as a beat, which produced too many markers for
+     * speech, claps and percussion and made Snap jump unpredictably.
+     *
+     * 1. Build a low-cost RMS envelope.
+     * 2. Detect positive energy changes (onsets).
+     * 3. Estimate a tempo between 70–180 BPM from the onset intervals.
+     * 4. Find the grid phase that best agrees with the onsets.
+     * 5. Emit a regular beat grid in PROJECT time.
+     */
+    const frame = 1024;
     const hop = 512;
-    const energy: { t: number; v: number }[] = [];
-    for (let i = from; i < to; i += hop) {
+    const energy: number[] = [];
+
+    for (let i = Math.floor(start * sampleRate); i < Math.floor(end * sampleRate); i += hop) {
       let sum = 0;
       let count = 0;
-      for (let j = 0; j < step && i + j < to; j += 4) {
+      for (let j = 0; j < frame && i + j < decoded.length; j += 8) {
         let sample = 0;
         for (let c = 0; c < channels; c++) sample += decoded.getChannelData(c)[i + j] || 0;
-        sample /= channels;
+        sample /= Math.max(1, channels);
         sum += sample * sample;
         count++;
       }
-      energy.push({ t: i / sampleRate, v: Math.sqrt(sum / Math.max(1, count)) });
+      energy.push(Math.sqrt(sum / Math.max(1, count)));
     }
-    const values = energy.map((x) => x.v);
-    const sorted = [...values].sort((a, b) => a - b);
-    const floor = sorted[Math.floor(sorted.length * 0.45)] || 0;
-    const ceiling = sorted[Math.floor(sorted.length * 0.9)] || floor;
-    const threshold = Math.max(floor * 1.35, ceiling * 0.52, 0.015);
-    const markers: number[] = [];
-    let last = -Infinity;
-    for (let i = 2; i < energy.length - 2; i++) {
+
+    if (energy.length < 8) return [];
+
+    const median = [...energy].sort((a, b) => a - b)[Math.floor(energy.length * 0.5)] || 0;
+    const mean = energy.reduce((a, b) => a + b, 0) / energy.length;
+    const baseline = Math.max(0.0005, median * 0.65, mean * 0.35);
+
+    const onsets: { t: number; strength: number }[] = [];
+    let previous = energy[0];
+    for (let i = 1; i < energy.length - 1; i++) {
       const current = energy[i];
-      if (current.v < threshold) continue;
-      if (current.v < energy[i - 1].v || current.v < energy[i + 1].v) continue;
-      if (current.v < energy[i - 2].v || current.v < energy[i + 2].v) continue;
-      const projectTime = audio.start + (current.t - start);
-      if (projectTime - last >= 0.22) {
-        markers.push(Number(projectTime.toFixed(3)));
-        last = projectTime;
+      const next = energy[i + 1];
+      const rise = Math.max(0, current - previous);
+      previous = current;
+
+      /* Local maxima of the onset envelope, with adaptive threshold. */
+      if (rise <= baseline * 0.08 || current < energy[i - 1] || current < next) continue;
+      const strength = rise / Math.max(0.0005, baseline);
+      if (strength < 0.45) continue;
+
+      const t = start + (i * hop) / sampleRate;
+      const last = onsets[onsets.length - 1];
+      if (last && t - last.t < 0.10) {
+        if (strength > last.strength) last.t = t, last.strength = strength;
+      } else {
+        onsets.push({ t, strength });
       }
-      if (markers.length >= 500) break;
     }
-    return markers;
+
+    if (onsets.length < 2) {
+      /* A steady synthetic click/loop may have weak onset differences.
+         Fall back to the strongest regular local peaks, but still enforce
+         a musical minimum spacing. */
+      for (let i = 2; i < energy.length - 2; i++) {
+        if (
+          energy[i] >= energy[i - 1] &&
+          energy[i] >= energy[i + 1] &&
+          energy[i] >= energy[i - 2] &&
+          energy[i] >= energy[i + 2] &&
+          energy[i] >= baseline * 1.35
+        ) {
+          const t = start + (i * hop) / sampleRate;
+          const last = onsets[onsets.length - 1];
+          if (!last || t - last.t >= 0.22) onsets.push({ t, strength: energy[i] / baseline });
+        }
+      }
+    }
+
+    if (onsets.length < 2) return [];
+
+    /* Estimate BPM by voting on plausible inter-onset intervals. */
+    let bestPeriod = 0.5; // 120 BPM fallback
+    let bestScore = -Infinity;
+    for (let bpm = 70; bpm <= 180; bpm++) {
+      const period = 60 / bpm;
+      let score = 0;
+      for (const onset of onsets) {
+        let nearest = Infinity;
+        for (const other of onsets) {
+          if (other === onset) continue;
+          const d = Math.abs(other.t - onset.t);
+          if (d < 0.25 || d > 1.0) continue;
+          const steps = Math.max(1, Math.round(d / period));
+          const error = Math.abs(d - steps * period);
+          nearest = Math.min(nearest, error);
+        }
+        if (nearest < 0.09) score += 1;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestPeriod = period;
+      }
+    }
+
+    /* Choose the grid phase with the most onset support. */
+    const period = bestPeriod;
+    let bestPhase = start;
+    let phaseScore = -Infinity;
+    const phaseSteps = 24;
+    for (let p = 0; p < phaseSteps; p++) {
+      const phase = start + (p / phaseSteps) * period;
+      let score = 0;
+      for (const onset of onsets) {
+        const nearestSteps = Math.round((onset.t - phase) / period);
+        const nearest = phase + nearestSteps * period;
+        const error = Math.abs(onset.t - nearest);
+        if (error <= Math.min(0.10, period * 0.18)) {
+          score += onset.strength * (1 - error / Math.max(0.001, period * 0.18));
+        }
+      }
+      if (score > phaseScore) {
+        phaseScore = score;
+        bestPhase = phase;
+      }
+    }
+
+    const markers: number[] = [];
+    const first = Math.floor((start - bestPhase) / period) - 1;
+    const last = Math.ceil((end - bestPhase) / period) + 1;
+    for (let i = first; i <= last; i++) {
+      const t = bestPhase + i * period;
+      if (t < start || t > end) continue;
+      const projectTime = audio.start + (t - start);
+      if (projectTime >= 0) markers.push(Number(projectTime.toFixed(3)));
+      if (markers.length >= 1000) break;
+    }
+
+    return Array.from(new Set(markers)).sort((a, b) => a - b);
   } finally {
     void ctx.close();
   }
@@ -1268,13 +1374,22 @@ function VideoEditor() {
         }
 
         const local = Math.max(0, time - clipStart);
-        const target = Math.max(
-          0,
-          Math.min(
-            Math.max(0, clip.trimEnd - 0.01),
-            clip.trimStart + local * Math.max(0.0625, clip.speed || 1)
-          )
-        );
+        const playbackSpeed = Math.max(0.0625, clip.speed || 1);
+        const target = clip.reverse
+          ? Math.max(
+              clip.trimStart,
+              Math.min(
+                Math.max(clip.trimStart, clip.trimEnd - 0.01),
+                clip.trimEnd - local * playbackSpeed
+              )
+            )
+          : Math.max(
+              0,
+              Math.min(
+                Math.max(0, clip.trimEnd - 0.01),
+                clip.trimStart + local * playbackSpeed
+              )
+            );
         audio.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
         /*
          * The canvas renderer uses a muted video element for pixels. This
@@ -1328,7 +1443,9 @@ function VideoEditor() {
         audio?.pause();
         const videoAudio = document.createElement('video');
         /* TimelineElement has no audioProcessing field. Keep its native
-           media audio path independent from optional DSP effects. */
+           media audio path independent from optional DSP effects. CORS must
+           be configured BEFORE src so a later Web Audio graph can attach. */
+        videoAudio.crossOrigin = 'anonymous';
         videoAudio.preload = 'auto';
         videoAudio.playsInline = true;
         videoAudio.setAttribute('playsinline', '');
@@ -1338,7 +1455,11 @@ function VideoEditor() {
       }
 
       const speed = Math.max(0.0625, Math.min(16, el.speed || 1));
-      const target = Math.max(0, Math.min(Math.max(0, (el.trim_end || el.source_duration || duration) - 0.01), (el.trim_start || 0) + local * speed));
+      const trimStart = Math.max(0, el.trim_start || 0);
+      const trimEnd = Math.max(trimStart + 0.05, el.trim_end || el.source_duration || duration);
+      const target = el.reverse
+        ? Math.max(trimStart, Math.min(trimEnd - 0.01, trimEnd - local * speed))
+        : Math.max(trimStart, Math.min(trimEnd - 0.01, trimStart + local * speed));
       audio.playbackRate = speed;
       audio.volume = Math.max(0, Math.min(1, resolveElementValues(el, local).volume));
       if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
@@ -3789,7 +3910,7 @@ function VideoEditor() {
       kind: 'text',
       content: 'Caption',
       src: null,
-      track_id: project.tracks[0]?.id,
+      track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
       start,
       end: Math.min(duration, start + 3),
       x: project.canvas.width * 0.08,
@@ -3843,7 +3964,7 @@ function VideoEditor() {
   const addTextElement = () => {
     const hasContent = project.clips.length + project.elements.length + project.audio.length > 0;
     const el: TimelineElement = {
-      id: makeVideoId('el'), kind: 'text', content: 'Your text', src: null, track_id: project.tracks[0]?.id,
+      id: makeVideoId('el'), kind: 'text', content: 'Your text', src: null, track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
       start: playheadRef.current, end: hasContent ? Math.min(duration, playheadRef.current + 3) : playheadRef.current + 3,
       /* New text is created around the canvas center, not near the bottom.
          x/y are the element's top-left coordinates throughout the editor. */
@@ -3919,7 +4040,7 @@ function VideoEditor() {
       const width = Math.min(project.canvas.width * 0.55, Math.max(180, meta.w || 640));
       const height = width * ((meta.h || 360) / Math.max(1, meta.w || 640));
       const el: TimelineElement = {
-        id: makeVideoId('el'), kind: 'video', content: file.name, src: mediaUrl, media_type: 'video', track_id: project.tracks[0]?.id,
+        id: makeVideoId('el'), kind: 'video', content: file.name, src: mediaUrl, media_type: 'video', track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
         source_duration: meta.duration, trim_start: 0, trim_end: Math.min(meta.duration, durationForLayer), speed: 1, volume: 1, muted: false, object_fit: 'contain',
         start: playheadRef.current, end: Math.min(duration, playheadRef.current + durationForLayer),
         x: (project.canvas.width - width) / 2, y: (project.canvas.height - height) / 2, width, height, rotation: 0, opacity: 1, z: project.elements.length + 1, animation: 'fade',
