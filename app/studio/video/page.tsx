@@ -1142,7 +1142,6 @@ function VideoEditor() {
   const previewAudioContextRef = useRef<AudioContext | null>(null);
   const previewAudioSourcesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   const previewAudioGraphRef = useRef<Map<string, { signature: string; output: GainNode }>>(new Map());
-  const previewAudioSyncTokenRef = useRef(0);
 
   const ensurePreviewAudioGraph = useCallback((key: string, media: HTMLMediaElement, effects: AudioEffect[] | undefined) => {
     if (typeof window === 'undefined') return;
