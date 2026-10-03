@@ -18,3 +18,5 @@ test('trace production root resource redirects and browser errors',async()=>{
   await context.close(); await browser.close();
   if(errors.length||redirects.length) throw new Error(JSON.stringify({redirects,errors},null,2));
 });
+
+// rerun after middleware PWA service-worker exemption
