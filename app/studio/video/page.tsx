@@ -1442,7 +1442,6 @@ function VideoEditor() {
     if (!playing) return;
     let raf = 0;
     let timer = 0;
-    let frameWait = 0;
     let last = performance.now();
     let lastUiPaint = last;
     let stopped = false;
@@ -1512,7 +1511,6 @@ function VideoEditor() {
       visualToken += 1;
       cancelAnimationFrame(raf);
       clearTimeout(timer);
-      cancelAnimationFrame(frameWait);
     };
   }, [playing, drawOnce, syncPreviewAudio]);
 
