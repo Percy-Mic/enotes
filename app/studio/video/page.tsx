@@ -1222,8 +1222,6 @@ function VideoEditor() {
 
 
   const syncPreviewAudio = useCallback(async (time: number, shouldPlay: boolean) => {
-    const syncToken = ++previewAudioSyncTokenRef.current;
-    const isCurrent = () => syncToken === previewAudioSyncTokenRef.current;
     const p = docRef.current.project;
     const lanes = p.tracks.filter((t) => t.kind === 'audio');
     const soloActive = lanes.some((t) => t.solo);
@@ -1288,13 +1286,15 @@ function VideoEditor() {
           try { audio.currentTime = target; } catch { /* wait for metadata */ }
         }
         if (shouldPlay && audio.paused) {
-          try {
-            await audio.play();
-            if (!isCurrent()) { audio.pause(); return; }
-            previewAudioUnlockedRef.current = true;
-          } catch {
-            /* The Play button retries on the next synchronization pass. */
-          }
+          /*
+           * Do not await play() here. syncPreviewAudio runs from the 30–60fps
+           * timeline clock; awaiting the browser's play promise made the next
+           * clock tick invalidate the previous attempt, so audio could remain
+           * permanently paused even after clicking Play.
+           */
+          void audio.play()
+            .then(() => { previewAudioUnlockedRef.current = true; })
+            .catch(() => { /* retried by the next sync pass / user gesture */ });
         } else if (!shouldPlay) {
           audio.pause();
         }
@@ -1337,8 +1337,9 @@ function VideoEditor() {
         try { audio.currentTime = target; } catch { /* wait for metadata */ }
       }
       if (shouldPlay && audio.paused) {
-        try { await audio.play(); if (!isCurrent()) { audio.pause(); return; } previewAudioUnlockedRef.current = true; }
-        catch { /* retried on the next user-initiated synchronization pass */ }
+        void audio.play()
+          .then(() => { previewAudioUnlockedRef.current = true; })
+          .catch(() => { /* retried on the next user-initiated synchronization pass */ });
       }
     }
 
@@ -1385,7 +1386,6 @@ function VideoEditor() {
       if (audio.paused) {
         try {
           await audio.play();
-          if (!isCurrent()) { audio.pause(); return; }
           previewAudioUnlockedRef.current = true;
         } catch {
           /* Browser autoplay policy: the next user play click retries. */
@@ -1393,7 +1393,6 @@ function VideoEditor() {
       }
     }
 
-    if (!isCurrent()) return;
     previewAudioRef.current.forEach((audio, id) => {
       if (!activeIds.has(id)) audio.pause();
     });
@@ -3208,7 +3207,26 @@ function VideoEditor() {
       const clip = current.clips.find((item) => item.id === ownerId);
       if (!clip) return;
       const t = Math.max(0, Math.min(clipDuration(clip), localTime));
-      const map = upsertClipKeyframe(clip, prop, t, getKeyframeValueAt(owner, ownerId, prop, t));
+      /*
+       * When a user creates a second keyframe after directly resizing,
+       * moving, rotating, or changing opacity at the playhead, the current
+       * static transform is the value they just edited. Do NOT sample the
+       * previous keyframe here: that would copy the first keyframe into the
+       * second one and make interpolation appear frozen.
+       *
+       * If there is already a keyframe at this exact time, preserve its
+       * current value. Otherwise use the clip's live transform/volume.
+       */
+      const existingAtTime = (clip.keyframes?.[prop] || []).find((item) => Math.abs(item.t - t) < 0.05);
+      const liveValue =
+        prop === 'pos_x_kf' ? clip.transform.offset_x :
+        prop === 'pos_y_kf' ? clip.transform.offset_y :
+        prop === 'scale_kf' ? clip.transform.scale :
+        prop === 'rotation_kf' ? clip.transform.rotation :
+        prop === 'opacity_kf' ? 1 :
+        prop === 'volume_kf' ? clip.volume :
+        getKeyframeValueAt(owner, ownerId, prop, t);
+      const map = upsertClipKeyframe(clip, prop, t, existingAtTime?.value ?? liveValue);
       const created = (map[prop] || []).reduce((best, item) => Math.abs(item.t - t) < Math.abs(best.t - t) ? item : best);
       updateClip(clip.id, { keyframes: map }, 'Add keyframe', `timeline-kf-${ownerId}-${prop}`);
       setSelectedKeyframe({ owner, ownerId, prop, keyframeId: created.id });
