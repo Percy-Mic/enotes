@@ -1447,25 +1447,37 @@ function VideoEditor() {
     let timer = 0;
     let last = performance.now();
     let lastUiPaint = last;
+    let lastVisualPaint = last - 1000 / 30;
     let stopped = false;
     let visualBusy = false;
-    let visualToken = 0;
+    let pendingVisualTime: number | null = null;
 
     /*
-     * The playhead/audio clock is intentionally independent from composition.
-     * Composition waits for an actual decoded video frame, rather than
-     * pretending every display tick is a new video frame.
+     * The clock never waits for the compositor. When a render is already in
+     * progress, retain ONLY the newest playhead time. Once that render
+     * finishes, immediately paint that newest frame. This prevents both
+     * render backlogs and the previous starvation bug where every new rAF
+     * invalidated the frame currently being composed.
+     *
+     * drawFrame() itself synchronizes/plays the decoded <video>, so waiting
+     * for requestVideoFrameCallback BEFORE drawFrame was incorrect: it could
+     * wait for a frame from a video that had not yet been started.
      */
     const renderVisual = async (t: number) => {
-      const token = ++visualToken;
+      pendingVisualTime = t;
       if (visualBusy) return;
       visualBusy = true;
       try {
-        await rendererRef.current.waitForPlaybackFrame(docRef.current.project, t);
-        if (stopped || token !== visualToken) return;
-        await drawOnce(t);
+        while (!stopped && pendingVisualTime !== null) {
+          const next = pendingVisualTime;
+          pendingVisualTime = null;
+          await drawOnce(next);
+        }
       } finally {
         visualBusy = false;
+        if (!stopped && pendingVisualTime !== null) {
+          void renderVisual(pendingVisualTime);
+        }
       }
     };
 
@@ -1491,19 +1503,14 @@ function VideoEditor() {
         setPlayhead(next);
       }
 
-      /*
-       * rAF remains only the high-resolution clock. The compositor itself
-       * waits for the decoder's next presented frame. Hidden tabs use a
-       * slower clock tick because browsers throttle rAF there.
-       */
-      void renderVisual(next);
+      if (now - lastVisualPaint >= 1000 / 30) {
+        lastVisualPaint = now;
+        void renderVisual(next);
+      }
       void syncPreviewAudio(next, true);
 
-      if (document.hidden) {
-        timer = window.setTimeout(loop, 33);
-      } else {
-        raf = requestAnimationFrame(loop);
-      }
+      if (document.hidden) timer = window.setTimeout(loop, 33);
+      else raf = requestAnimationFrame(loop);
     };
 
     if (document.hidden) timer = window.setTimeout(loop, 0);
@@ -1511,7 +1518,7 @@ function VideoEditor() {
 
     return () => {
       stopped = true;
-      visualToken += 1;
+      pendingVisualTime = null;
       cancelAnimationFrame(raf);
       clearTimeout(timer);
     };
