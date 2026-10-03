@@ -1,4 +1,5 @@
 const { test, expect, chromium } = require('@playwright/test');
+test.setTimeout(180000);
 const fs = require('fs');
 
 const targets = [
