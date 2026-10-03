@@ -28,40 +28,6 @@ jobs:
           curl -fsS http://127.0.0.1:3000/auth/sign-in >/dev/null
       - name: Headless smoke playtest
         run: |
-          mkdir -p .playtest
-          cat > .playtest/video-playtest.spec.js <<'EOF'
-          const { test, expect } = require('@playwright/test');
-          test('real-surface smoke and careless sign-in attempt', async ({ page }) => {
-          const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-          const errors = [];
-          page.on('console', msg => { if (msg.type() === 'error') errors.push('console: ' + msg.text()); });
-          page.on('pageerror', err => errors.push('pageerror: ' + err.message));
-
-          async function check(path, expected) {
-            const response = await page.goto('http://127.0.0.1:3000' + path, { waitUntil: 'domcontentloaded' });
-            if (!response) throw new Error('No response for ' + path);
-            const url = page.url();
-            if (!url.includes(expected)) throw new Error('Unexpected navigation for ' + path + ': ' + url);
-            return { path, status: response.status(), url };
-          }
-
-          const signIn = await check('/auth/sign-in', '/auth/sign-in');
-          const protectedRoute = await check('/studio/video', '/auth/sign-in');
-
-          const email = page.locator('input[type="email"]');
-          const password = page.locator('input[type="password"]');
-          if (!(await email.count()) || !(await password.count())) throw new Error('Sign-in form controls missing');
-
-          await email.fill('not-a-real-user');
-          await password.fill('');
-          const buttons = page.locator('button');
-          if (await buttons.count()) await buttons.last().click().catch(() => {});
-          await page.waitForTimeout(500);
-
-          if (errors.length) throw new Error(errors.join('\n'));
-          console.log(JSON.stringify({ signIn, protectedRoute, invalidInputAttempt: 'completed' }, null, 2));
-          await browser.close();
-          EOF
           npx -y playwright@1.51.0 install chromium --with-deps
           npx -y playwright@1.51.0 test .playtest/video-playtest.spec.js --reporter=line
       - name: Print server log on failure
