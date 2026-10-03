@@ -4822,16 +4822,19 @@ function VideoEditor() {
 
       const clip = activeClip;
       if (clip) {
+        const localTime = Math.max(
+          0,
+          playheadRef.current - previewClipStart(docRef.current.project, clip.id),
+        );
+        const nextTransform = containClipTransform(
+          clip,
+          { ...clip.transform, scale: clip.transform.scale * factor },
+          project.canvas.width,
+          project.canvas.height,
+        );
         updateClip(
           clip.id,
-          {
-            transform: containClipTransform(
-              clip,
-              { ...clip.transform, scale: clip.transform.scale * factor },
-              project.canvas.width,
-              project.canvas.height,
-            ),
-          },
+          clipTransformPatchAtTime(clip, nextTransform, localTime),
           'Pinch resize video',
           `pinch-scale-${clip.id}`,
         );
@@ -4848,17 +4851,20 @@ function VideoEditor() {
 
       const clip = docRef.current.project.clips.find((item) => item.id === selectedClipId);
       if (clip) {
+        const localTime = Math.max(
+          0,
+          playheadRef.current - previewClipStart(docRef.current.project, clip.id),
+        );
         const rotation = Math.round(clip.transform.rotation + degrees);
+        const nextTransform = containClipTransform(
+          clip,
+          { ...clip.transform, rotation },
+          project.canvas.width,
+          project.canvas.height,
+        );
         updateClip(
           clip.id,
-          {
-            transform: containClipTransform(
-              clip,
-              { ...clip.transform, rotation },
-              project.canvas.width,
-              project.canvas.height,
-            ),
-          },
+          clipTransformPatchAtTime(clip, nextTransform, localTime),
           'Two-finger rotate video',
           `pinch-rotate-clip-${clip.id}`,
         );
@@ -4889,20 +4895,23 @@ function VideoEditor() {
 
       const clip = docRef.current.project.clips.find((item) => item.id === selectedClipId);
       if (clip) {
+        const localTime = Math.max(
+          0,
+          playheadRef.current - previewClipStart(docRef.current.project, clip.id),
+        );
+        const nextTransform = containClipTransform(
+          clip,
+          {
+            ...clip.transform,
+            offset_x: Math.round(clip.transform.offset_x + delta.x * scaleX),
+            offset_y: Math.round(clip.transform.offset_y + delta.y * scaleY),
+          },
+          project.canvas.width,
+          project.canvas.height,
+        );
         updateClip(
           clip.id,
-          {
-            transform: containClipTransform(
-              clip,
-              {
-                ...clip.transform,
-                offset_x: Math.round(clip.transform.offset_x + delta.x * scaleX),
-                offset_y: Math.round(clip.transform.offset_y + delta.y * scaleY),
-              },
-              project.canvas.width,
-              project.canvas.height,
-            ),
-          },
+          clipTransformPatchAtTime(clip, nextTransform, localTime),
           'Two-finger move video',
           `pinch-pan-clip-${clip.id}`,
         );
