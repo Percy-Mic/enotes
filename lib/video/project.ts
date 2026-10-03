@@ -108,6 +108,8 @@ export interface VideoEffectLayer {
   params?: VideoEffectParams;
 }
 
+export type ClipMotionPreset = 'none' | 'zoom-in' | 'zoom-out' | 'spin' | 'float' | 'pop' | 'shake';
+
 export interface VideoClip {
   id: string;
   /** storage/CDN url of the source file (never duplicated per edit) */
@@ -135,6 +137,9 @@ export interface VideoClip {
   filter: string;                // css filter preset id or 'none'
   /** motion effect applied while this clip plays (renders into the export) */
   effect: EffectType;
+  /** Motion preset is composited inside the clip's fixed frame. */
+  motion_preset?: ClipMotionPreset;
+  motion_amount?: number;
   effect_intensity?: number;
   /** Multiple composable effects. Legacy `effect` remains as the first layer when this is absent. */
   effects?: VideoEffectLayer[];
@@ -681,6 +686,8 @@ export function normalizeProject(input: unknown): VideoProject {
       volume: Math.max(0, Math.min(1, clip.volume == null ? 1 : Number(clip.volume))), muted: Boolean(clip.muted),
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
       effect: (clip.effect || 'none') as EffectType,
+      motion_preset: (['none', 'zoom-in', 'zoom-out', 'spin', 'float', 'pop', 'shake'] as ClipMotionPreset[]).includes(clip.motion_preset as ClipMotionPreset) ? clip.motion_preset as ClipMotionPreset : 'none',
+      motion_amount: clamp(Number(clip.motion_amount) || 1, 0, 2),
       effect_intensity: clamp(Number(clip.effect_intensity) || 1, 0, 1),
       effects: Array.isArray(clip.effects)
         ? clip.effects.map((layer) => {
