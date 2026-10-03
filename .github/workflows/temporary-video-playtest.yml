@@ -28,9 +28,10 @@ jobs:
           curl -fsS http://127.0.0.1:3000/auth/sign-in >/dev/null
       - name: Headless smoke playtest
         run: |
-          cat > /tmp/video-playtest.mjs <<'EOF'
-          import { chromium } from 'playwright';
-          const browser = await chromium.launch({ headless: true });
+          mkdir -p .playtest
+          cat > .playtest/video-playtest.spec.js <<'EOF'
+          const { test, expect } = require('@playwright/test');
+          test('real-surface smoke and careless sign-in attempt', async ({ page }) => {
           const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
           const errors = [];
           page.on('console', msg => { if (msg.type() === 'error') errors.push('console: ' + msg.text()); });
@@ -62,7 +63,7 @@ jobs:
           await browser.close();
           EOF
           npx -y playwright@1.51.0 install chromium --with-deps
-          npx -y -p playwright@1.51.0 node /tmp/video-playtest.mjs
+          npx -y playwright@1.51.0 test .playtest/video-playtest.spec.js --reporter=line
       - name: Print server log on failure
         if: failure()
         run: cat /tmp/enotes-next.log || true
