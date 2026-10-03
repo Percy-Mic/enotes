@@ -170,9 +170,12 @@ function useLatestPreviewRenderer() {
     } finally {
       renderingRef.current = false;
       /* A request can arrive in the tiny gap between the loop condition and
-         finally. Hand it back to the same latest-wins worker. */
-      if (queuedRequestRef.current) {
-        void render(canvas, project, time);
+         finally. Re-run with THAT queued request, not the stale arguments
+         from the render that just finished. */
+      const queued = queuedRequestRef.current;
+      if (queued) {
+        queuedRequestRef.current = null;
+        queueMicrotask(() => void render(queued.canvas, queued.project, queued.time));
       }
     }
   }, []);
