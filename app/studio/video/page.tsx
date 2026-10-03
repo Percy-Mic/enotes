@@ -2834,22 +2834,40 @@ function VideoEditor() {
   }, [selectedClipId, selectedClipTimeIn, updateClip]);
 
   const addAllMainClipKeyframes = useCallback(() => {
-    if (!selectedClipId) return;
-    (['pos_x_kf', 'pos_y_kf', 'scale_kf', 'rotation_kf', 'opacity_kf'] as KeyframeProperty[]).forEach((prop) => {
-      const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
-      if (!clip) return;
-      const graded = resolveClipAdjustments(clip, selectedClipTimeIn);
-      const values = resolveClipValues(clip, selectedClipTimeIn);
+    const clip = docRef.current.project.clips.find((c) => c.id === selectedClipId);
+    if (!clip) return;
+
+    /* Build one keyframe map from the latest clip state and commit it once.
+       Previously five separate patches were all derived from the same stale
+       keyframe map, so later patches could overwrite scale_kf and the other
+       transform properties. */
+    let keyframes = { ...(clip.keyframes || {}) };
+    const values = resolveClipValues(clip, selectedClipTimeIn);
+    const props: KeyframeProperty[] = ['pos_x_kf', 'pos_y_kf', 'scale_kf', 'rotation_kf', 'opacity_kf'];
+
+    for (const prop of props) {
       const value =
         prop === 'pos_x_kf' ? values.offset_x :
         prop === 'pos_y_kf' ? values.offset_y :
         prop === 'scale_kf' ? values.scale :
         prop === 'rotation_kf' ? values.rotation :
         values.opacity;
-      updateClip(clip.id, { keyframes: upsertClipKeyframe(clip, prop, selectedClipTimeIn, value) }, 'Set transform keyframe', `clip-kf-all-${clip.id}-${Math.round(selectedClipTimeIn * 100)}`);
-      void graded;
-    });
-    notify(`Keyframe added at ${fmt(selectedClipTimeIn)}`);
+
+      const keyframeList = [...(keyframes[prop] || [])];
+      const existing = keyframeList.findIndex((k) => Math.abs(k.t - selectedClipTimeIn) < 0.05);
+      if (existing >= 0) keyframeList[existing] = { ...keyframeList[existing], value };
+      else keyframeList.push({ id: makeVideoId('ckf'), t: selectedClipTimeIn, value });
+      keyframeList.sort((a, b) => a.t - b.t);
+      keyframes[prop] = keyframeList;
+    }
+
+    updateClip(
+      clip.id,
+      { keyframes },
+      'Set transform keyframe',
+      'clip-kf-all-' + clip.id + '-' + Math.round(selectedClipTimeIn * 100),
+    );
+    notify('Keyframe added at ' + fmt(selectedClipTimeIn));
   }, [notify, selectedClipId, selectedClipTimeIn, updateClip]);
 
   const jumpToMainClipKeyframe = useCallback((direction: -1 | 1) => {
