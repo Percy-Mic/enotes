@@ -1399,7 +1399,8 @@ function VideoEditor() {
          */
         audio.muted = false;
         audio.defaultMuted = false;
-        audio.volume = 1;
+        const resolvedAudio = resolveClipValues(clip, local);
+        audio.volume = resolvedAudio.volume;
         ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
         if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
           try { audio.currentTime = target; } catch { /* wait for metadata */ }
