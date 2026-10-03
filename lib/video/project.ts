@@ -837,17 +837,49 @@ export function normalizeProject(input: unknown): VideoProject {
       ? a.track_id
       : firstAudioId,
   }));
-  const markers = Array.isArray(raw.markers)
+  const timelineEnd = Math.max(
+    clips.reduce((sum, clip) => sum + clipDuration(clip), 0),
+    elements.reduce((max, el) => Math.max(max, el.end), 0),
+    normalizedAudio.reduce((max, a) => Math.max(max, a.start + Math.max(0.1, a.trimEnd - a.trimStart)), 0),
+    0.1,
+  );
+
+  /* Normalize timeline markers at the project boundary so Snap, rendering
+     and persistence see deterministic sorted positions. */
+  const markerList = Array.isArray(raw.markers)
     ? raw.markers.map((value, index) => {
         const m = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
         return {
           id: String(m.id || makeVideoId('marker')),
-          time: Math.max(0, Number(m.time) || 0),
+          time: Math.max(0, Math.min(timelineEnd, Number(m.time) || 0)),
           label: String(m.label || `Marker ${index + 1}`),
         };
       }).filter((m) => Number.isFinite(m.time))
     : [];
-  return { version: 3, aspect, canvas, clips, elements, audio: normalizedAudio, tracks: safeTracks, masterMuted: Boolean(raw.masterMuted), markers };
+  markerList.sort((a, b) => a.time - b.time);
+  const markers = markerList.filter((m, i) => i === 0 || Math.abs(m.time - markerList[i - 1].time) >= 0.01);
+
+  /* Detected beats are separate from user markers. Keep them finite,
+     project-time based, sorted and deduplicated. */
+  const rawBeats = Array.isArray(raw.beatMarkers) ? raw.beatMarkers : [];
+  const beatList = rawBeats
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0 && value <= timelineEnd)
+    .sort((a, b) => a - b);
+  const beatMarkers = beatList.filter((value, i) => i === 0 || Math.abs(value - beatList[i - 1]) >= 0.01);
+
+  return {
+    version: 3,
+    aspect,
+    canvas,
+    clips,
+    elements,
+    audio: normalizedAudio,
+    tracks: safeTracks,
+    masterMuted: Boolean(raw.masterMuted),
+    ...(beatMarkers.length ? { beatMarkers } : {}),
+    markers,
+  };
 }
 
 export function addTimelineTrack<T extends VideoClip | AudioTrack | TimelineElement>(
