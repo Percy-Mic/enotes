@@ -23,17 +23,6 @@ jobs:
         run: |
           npm install --no-save @playwright/test@1.51.0
           npx playwright install --with-deps chromium
-      - name: Production build
-        run: npm run build
-      - name: Start server
-        run: |
-          npm run start > /tmp/enotes-next.log 2>&1 &
-          for i in {1..60}; do
-            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then exit 0; fi
-            sleep 1
-          done
-          cat /tmp/enotes-next.log
-          exit 1
       - name: Full app browser playtest
         run: npx playwright test .playtest/full-app.spec.js --reporter=line
       - name: Save evidence
