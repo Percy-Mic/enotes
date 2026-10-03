@@ -1136,37 +1136,56 @@ function VideoEditor() {
     if (typeof window === 'undefined') return;
 
     const activeEffects = (effects || []).filter((effect) => effect.type !== 'none' && effect.amount > 0);
-    let ctx = previewAudioContextRef.current;
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
 
     /*
-     * Do not route ordinary audio through Web Audio. Native HTML media
-     * playback is more reliable for uploaded/cross-origin voiceovers and
-     * does not require the storage host to expose Web Audio CORS headers.
-     * Only create a MediaElementAudioSourceNode when an actual effect needs
-     * DSP processing.
+     * IMPORTANT: once createMediaElementSource() is used, the media element's
+     * audio is routed through that AudioContext. Therefore simply returning
+     * when effects become empty can leave the element silent. Always restore a
+     * direct/bypass connection when there are no active effects.
      */
-    if (activeEffects.length === 0) return;
+    let source = previewAudioSourcesRef.current.get(key);
 
-    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (activeEffects.length === 0) {
+      if (source) {
+        try { source.disconnect(); } catch {}
+        if (AudioContextCtor && previewAudioContextRef.current?.state !== 'closed') {
+          try { source.connect(previewAudioContextRef.current.destination); } catch {}
+        }
+      }
+      previewAudioGraphRef.current.delete(key);
+      return;
+    }
+
     if (!AudioContextCtor) return;
 
-    if (!ctx) {
-      ctx = new AudioContextCtor();
-      previewAudioContextRef.current = ctx;
+    let ctx = previewAudioContextRef.current;
+    if (!ctx || ctx.state === 'closed') {
+      try {
+        ctx = new AudioContextCtor();
+        previewAudioContextRef.current = ctx;
+        /* Existing MediaElementAudioSourceNodes belong to the old context.
+           Drop them so the next pass creates a node in the live context. */
+        previewAudioSourcesRef.current.delete(key);
+        source = undefined;
+      } catch {
+        return;
+      }
     }
     if (ctx.state === 'suspended') void ctx.resume();
 
-    let source = previewAudioSourcesRef.current.get(key);
     if (!source) {
       try {
         /*
-         * Effects require a CORS-readable media element. This must be set
-         * before the source URL is assigned by the caller.
+         * Effects require a CORS-readable media element. crossOrigin must be
+         * set before the media source is assigned; callers already do that
+         * for effect-enabled media.
          */
         media.crossOrigin = 'anonymous';
         source = ctx.createMediaElementSource(media);
         previewAudioSourcesRef.current.set(key, source);
       } catch {
+        /* Keep native media playback alive if Web Audio cannot attach. */
         return;
       }
     }
@@ -1175,9 +1194,18 @@ function VideoEditor() {
     const existing = previewAudioGraphRef.current.get(key);
     if (existing?.signature === signature) return;
 
-    try { source.disconnect(); } catch {}
-    const output = connectAudioEffects(ctx, source, activeEffects, ctx.destination) as GainNode;
-    previewAudioGraphRef.current.set(key, { signature, output });
+    try {
+      source.disconnect();
+      const output = connectAudioEffects(ctx, source, activeEffects, ctx.destination) as GainNode;
+      previewAudioGraphRef.current.set(key, { signature, output });
+    } catch {
+      /* Never leave an element disconnected because an optional effect failed. */
+      try {
+        source.disconnect();
+        source.connect(ctx.destination);
+      } catch {}
+      previewAudioGraphRef.current.delete(key);
+    }
   }, []);
 
 
@@ -1389,7 +1417,7 @@ function VideoEditor() {
       pendingRef.current = null;
       void drawOnce(next);
     }
-  }, [playing, notify, syncPreviewAudio]);
+  }, [playing, notify]);
 
   useEffect(() => {
     if (!playing) {
@@ -1421,10 +1449,10 @@ function VideoEditor() {
     let timer = 0;
     let last = performance.now();
     let stop = false;
-    const loop = async () => {
+    const loop = () => {
       if (stop) return;
       const now = performance.now();
-      const dt = (now - last) / 1000;
+      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
       last = now;
       const total = projectDuration(docRef.current.project);
       let next = playheadRef.current + dt;
@@ -1434,8 +1462,16 @@ function VideoEditor() {
       }
       playheadRef.current = next;
       setPlayhead(next);
-      await drawOnce(next);
-      await syncPreviewAudio(next, true);
+
+      /*
+       * Rendering is allowed to be expensive when effects/animations are
+       * active, but it must never become the playback clock. drawOnce()
+       * already has a latest-wins queue, so kick it off without awaiting it.
+       * Audio is synchronized independently so a slow visual effect cannot
+       * pause/drop the soundtrack.
+       */
+      void drawOnce(next);
+      void syncPreviewAudio(next, true);
       schedule();
     };
     /* rAF is vsync-perfect but Chrome ZERO-throttles it in occluded
