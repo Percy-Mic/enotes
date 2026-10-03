@@ -1795,6 +1795,40 @@ export class VideoRenderer {
     this.exportCancelled = true;
   }
 
+  /**
+   * Wait for the browser's actual decoded video frame before composing the
+   * next playing preview frame. This prevents the editor clock/rAF from
+   * repeatedly painting the same decoder frame or racing a decoder update.
+   */
+  async waitForPlaybackFrame(project: VideoProject, time: number): Promise<void> {
+    const resolved = resolveTime(normalizeProject(project), time);
+    if (!resolved || resolved.clip.media_type === 'image') return;
+    try {
+      const video = await loadVideo(resolved.clip.src);
+      if (!video || video.readyState < 2) return;
+      const rvfc = video as HTMLVideoElement & {
+        requestVideoFrameCallback?: (callback: (now: number, metadata: VideoFrameCallbackMetadata) => void) => number;
+      };
+      if (typeof rvfc.requestVideoFrameCallback !== 'function') return;
+      await new Promise<void>((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        try {
+          rvfc.requestVideoFrameCallback!(() => finish());
+          window.setTimeout(finish, 100);
+        } catch {
+          finish();
+        }
+      });
+    } catch {
+      /* Visual playback can fall back to the next clock tick. */
+    }
+  }
+
   /** Draw one project-time frame onto the given canvas. Shared by preview + export. */
   async drawFrame(
     canvas: HTMLCanvasElement,
