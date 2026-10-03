@@ -798,7 +798,7 @@ function clipBoxRect(clip: VideoClip, canvasW: number, canvasH: number) {
   };
 }
 
-function clipControlState(clip: VideoClip, canvasW: number, canvasH: number, time: number) {
+function clipControlState(clip: VideoClip, time: number) {
   const timeIn = Math.max(0, Math.min(clipDuration(clip), time));
   const v = resolveClipValues(clip, timeIn);
   return {
@@ -4259,8 +4259,12 @@ function VideoEditor() {
     const t = playheadRef.current;
     const resolved = resolveTime(docRef.current.project, t);
     if (!resolved) return null;
-    const box = clipBoxRect(resolved.clip, project.canvas.width, project.canvas.height);
-    const rad = -(resolved.clip.transform.rotation * Math.PI) / 180;
+    const controlClip = clipControlState(
+      resolved.clip,
+      Math.max(0, playheadRef.current - previewClipStart(project, resolved.clip.id)),
+    );
+    const box = clipBoxRect(controlClip, project.canvas.width, project.canvas.height);
+    const rad = -(controlClip.transform.rotation * Math.PI) / 180;
     const dx = px - box.cx;
     const dy = py - box.cy;
     const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
@@ -4293,7 +4297,10 @@ function VideoEditor() {
 
   /* handle positions for the selected main clip, in canvas units */
   const clipHandlePoints = (clip: VideoClip) => {
-    const controlClip = clipControlState(clip, project.canvas.width, project.canvas.height, Math.max(0, playheadRef.current));
+    const controlClip = clipControlState(
+      clip,
+      Math.max(0, playheadRef.current - previewClipStart(project, clip.id)),
+    );
     const box = clipBoxRect(controlClip, project.canvas.width, project.canvas.height);
     const rad = (controlClip.transform.rotation * Math.PI) / 180;
     const rot = (lx: number, ly: number) => ({
@@ -4529,9 +4536,7 @@ function VideoEditor() {
     const startY = start.y;
     const startClip = clipControlState(
       { ...clip, transform: { ...clip.transform } },
-      project.canvas.width,
-      project.canvas.height,
-      Math.max(0, playheadRef.current),
+      Math.max(0, playheadRef.current - previewClipStart(project, clip.id)),
     );
     const box = clipBoxRect(startClip, project.canvas.width, project.canvas.height);
     const rad = (startClip.transform.rotation * Math.PI) / 180;
@@ -4801,7 +4806,14 @@ function VideoEditor() {
         const rotation = Math.round(clip.transform.rotation + degrees);
         updateClip(
           clip.id,
-          { transform: { ...clip.transform, rotation } },
+          {
+            transform: containClipTransform(
+              clip,
+              { ...clip.transform, rotation },
+              project.canvas.width,
+              project.canvas.height,
+            ),
+          },
           'Two-finger rotate video',
           `pinch-rotate-clip-${clip.id}`,
         );
@@ -5903,7 +5915,10 @@ function VideoEditor() {
 
   /* geometry for the on-canvas clip frame */
   const clipControlClip = selectedClip
-    ? clipControlState(selectedClip, project.canvas.width, project.canvas.height, Math.max(0, playheadRef.current))
+    ? clipControlState(
+        selectedClip,
+        Math.max(0, playheadRef.current - previewClipStart(project, selectedClip.id)),
+      )
     : null;
 
   const clipFrame = clipControlClip && !playing && !cropMode
