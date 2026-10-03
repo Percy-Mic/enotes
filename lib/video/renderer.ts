@@ -2247,6 +2247,28 @@ export class VideoRenderer {
             offset_x: c.transform.offset_x * scaleX,
             offset_y: c.transform.offset_y * scaleY,
           },
+          /*
+           * Clip position keyframes are absolute project-canvas pixels.
+           * Scale them exactly like the live transform when exporting to a
+           * different output resolution; scale/rotation/opacity/volume remain
+           * unitless and must not be changed.
+           */
+          keyframes: c.keyframes
+            ? (Object.fromEntries(
+                Object.entries(c.keyframes).map(([prop, frames]) => [
+                  prop,
+                  (frames as { id: string; t: number; value: number }[]).map((k) => ({
+                    ...k,
+                    value:
+                      prop === 'pos_x_kf'
+                        ? k.value * scaleX
+                        : prop === 'pos_y_kf'
+                          ? k.value * scaleY
+                          : k.value,
+                  })),
+                ])
+              ) as typeof c.keyframes)
+            : undefined,
         })),
         elements: project.elements.map((e) => ({
           ...e,
