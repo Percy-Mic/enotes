@@ -1513,7 +1513,9 @@ function applyTransition(
       ctx.save();
       ctx.globalAlpha = energy * 0.9;
       ctx.filter = `blur(${Math.round(14 * energy)}px)`;
-      ctx.drawImage(ctx.canvas, 0, 0);
+      /* Never draw the canvas onto itself. 'source' is the immutable frame
+         snapshot created above for transitions that need post-processing. */
+      if (source) ctx.drawImage(source, 0, 0);
       ctx.restore();
       return { overlayAlpha: 0 };
     }
