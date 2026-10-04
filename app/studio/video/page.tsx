@@ -1829,7 +1829,7 @@ function VideoEditor() {
       if (projectId) {
         const { data, error } = await supabase
           .from('video_projects')
-          .select('id, title, project, aspect_ratio')
+          .select('id, title, project, aspect_ratio, template_id')
           .eq('id', projectId)
           .maybeSingle();
         if (error || !data) {
@@ -1841,6 +1841,7 @@ function VideoEditor() {
           'Loaded project'
         );
         setSavedProjectId(data.id);
+        setTemplateOriginId(data.template_id || null);
       } else if (templateId) {
         const { data, error } = await supabase
           .from('templates')
@@ -1856,7 +1857,8 @@ function VideoEditor() {
           return;
         }
         const tplProject = normalizeProject({ ...emptyProject(data.aspect_ratio as AspectRatio), ...(data.project as object) });
-        history.reset({ title: `${data.title} (from template)`, project: tplProject }, 'From template');
+        history.reset({ title: `${data.title} — Remix`, project: tplProject }, 'From template');
+        setTemplateOriginId(data.id);
         // analytics (privacy-light): event row + counter via secure RPC
         void supabase.from('template_events').insert({ template_id: data.id, event: 'use' });
         void supabase.rpc('bump_template_use', { p_template: data.id });
@@ -1892,6 +1894,7 @@ function VideoEditor() {
 
   /* ---------- autosave ---------- */
   const [savedProjectId, setSavedProjectId] = useState<string | null>(projectId);
+  const [templateOriginId, setTemplateOriginId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const saveTimer = useRef<number | null>(null);
@@ -6133,6 +6136,16 @@ function VideoEditor() {
           <Download className="h-3.5 w-3.5" /><span className="hidden sm:inline">Export</span>
         </button>
       </header>
+
+      {templateOriginId && (
+        <div className="shrink-0 border-b border-[#E5798F]/20 bg-[#E5798F]/10 px-3 py-2 text-[10px] text-white/75">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center">
+            <span className="font-bold text-[#FFB6C1]">Template remix</span>
+            <span>Transitions, effects, text, timing and sound processing stay locked into this project.</span>
+            <span className="text-white/50">Select a media clip or sound and use Replace to swap the source without rebuilding the edit.</span>
+          </div>
+        </div>
+      )}
 
       {/* ---------- scrollable workspace: preview + timeline ----------
           The WHOLE editing area scrolls vertically when the viewport is
