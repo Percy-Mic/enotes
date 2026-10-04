@@ -41,7 +41,8 @@ for(const viewport of [{width:1440,height:900},{width:390,height:844}]){
 }
 test('production service worker and utilities',async()=>{
   const x=await make({width:1440,height:900});
-  const sw=await x.page.request.get(base+'/sw.js',{timeout:10000});
+  const sw=await x.page.request.get(base+'/sw.js',{timeout:10000,maxRedirects:0});
+  console.log(JSON.stringify({swStatus:sw.status(),swLocation:sw.headers()['location']||null,swType:sw.headers()['content-type']||null}));
   expect(sw.status()).toBe(200);
   const text=await sw.text();
   expect(text).toContain('self.addEventListener');
