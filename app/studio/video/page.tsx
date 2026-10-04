@@ -4575,7 +4575,7 @@ function VideoEditor() {
     if (!canvas || previewScale <= 0) return 24;
     /* Keep transform zones deliberately close to the selection boundary.
        The interior of an element must remain a reliable move surface. */
-    return Math.max(18, 28 / previewScale);
+    return Math.max(22, 34 / previewScale);
   };
 
   /* Active touch pointers on the preview. A second finger switches the
@@ -4612,7 +4612,10 @@ function VideoEditor() {
     const centerX = startGeometry.x + startGeometry.width / 2;
     const centerY = startGeometry.y + startGeometry.height / 2;
     const startAngle = Math.atan2(startY - centerY, startX - centerX);
-    const keepAspect = el.kind !== 'text';
+    /* Text remains proportional when using a corner handle. This prevents
+       a text box from becoming extremely wide/tall and makes the type scale
+       predictably with the box. Edge handles still allow width/height edits. */
+    const keepAspect = true;
     const startAspect = startGeometry.width / Math.max(1, startGeometry.height);
     const minSize = 24;
 
@@ -4765,11 +4768,9 @@ function VideoEditor() {
 
   /* ---------- main-clip gestures on the canvas ----------
      Main media may intentionally travel beyond the canvas for keyframed
-     entrance/exit animations; only the visible canvas area is composited. */
-     The clip is represented by its rendered box (cover-fit × scale ×
-     axis-scale, offset from center). Move = offset_x/y, corner =
-     uniform scale, edges = scale_x/scale_y, top handle = rotation.
-     The same numbers drive the export, so the box IS the truth. */
+     entrance/exit animations. The clip is represented by its rendered box;
+     move = offset_x/y, corner = uniform scale, edges = scale_x/scale_y,
+     top handle = rotation. The same numbers drive the export. */
   const beginClipGesture = (clip: VideoClip, gesture: Gesture, e: React.PointerEvent<HTMLElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -6649,19 +6650,63 @@ function VideoEditor() {
                   zones; there are no transparent buttons sitting over the artwork. */}
               {selectedElement && previewScale > 0 && !cropMode && (() => {
                 const g = elementVisualGeometry(selectedElement);
-                return (
-                  <div
-                    className="pointer-events-none absolute"
-                    style={{
-                      left: g.x * previewScale,
-                      top: g.y * previewScale,
-                      width: g.width * previewScale,
-                      height: g.height * previewScale,
-                      transform: 'rotate(' + g.rotation + 'deg)',
-                      outline: '2px solid rgba(229,121,143,0.98)',
-                      outlineOffset: 0,
+                const pts = elementHandlePoints(selectedElement);
+                const handle = (name: Gesture, p: { x: number; y: number }, label: string, glyph: string) => (
+                  <button
+                    key={name}
+                    type="button"
+                    data-canvas-transform-handle="true"
+                    aria-label={label}
+                    title={label}
+                    onPointerDown={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      beginElementGesture(selectedElement, name, ev);
                     }}
-                  />
+                    className="pointer-events-auto absolute z-[80] flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-[#E5798F] text-[12px] font-black text-white shadow-[0_2px_12px_rgba(0,0,0,.55)] active:scale-95"
+                    style={{
+                      left: p.x * previewScale,
+                      top: p.y * previewScale,
+                    }}
+                  >
+                    {glyph}
+                  </button>
+                );
+                const rotate = pts.rotate;
+                const top = pts['resize-n'];
+                return (
+                  <>
+                    <div
+                      className="pointer-events-none absolute"
+                      style={{
+                        left: g.x * previewScale,
+                        top: g.y * previewScale,
+                        width: g.width * previewScale,
+                        height: g.height * previewScale,
+                        transform: 'rotate(' + g.rotation + 'deg)',
+                        outline: '2px solid rgba(229,121,143,0.98)',
+                        outlineOffset: 0,
+                      }}
+                    />
+                    {(['resize-nw', 'resize-ne', 'resize-sw', 'resize-se'] as Gesture[]).map((name) =>
+                      handle(
+                        name,
+                        pts[name as keyof typeof pts],
+                        name.replace('resize-', 'Resize ') + ' text',
+                        '•',
+                      )
+                    )}
+                    <div
+                      className="pointer-events-none absolute z-[79] h-5 w-px origin-bottom bg-white/90"
+                      style={{
+                        left: rotate.x * previewScale,
+                        top: rotate.y * previewScale,
+                        transform: 'rotate(' + g.rotation + 'deg) translateY(10px)',
+                      }}
+                    />
+                    {handle('rotate', rotate, 'Rotate text', '↻')}
+                    {handle('resize-n', top, 'Resize text vertically', '↕')}
+                  </>
                 );
               })()}
 
