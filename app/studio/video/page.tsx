@@ -1841,7 +1841,7 @@ function VideoEditor() {
           'Loaded project'
         );
         setSavedProjectId(data.id);
-        setTemplateOriginId(data.template_id || null);
+        setTemplateOriginId((data as { template_id?: string | null }).template_id || null);
       } else if (templateId) {
         const { data, error } = await supabase
           .from('templates')
