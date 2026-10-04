@@ -4750,7 +4750,7 @@ function VideoEditor() {
         return;
       }
 
-      if (isCornerGesture(activeGesture)) {
+      if (activeGesture && isCornerGesture(activeGesture)) {
         const { sx, sy } = CORNER_SIGNS[activeGesture];
         const rad = (startEl.rotation * Math.PI) / 180;
         /* pointer delta in the element's rotated frame */
@@ -4777,7 +4777,7 @@ function VideoEditor() {
         return;
       }
 
-      if (isEdgeGesture(activeGesture)) {
+      if (activeGesture && isEdgeGesture(activeGesture)) {
         const rad = (startEl.rotation * Math.PI) / 180;
         const lx = dx * Math.cos(rad) + dy * Math.sin(rad);
         const ly = -dx * Math.sin(rad) + dy * Math.cos(rad);
@@ -4958,7 +4958,7 @@ function VideoEditor() {
         return;
       }
 
-      if (isCornerGesture(activeGesture)) {
+      if (activeGesture && isCornerGesture(activeGesture)) {
         /* Corner controls preserve the source frame shape and stay contained. */
         const d0 = Math.hypot(startX - box.cx, startY - box.cy);
         const d1 = Math.hypot(p.x - box.cx, p.y - box.cy);
@@ -4978,7 +4978,7 @@ function VideoEditor() {
         return;
       }
 
-      if (isEdgeGesture(activeGesture)) {
+      if (activeGesture && isEdgeGesture(activeGesture)) {
         /* Edge controls resize the complete video proportionally instead of
            squeezing one axis. The video and its control frame therefore remain
            the same shape at every size. */
