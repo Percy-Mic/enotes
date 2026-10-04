@@ -220,6 +220,25 @@ Notes:
 
 ---
 
+### Cloudflare Turnstile CAPTCHA — required for email auth
+
+The auth pages now render Cloudflare Turnstile on **sign-in, sign-up, and forgot-password** and pass the resulting `captchaToken` directly to Supabase Auth. Supabase performs the server-side CAPTCHA verification when CAPTCHA protection is enabled; do not put the Turnstile secret key in Vercel or browser code. citeturn0search0
+
+1. In Cloudflare Dashboard → **Turnstile**, create a widget for `enotes-ph.vercel.app`.
+2. Add `enotes-ph.vercel.app` as an allowed hostname. Cloudflare requires authorized hostnames for standard widgets. citeturn7search0
+3. Copy the **Site Key**. This is safe for the browser.
+4. In Vercel → Project → Settings → Environment Variables, add:
+
+```bash
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=<your Cloudflare Turnstile site key>
+```
+
+5. In Supabase → **Project Settings → Authentication → Bot and Abuse Protection**, enable CAPTCHA protection, choose **Cloudflare Turnstile**, and paste the widget's **Secret Key** into Supabase. Supabase documents CAPTCHA support for sign-in, sign-up, and password reset. citeturn0search0
+6. Redeploy enotes after adding the Vercel variable.
+7. Test all three forms. Turnstile tokens are single-use, so the app resets the widget after each authentication attempt. citeturn7search7
+
+For local development, either add `localhost` to the widget's authorized hostnames or use Cloudflare's test keys. Do not use a production secret with a test sitekey. citeturn7search4
+
 ## 6. Web Push notifications — required for installed-app alerts
 
 The notification UI is already implemented. When enotes is running as an installed PWA,
