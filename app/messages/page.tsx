@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BellOff, MessageCircle, Plus, Search } from 'lucide-react';
+import { BellOff, MessageCircle, Plus, Search, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import type { Conversation } from '@/types/social';
 import Avatar from '@/components/social/Avatar';
