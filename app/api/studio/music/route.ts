@@ -191,7 +191,7 @@ export async function GET(request: Request) {
       if (!unique.has(item.id)) unique.set(item.id, item);
     }
 
-    const all = [...unique.values()];
+    const all = Array.from(unique.values());
     const start = (page - 1) * limit;
     const visible = all.slice(start, start + limit);
     const hydrated = await signedClips(visible.map((x) => x.id), token, clientId);
