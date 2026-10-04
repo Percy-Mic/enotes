@@ -7184,6 +7184,7 @@ function VideoEditor() {
                 });
                 updateAudio(selectedAudio.id, {
                   src: up.url,
+                  storage_path: up.path,
                   name: file.name,
                   sourceDuration: durationSeconds,
                   trimStart: 0,
