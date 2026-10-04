@@ -2160,7 +2160,7 @@ function VideoEditor() {
             } catch {
               /* Cloudinary is optional; the Supabase studio-media URL is durable. */
             }
-            if (!/^https?:\\/\\//i.test(mediaUrl)) {
+            if (!/^https?:\/\//i.test(mediaUrl)) {
               throw new Error('The media upload completed without a durable URL.');
             }
             return mediaUrl;
