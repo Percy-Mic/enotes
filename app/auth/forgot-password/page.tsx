@@ -5,7 +5,6 @@ import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
 import AuthShell from '@/components/auth/AuthShell';
-import AuthShell from '@/components/auth/AuthShell';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -32,6 +31,8 @@ export default function ForgotPasswordPage() {
 
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim() || !captchaToken) return;
+
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -77,12 +78,27 @@ export default function ForgotPasswordPage() {
             />
           </div>
 
+          {turnstileSiteKey ? (
+            <EnotesTurnstile
+              ref={turnstileRef}
+              siteKey={turnstileSiteKey}
+              action="password_reset"
+              onToken={handleCaptchaToken}
+              onExpire={handleCaptchaReset}
+              onError={handleCaptchaError}
+            />
+          ) : (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              Security verification is temporarily unavailable. Please refresh and try again.
+            </div>
+          )}
+
           <button
             type="submit"
-            disabled={loading || !turnstileSiteKey || !captchaToken}
+            disabled={loading || !email.trim() || !turnstileSiteKey || !captchaToken}
             className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 disabled:opacity-50"
           >
-            {loading ? 'Sending link...' : 'Send Reset Link'}
+            {loading ? 'Sending link...' : !turnstileSiteKey ? 'Security check unavailable' : !captchaToken ? 'Complete security check' : 'Send Reset Link'}
           </button>
         </form>
 
