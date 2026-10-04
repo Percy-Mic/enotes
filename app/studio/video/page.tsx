@@ -1632,6 +1632,14 @@ function VideoEditor() {
       const requested = previewAudioPlayRequestedRef.current.has(key);
       if (audio.paused && !requested) {
         previewAudioPlayRequestedRef.current.add(key);
+        if (track.provider === 'feed' && track.providerId && !feedPlayReportedRef.current.has(track.id)) {
+          feedPlayReportedRef.current.add(track.id);
+          void fetch('/api/studio/music/events', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ clipId: track.providerId, event: 'play' }),
+          }).catch(() => {});
+        }
         void audio.play()
           .then(() => {
             previewAudioUnlockedRef.current = true;
@@ -5198,6 +5206,7 @@ function VideoEditor() {
   const [previewingSoundId, setPreviewingSoundId] = useState<string | null>(null);
   const [previewSoundTime, setPreviewSoundTime] = useState(0);
   const soundPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const feedPlayReportedRef = useRef<Set<string>>(new Set());
 
   const seekSoundPreview = useCallback((time: number) => {
     const audio = soundPreviewRef.current;
