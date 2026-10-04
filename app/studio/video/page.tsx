@@ -6083,6 +6083,8 @@ function VideoEditor() {
         src: placeholderSrc(slot),
         storage_path: undefined,
         name: clip.media_type === 'image' ? `Photo ${slot + 1}` : `Video ${slot + 1}`,
+        template_slot: slot,
+        template_duration: clipDuration(clip),
       };
     });
 
@@ -6195,7 +6197,25 @@ function VideoEditor() {
       clips: p.clips.map((clip) => {
         const slot = Number(clip.src.split('/').pop());
         const r = replacements.find((item) => item.slot === slot);
-        return r ? { ...clip, src: r.url, storage_path: r.storage_path, name: r.name, media_type: r.mediaType, sourceDuration: r.duration, trimStart: 0, trimEnd: r.mediaType === 'image' ? 4 : r.duration, volume: r.mediaType === 'image' ? 0 : clip.volume, muted: r.mediaType === 'image' ? true : clip.muted, source_width: r.w, source_height: r.h } : clip;
+        if (!r) return clip;
+        const slotDuration = Math.max(0.1, Number(clip.template_duration) || clipDuration(clip));
+        const targetSourceDuration = r.mediaType === 'image'
+          ? slotDuration
+          : Math.min(r.duration, slotDuration * Math.max(clip.speed, 0.05));
+        return {
+          ...clip,
+          src: r.url,
+          storage_path: r.storage_path,
+          name: r.name,
+          media_type: r.mediaType,
+          sourceDuration: r.mediaType === 'image' ? slotDuration : r.duration,
+          trimStart: 0,
+          trimEnd: Math.max(0.1, targetSourceDuration),
+          volume: r.mediaType === 'image' ? 0 : clip.volume,
+          muted: r.mediaType === 'image' ? true : clip.muted,
+          source_width: r.w,
+          source_height: r.h,
+        };
       }),
       elements: p.elements.map((el) => {
         if (!isPlaceholder(el.src)) return el;
@@ -7361,7 +7381,7 @@ function VideoEditor() {
             className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] md:hidden"
           />
           <section
-            className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] ${['media'].includes(tool) ? 'md:left-[74px] md:right-auto' : 'md:left-auto md:right-0'} md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0"
+            className={`fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] ${tool === 'media' ? 'md:left-[74px] md:right-auto' : 'md:left-auto md:right-0'} md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0`}
             style={{ contain: 'layout paint' }}
             aria-label={TOOL_LABELS[tool] + ' tools'}
           >
@@ -9310,7 +9330,7 @@ function VideoEditor() {
 
       {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
       <nav
-        className="sticky bottom-0 z-40 grid grid-cols-8 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:fixed md:bottom-0 md:left-0 md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
+        className="sticky bottom-0 z-40 grid grid-cols-9 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:fixed md:bottom-0 md:left-0 md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
         aria-label="Editor tools"
       >
         {(
@@ -9322,6 +9342,7 @@ function VideoEditor() {
             ['motion', <Sparkles key="mo" className="h-5 w-5" />],
             ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
             ['ai', <Bot key="ai" className="h-5 w-5" />],
+            ['crop', <Crop key="c" className="h-5 w-5" />],
             ['export', <Upload key="e" className="h-5 w-5" />],
           ] as [Tool, React.ReactNode][]
         ).map(([id, icon]) => (
