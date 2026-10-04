@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Bookmark, BookmarkCheck, Crown, Film, Play, Search, Star } from 'lucide-react';
+import { ArrowRight, Bookmark, BookmarkCheck, ChevronDown, ChevronRight, Crown, Film, Image as ImageIcon, Play, Search, Sparkles, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useEntitlements } from '@/lib/entitlements';
 
@@ -154,163 +154,118 @@ export default function TemplatesPage() {
     t.rating_count > 0 ? (t.rating_sum / t.rating_count).toFixed(1) : null;
 
   return (
-    <main className="min-h-[100dvh] bg-[#FFF7F8] px-3 pb-24 pt-5 text-[#111111] sm:px-6 md:pb-10">
-      <div className="mx-auto w-full max-w-3xl">
-        <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold">Templates</h1>
-            <p className="text-sm text-[#6B6B6B]">Pick a template, add your media, export in seconds.</p>
-          </div>
-          <div className="flex gap-2">
-            <Link href="/studio/video" className="rounded-xl bg-black px-4 py-2 text-sm font-semibold text-[#FFB6C1]">
-              <Film className="mr-1 inline h-4 w-4" /> Blank project
-            </Link>
-            <Link href="/studio" className="rounded-xl border border-[#E8E2E4] bg-white px-4 py-2 text-sm font-semibold">
-              Creator hub
-            </Link>
-          </div>
-        </header>
+    <main className="min-h-[100dvh] bg-[#f8f9fb] text-[#111]">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-[1500px]">
+        {/* CapCut-style workspace rail */}
+        <aside className="hidden w-[74px] shrink-0 border-r border-[#e8eaee] bg-white lg:flex lg:flex-col lg:items-center lg:gap-5 lg:py-5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-black text-lg font-black text-white">e</div>
+          <Link href="/studio" className="flex flex-col items-center gap-1 text-[10px] font-semibold text-[#666]"><Film className="h-5 w-5" />Create</Link>
+          <Link href="/studio/templates" className="flex flex-col items-center gap-1 text-[10px] font-bold text-[#111]"><Sparkles className="h-5 w-5" />Templates</Link>
+          <Link href="/studio/video" className="flex flex-col items-center gap-1 text-[10px] font-semibold text-[#666]"><Play className="h-5 w-5" />Editor</Link>
+        </aside>
 
-        {/* search + filters */}
-        <div className="space-y-2 rounded-2xl border border-[#E8E2E4] bg-white p-3 shadow-sm">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9C9497]" />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search templates, tags, creators…"
-              aria-label="Search templates"
-              className="w-full rounded-xl border border-[#E8E2E4] py-2.5 pl-9 pr-3 text-sm outline-none focus:border-[#E5798F]"
-            />
+        <div className="min-w-0 flex-1 px-4 pb-16 pt-4 sm:px-6 lg:px-10">
+          <header className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-black text-sm font-black text-white lg:hidden">e</div>
+              <div>
+                <h1 className="text-lg font-bold">Templates</h1>
+                <p className="hidden text-xs text-[#8b8f97] sm:block">Trending edits made by the enotes community.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/studio/video?new=1" className="rounded-lg bg-black px-3 py-2 text-xs font-bold text-white">+ Create new</Link>
+              <Link href="/studio" className="hidden rounded-lg border border-[#e2e4e8] bg-white px-3 py-2 text-xs font-semibold sm:block">Creator hub</Link>
+            </div>
+          </header>
+
+          {/* Hero/search banner modeled on the reference's information hierarchy. */}
+          <section className="mt-5 overflow-hidden rounded-2xl bg-gradient-to-r from-[#b9dcff] via-[#e6d8ff] to-[#ffd5e8] px-6 py-7 shadow-sm sm:px-9 sm:py-8">
+            <div className="max-w-2xl">
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-black/50">enotes templates</p>
+              <h2 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Make stunning videos with a template.</h2>
+              <p className="mt-2 max-w-xl text-sm leading-5 text-black/60">Choose a ready-made edit, replace the media and sounds, and keep the creator's transitions, effects, text, timing and keyframes.</p>
+              <div className="mt-5 flex max-w-2xl overflow-hidden rounded-xl bg-white shadow-sm">
+                <button type="button" className="flex shrink-0 items-center gap-1 border-r border-[#ececf0] px-3 py-3 text-xs font-semibold"><span>Video</span><ChevronDown className="h-3.5 w-3.5" /></button>
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9ca0a8]" />
+                  <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search templates" aria-label="Search templates" className="h-full w-full bg-transparent py-3 pl-9 pr-3 text-sm outline-none" />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div className="mt-5 flex items-end justify-between border-b border-[#e5e7eb]">
+            <div className="flex gap-6">
+              <button type="button" className="border-b-2 border-[#12b8d6] pb-3 text-sm font-bold">Video</button>
+              <button type="button" disabled className="pb-3 text-sm font-semibold text-[#a0a4ab]">Image</button>
+            </div>
+            <div className="hidden pb-2 text-[10px] text-[#92969e] sm:block">Creator templates · {templates.length}</div>
           </div>
-          <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1">
+
+          {/* Reference-style category strip */}
+          <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">
             {CATEGORIES.map((c) => (
-              <button
-                key={c}
-                onClick={() => setCategory(c)}
-                className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold capitalize ${
-                  category === c ? 'bg-black text-[#FFB6C1]' : 'bg-[#F3EFF0] text-[#6B6B6B]'
-                }`}
-              >
-                {c}
+              <button key={c} onClick={() => setCategory(c)} className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold capitalize transition ${category === c ? 'bg-black text-white' : 'bg-white text-[#646871] hover:bg-[#eef0f3]'}`}>
+                {c === 'all' ? 'For You' : c}
               </button>
             ))}
+            <button type="button" className="ml-auto hidden shrink-0 rounded-full bg-white p-2 text-[#555] sm:block" aria-label="More categories"><ChevronRight className="h-4 w-4" /></button>
           </div>
-          <div className="flex gap-1.5">
-            {(['all', 'free', 'premium'] as const).map((p) => (
-              <button
-                key={p}
-                onClick={() => setPremiumOnly(p)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold capitalize ${
-                  premiumOnly === p ? 'bg-[#E5798F] text-white' : 'bg-[#F3EFF0] text-[#6B6B6B]'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        {/* grid */}
-        {useError && (
-          <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-600">{useError}</p>
-        )}
-        {loading ? (
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {[0, 1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="aspect-[9/14] animate-pulse rounded-2xl bg-[#EFE9EB]" />
+          <div className="mt-1 flex gap-2">
+            {(['all', 'free', 'premium'] as const).map((p) => (
+              <button key={p} onClick={() => setPremiumOnly(p)} className={`rounded-lg px-3 py-1.5 text-[10px] font-bold capitalize ${premiumOnly === p ? 'bg-[#111] text-white' : 'bg-white text-[#777]'}`}>{p === 'all' ? 'All' : p}</button>
             ))}
           </div>
-        ) : error ? (
-          <div className="mt-6 rounded-2xl border border-dashed border-[#E8E2E4] bg-white/60 px-6 py-14 text-center">
-            <p className="text-sm font-semibold text-red-600">{error}</p>
-            <p className="mt-1 text-xs text-[#6B6B6B]">Run migration 20260913000001 in Supabase to create the marketplace tables.</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="mt-6 rounded-2xl border border-dashed border-[#E8E2E4] bg-white/60 px-6 py-14 text-center">
-            <div className="text-4xl">🎬</div>
-            <h2 className="mt-3 text-lg font-semibold">No templates found</h2>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-[#6B6B6B]">
-              Try a different category — or create the first one from any project in the editor.
-            </p>
-            <Link href="/studio/video" className="mt-5 inline-block rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-[#FFB6C1]">
-              Open the editor
-            </Link>
-          </div>
-        ) : (
-          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {filtered.map((t) => {
-              const locked = t.premium && !ents.has('templates.premium') && !ents.has(`template.use:${t.id}`);
-              const rating = ratingOf(t);
-              return (
-                <article key={t.id} className="group overflow-hidden rounded-2xl border border-[#E8E2E4] bg-white shadow-sm">
-                  <div className="relative aspect-[9/14] bg-[#F3EFF0]">
-                    {t.preview_url ? (
-                      <video src={t.preview_url} muted loop playsInline preload="metadata" className="h-full w-full object-cover" />
-                    ) : t.thumbnail_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={t.thumbnail_url} alt={t.title} className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-4xl">🎞</div>
-                    )}
-                    {t.featured && (
-                      <span className="absolute left-2 top-2 rounded-full bg-amber-400 px-2 py-0.5 text-[10px] font-bold text-black">
-                        ★ Featured
-                      </span>
-                    )}
-                    <button
-                      onClick={() => void toggleSave(t.id)}
-                      aria-label={savedIds.has(t.id) ? 'Remove from saved' : 'Save template'}
-                      className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur"
-                    >
-                      {savedIds.has(t.id) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
-                    </button>
-                    <div className="absolute inset-x-2 bottom-2 flex items-center justify-between text-[10px] font-semibold text-white">
-                      <span className="rounded-full bg-black/55 px-2 py-0.5 backdrop-blur">{t.uses} uses</span>
-                      {rating && (
-                        <span className="rounded-full bg-black/55 px-2 py-0.5 backdrop-blur">
-                          <Star className="inline h-3 w-3 fill-current" /> {rating}
-                        </span>
-                      )}
+
+          {useError && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-600">{useError}</p>}
+          {loading ? (
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+              {[0,1,2,3,4,5,6,7,8,9].map((i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-[#e9ebef]" />)}
+            </div>
+          ) : error ? (
+            <div className="mt-6 rounded-2xl border border-dashed border-[#dfe2e7] bg-white px-6 py-14 text-center"><p className="text-sm font-semibold text-red-600">{error}</p><p className="mt-1 text-xs text-[#6B6B6B]">Run the marketplace migration in Supabase.</p></div>
+          ) : filtered.length === 0 ? (
+            <div className="mt-6 rounded-2xl border border-dashed border-[#dfe2e7] bg-white px-6 py-14 text-center"><div className="text-4xl">🎬</div><h2 className="mt-3 text-lg font-semibold">No templates found</h2><p className="mx-auto mt-1 max-w-sm text-sm text-[#6B6B6B]">Try another category or create the first template from the editor.</p><Link href="/studio/video" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-black px-5 py-2.5 text-sm font-semibold text-white">Open editor <ArrowRight className="h-4 w-4" /></Link></div>
+          ) : (
+            <div className="mt-5 grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 xl:grid-cols-5">
+              {filtered.map((t) => {
+                const locked = t.premium && !ents.has('templates.premium') && !ents.has(`template.use:${t.id}`);
+                const rating = ratingOf(t);
+                return (
+                  <article key={t.id} className="group min-w-0">
+                    <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-[#e9ebef]">
+                      {t.preview_url ? (
+                        <video src={t.preview_url} muted loop playsInline preload="metadata" onMouseEnter={(e) => { void e.currentTarget.play().catch(() => {}); }} onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                      ) : t.thumbnail_url ? (
+                        <img src={t.thumbnail_url} alt={t.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                      ) : <div className="flex h-full items-center justify-center text-4xl">🎞</div>}
+                      <button onClick={() => toggleSave(t.id)} aria-label={savedIds.has(t.id) ? 'Remove from saved' : 'Save template'} className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur">{savedIds.has(t.id) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}</button>
+                      {t.featured && <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[9px] font-black text-black">★ Featured</span>}
+                      <div className="absolute inset-x-2 bottom-2 flex items-center justify-between text-[9px] font-bold text-white"><span className="rounded-full bg-black/50 px-2 py-1">{t.duration_seconds ? fmt(t.duration_seconds) : ''}</span>{rating && <span className="rounded-full bg-black/50 px-2 py-1"><Star className="mr-0.5 inline h-3 w-3 fill-current" />{rating}</span>}</div>
                     </div>
-                  </div>
-                  <div className="space-y-1.5 p-3">
-                    <h3 className="truncate text-sm font-bold">{t.title}</h3>
-                    <Link
-                      href={t.creator.username ? `/u/${t.creator.username}` : '#'}
-                      className="flex items-center gap-1.5 text-[11px] text-[#6B6B6B]"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={t.creator.avatar_url || '/default-avatar.png'} alt="" className="h-4 w-4 rounded-full" />
-                      <span className="truncate">@{t.creator.username}</span>
-                      {t.creator.creator_verified && <span title="Verified creator">✓</span>}
-                    </Link>
-                    <div className="flex items-center justify-between pt-0.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t.premium ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                        {t.premium ? <Crown className="inline h-3 w-3" /> : null} {t.premium ? `$${(t.price_cents / 100).toFixed(2)}` : 'Free'}
-                      </span>
-                      {locked ? (
-                        <span className="rounded-lg bg-[#F3EFF0] px-2.5 py-1.5 text-[10px] font-bold text-[#6B6B6B]">
-                          Pro / purchase
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => void useTemplate(t)}
-                          disabled={usingId !== null}
-                          className="flex items-center gap-1 rounded-lg bg-black px-2.5 py-1.5 text-[10px] font-bold text-[#FFB6C1] disabled:opacity-50"
-                        >
-                          <Play className="h-3 w-3" /> {usingId === t.id ? 'Opening…' : 'Use'}
-                        </button>
-                      )}
+                    <div className="pt-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="line-clamp-2 text-sm font-bold leading-5">{t.title}</h3>
+                        <span className="shrink-0 text-[10px] text-[#92969e]">{t.uses} uses</span>
+                      </div>
+                      <Link href={t.creator.username ? `/u/${t.creator.username}` : '#'} className="mt-1 flex items-center gap-1.5 text-[10px] text-[#858991]">
+                        <img src={t.creator.avatar_url || '/default-avatar.png'} alt="" className="h-4 w-4 rounded-full" />
+                        <span className="truncate">@{t.creator.username}</span>
+                      </Link>
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${t.premium ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>{t.premium ? <Crown className="mr-0.5 inline h-3 w-3" /> : null}{t.premium ? `$${(t.price_cents / 100).toFixed(2)}` : 'Free'}</span>
+                        {locked ? <span className="rounded-lg bg-[#eef0f3] px-2.5 py-1.5 text-[9px] font-bold text-[#777]">Pro / purchase</span> : <button onClick={() => void useTemplate(t)} disabled={usingId !== null} className="flex items-center gap-1 rounded-lg bg-black px-2.5 py-1.5 text-[9px] font-bold text-white disabled:opacity-50"><Play className="h-3 w-3" />{usingId === t.id ? 'Opening…' : 'Use'}</button>}
+                      </div>
                     </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </main>
-  );
+  );  );
 }
