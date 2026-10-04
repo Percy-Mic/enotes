@@ -122,6 +122,7 @@ export async function GET(request: Request) {
   const query = String(params.get('q') || '').trim().slice(0, 80).toLowerCase();
   const collectionIds = String(params.get('collections') || process.env.FEED_CLIPS_COLLECTION_IDS || '')
     .split(',').map((v) => v.trim()).filter(Boolean).slice(0, 12);
+  const clipId = String(params.get('clipId') || '').trim();
   const page = Math.max(1, Number(params.get('page') || 1) || 1);
   const limit = Math.min(24, Math.max(6, Number(params.get('limit') || 24) || 24));
 
@@ -141,6 +142,34 @@ export async function GET(request: Request) {
     const token = await feedToken();
     if (!token) throw new Error('Feed Clips did not return a bearer token.');
     const clientId = clientIdFor(auth.user.id);
+
+    if (clipId) {
+      const hydrated = await signedClips([clipId], token, clientId);
+      const item = hydrated[0];
+      return NextResponse.json({
+        configured: true,
+        provider: 'feed',
+        results: item?.url ? [{
+          id: item.id,
+          providerId: item.id,
+          title: item.title,
+          artist: item.artist,
+          album: item.album,
+          image: item.artwork || null,
+          url: item.url,
+          duration_seconds: Math.min(60, Math.max(0.1, item.duration || 30)),
+          category: 'Popular',
+          license: 'Feed Clips licensed music',
+          licenseUrl: 'https://www.feed.fm/clips/music-api',
+          source: 'https://www.feed.fm/clips/music-api',
+          provider: 'feed',
+          tags: ['popular', 'licensed'],
+          commercialUse: true,
+          syncLicense: true,
+          expires: true,
+        }] : [],
+      });
+    }
 
     const collectionResults = await Promise.all(collectionIds.map(async (id) => ({
       id,
