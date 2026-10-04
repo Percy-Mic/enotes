@@ -1979,7 +1979,23 @@ export class VideoRenderer {
       canvas.height = H;
     }
 
-    ctx.fillStyle = '#000000';
+    /* Canvas background is part of the project recipe, so preview/export/template remixes all agree.
+       It sits underneath media and becomes visible when a clip is scaled, cropped, or letterboxed. */
+    const background = project.background;
+    if (background?.type === 'gradient') {
+      const angle = ((Number(background.angle) || 0) * Math.PI) / 180;
+      const radius = Math.hypot(W, H);
+      const cx = W / 2;
+      const cy = H / 2;
+      const dx = Math.cos(angle) * radius;
+      const dy = Math.sin(angle) * radius;
+      const gradient = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+      gradient.addColorStop(0, background.color || '#000000');
+      gradient.addColorStop(1, background.color2 || background.color || '#000000');
+      ctx.fillStyle = gradient;
+    } else {
+      ctx.fillStyle = background?.color || '#000000';
+    }
     ctx.fillRect(0, 0, W, H);
 
     const resolved = resolveTime(project, time);
