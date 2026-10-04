@@ -5052,7 +5052,6 @@ function VideoEditor() {
     if (!selectedElement) return;
     setPlaying(false);
     setCropMode({ type: 'element', id: selectedElement.id, initial: selectedElement.crop ?? null });
-    openTool('crop');
   };
 
   const applyCropChange = (next: CropRect | null) => {
