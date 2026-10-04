@@ -42,10 +42,16 @@ export async function cloudinaryProcessUrl(input: {
   const resourceType = input.mediaType === 'image' ? 'image' : 'video';
   const folder = `enotes/studio/${input.userId}`;
   const transformation = transformationFor(input.mediaType, input.mode || 'optimize');
+  /*
+   * Upload the original asset first, then apply delivery transformations.
+   * Sending q_auto/f_auto/c_limit in the upload transformation made some
+   * video/audio uploads fail with 400/502 depending on the Cloudinary
+   * resource type. The source upload itself is the durable operation; the
+   * optimized URL is just a delivery URL derived from the returned public_id.
+   */
   const params: Record<string, string> = {
     folder,
     timestamp,
-    transformation,
   };
 
   const form = new FormData();
@@ -53,7 +59,6 @@ export async function cloudinaryProcessUrl(input: {
   form.append('api_key', config.apiKey);
   form.append('timestamp', timestamp);
   form.append('folder', folder);
-  form.append('transformation', transformation);
   form.append('signature', sign(params, config.apiSecret));
 
   const response = await fetch(
@@ -65,12 +70,15 @@ export async function cloudinaryProcessUrl(input: {
     throw new Error(data?.error?.message || `Cloudinary upload failed (${response.status}).`);
   }
 
-  const eager = Array.isArray(data?.eager) && data.eager[0]?.secure_url ? data.eager[0].secure_url : null;
+  const publicId = data?.public_id || null;
+  const deliveryBase = publicId
+    ? `https://res.cloudinary.com/${config.cloudName}/${resourceType}/upload/${transformation}/${publicId}`
+    : null;
   return {
     provider: 'cloudinary',
-    publicId: data?.public_id || null,
+    publicId,
     originalUrl: data?.secure_url || null,
-    url: eager || data?.secure_url || null,
+    url: deliveryBase || data?.secure_url || null,
     resourceType,
     transformation,
     bytes: Number(data?.bytes) || null,
