@@ -35,6 +35,14 @@ interface TemplateRow {
   creator: { id: string; username: string; full_text_name: string; avatar_url: string; creator_verified: boolean };
 }
 
+function fmt(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.round(seconds);
+  const minutes = Math.floor(total / 60);
+  const remaining = total % 60;
+  return `${minutes}:${String(remaining).padStart(2, '0')}`;
+}
+
 const CATEGORIES = [
   'all', 'trending', 'popular', 'new', 'travel', 'birthday', 'wedding', 'memories',
   'love', 'friends', 'family', 'business', 'reels', 'cinematic', 'vlog',
