@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
 import AuthShell from '@/components/auth/AuthShell';
+import AuthShell from '@/components/auth/AuthShell';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
