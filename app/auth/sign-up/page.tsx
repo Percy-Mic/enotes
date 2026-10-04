@@ -140,180 +140,60 @@ export default function SignUpPage() {
 
   if (needsConfirmation) {
     return (
-      <main className="min-h-screen bg-[#FFF7F8] flex items-center justify-center p-6 text-[#111111]">
-        <div className="bg-white w-full max-w-md p-8 rounded-[20px] shadow-xl border border-[#E8E2E4] space-y-4 text-center">
-          <div className="text-4xl">💌</div>
-          <h1 className="text-2xl font-bold tracking-tight">Check your inbox ♡</h1>
-          <p className="text-sm text-[#6B6B6B]">
-            We sent a confirmation link to <span className="font-medium text-[#111111]">{email}</span>.
-            Open it on this device to activate your journal desk.
-          </p>
-          <p className="rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-            <b>Not arriving?</b> Check spam and the Promotions tab first. Still nothing after a
-            few minutes? Use “Resend email” below — and if it never arrives, the fix is usually
-            in Supabase → Authentication → SMTP (see SETUP-CHECKLIST.md).
-          </p>
-          {resent && (
-            <p className="rounded-lg bg-green-50 p-3 text-xs font-semibold text-green-700">
-              Confirmation email re-sent — check your inbox again.
-            </p>
-          )}
-          <button
-            onClick={resendConfirmation}
-            disabled={resending || resent}
-            className="w-full rounded-lg border border-[#E8E2E4] py-3 text-sm font-semibold text-[#111111] transition hover:bg-gray-50 disabled:opacity-50"
-          >
-            {resending ? 'Sending…' : resent ? 'Email sent ✓' : 'Resend confirmation email'}
-          </button>
-          <Link
-            href="/auth/sign-in"
-            className="inline-block w-full bg-black text-[#FFB6C1] py-3 rounded-lg font-medium shadow hover:opacity-90 transition"
-          >
-            Back to sign in
-          </Link>
+      <AuthShell eyebrow="Check your inbox" title="Check your inbox ♡" description="We sent a confirmation link to your email. Open it on this device to activate your journal desk." asideTitle="One small step, then your space is yours.">
+        <div className="space-y-5 text-center">
+          <div className="text-4xl" aria-hidden="true">💌</div>
+          <p className="auth-muted text-sm leading-6">We sent a confirmation link to <span className="auth-ink font-medium">{email}</span>.</p>
+          <p className="rounded-xl border border-amber-300/40 bg-amber-50 p-3 text-left text-xs leading-relaxed text-amber-800"><b>Not arriving?</b> Check spam and Promotions first. If it still does not arrive, use “Resend email” below.</p>
+          {resent && <p className="rounded-xl border border-emerald-300/40 bg-emerald-50 p-3 text-xs font-semibold text-emerald-700">Confirmation email re-sent — check your inbox again.</p>}
+          <button onClick={resendConfirmation} disabled={resending || resent} className="auth-surface auth-border auth-ink min-h-11 w-full rounded-xl border px-4 py-3 text-sm font-semibold transition hover:bg-[var(--auth-input-hover)] disabled:opacity-50">{resending ? 'Sending…' : resent ? 'Email sent ✓' : 'Resend confirmation email'}</button>
+          <Link href="/auth/sign-in" className="auth-primary-button inline-flex min-h-11 w-full items-center justify-center rounded-xl px-4 py-3 font-medium shadow transition hover:opacity-90">Back to sign in</Link>
         </div>
-      </main>
+      </AuthShell>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#FFF7F8] flex items-center justify-center p-6 text-[#111111]">
-      <div className="w-full max-w-md space-y-6 rounded-[24px] border border-[#E8E2E4] bg-white p-7 shadow-xl sm:p-8">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Create your space ♡</h1>
-          <p className="text-sm text-[#6B6B6B] mt-1">Start your artistic digital journaling journey.</p>
-        </div>
-
-        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-3.5 text-sm leading-5 text-red-700">{error}</div>}
-
+    <AuthShell eyebrow="Create your space" title="Create your space ♡" description="Start your artistic digital journaling journey." asideTitle="Make a space that feels like you." footer={
+      <>
+        <p className="auth-muted text-[13px] leading-5">Already have an account? <Link href="/auth/sign-in" className="auth-accent font-semibold hover:underline">Sign in</Link></p>
+        <p className="mt-2.5 auth-subtle text-[11px] leading-4"><Link href="/privacy" className="underline underline-offset-2">Privacy</Link><span className="mx-2">·</span><Link href="/terms" className="underline underline-offset-2">Terms</Link><span className="mx-2">·</span><Link href="/contact" className="underline underline-offset-2">Contact</Link></p>
+      </>
+    }>
+      <div className="min-w-0 space-y-6 sm:space-y-7">
+        {error && <div role="alert" className="rounded-xl border border-red-300/40 bg-red-50 px-3.5 py-3 text-[13px] leading-5 text-red-700">{error}</div>}
         <SocialAuthButtons next="/dashboard" />
-
-        <div className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-black/35"><span className="h-px flex-1 bg-black/10" /><span>or email</span><span className="h-px flex-1 bg-black/10" /></div>
-
-        <form onSubmit={handleSignUp} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B6B6B] mb-1">Username</label>
-            <div className="flex min-h-12 items-center rounded-xl border border-black/10 bg-[#FCFCFC] transition focus-within:border-[#1E90FF] focus-within:bg-white focus-within:ring-4 focus-within:ring-[#1E90FF]/10">
-              <span className="pl-3 text-[#9B9B9B]">@</span>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase())}
-                required
-                minLength={3}
-                maxLength={24}
-                autoCapitalize="none"
-                autoComplete="username"
-                className="w-full bg-transparent px-2 py-3 text-sm outline-none"
-                placeholder="alex"
-              />
-              {usernameStatus === 'checking' && (
-                <span className="pr-3 text-xs text-[#9B9B9B]">checking…</span>
-              )}
-              {usernameStatus === 'free' && (
-                <span className="pr-3 text-xs font-semibold text-emerald-600">available ✓</span>
-              )}
-              {usernameStatus === 'taken' && (
-                <span className="pr-3 text-xs font-semibold text-red-500">taken</span>
-              )}
+        <div className="auth-divider flex items-center gap-3 text-[9px] font-semibold uppercase tracking-[0.18em] sm:text-[10px]"><span className="auth-divider-line h-px min-w-0 flex-1" /><span>or email</span><span className="auth-divider-line h-px min-w-0 flex-1" /></div>
+        <form onSubmit={handleSignUp} className="space-y-5">
+          <div className="space-y-1.5">
+            <label htmlFor="signup-username" className="block auth-ink text-[13px] font-semibold leading-4">Username</label>
+            <div className="auth-border auth-input flex min-h-[52px] items-center rounded-[14px] border transition focus-within:border-[var(--auth-accent)] focus-within:ring-4 focus-within:ring-[var(--auth-accent)]/10">
+              <span className="auth-muted pl-4">@</span>
+              <input id="signup-username" type="text" value={username} onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, '').toLowerCase())} required minLength={3} maxLength={24} autoCapitalize="none" autoComplete="username" className="auth-ink w-full bg-transparent px-2 py-3.5 text-[15px] outline-none" placeholder="alex" />
+              {usernameStatus === 'checking' && <span className="auth-muted pr-3 text-xs">checking…</span>}
+              {usernameStatus === 'free' && <span className="pr-3 text-xs font-semibold text-emerald-600">available ✓</span>}
+              {usernameStatus === 'taken' && <span className="pr-3 text-xs font-semibold text-red-500">taken</span>}
             </div>
-            <p className="mt-1 text-xs text-[#9B9B9B]">
-              3–24 characters: letters, numbers, underscores. People find you at /u/{handle || 'username'}.
-            </p>
+            <p className="auth-subtle mt-1 text-xs leading-5">3–24 characters: letters, numbers, underscores. People find you at /u/{handle || 'username'}.</p>
           </div>
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B6B6B] mb-1">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              inputMode="email"
-              className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
-            />
+          <div className="space-y-1.5">
+            <label htmlFor="signup-email" className="block auth-ink text-[13px] font-semibold leading-4">Email</label>
+            <input id="signup-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" inputMode="email" placeholder="you@example.com" className="auth-border auth-input auth-ink min-h-[52px] w-full rounded-[14px] border px-4 py-3.5 text-[15px] outline-none transition focus:border-[var(--auth-accent)] focus:bg-[var(--auth-input-focus)] focus:ring-4 focus:ring-[var(--auth-accent)]/10" />
           </div>
-
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B6B6B] mb-1">Password</label>
+          <div className="space-y-1.5">
+            <label htmlFor="signup-password" className="block auth-ink text-[13px] font-semibold leading-4">Password</label>
             <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                autoComplete="new-password"
-                className="w-full min-h-12 rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 pr-11 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 focus:outline-none"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? (
-                  // EyeOff SVG
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
-                  </svg>
-                ) : (
-                  // Eye SVG
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                )}
+              <input id="signup-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} autoComplete="new-password" placeholder="Create a password" className="auth-border auth-input auth-ink min-h-[52px] w-full rounded-[14px] border px-4 py-3.5 pr-12 text-[15px] outline-none transition focus:border-[var(--auth-accent)] focus:bg-[var(--auth-input-focus)] focus:ring-4 focus:ring-[var(--auth-accent)]/10" />
+              <button type="button" onClick={() => setShowPassword(!showPassword)} className="auth-control-icon absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[14px] transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--auth-accent)]/25" aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                {showPassword ? <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg> : <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 7-9.542 7-1.274 4.057-5.064 7-9.542 7z" /></svg>}
               </button>
             </div>
           </div>
-
-          <label className="flex items-start gap-2.5 text-xs leading-relaxed text-[#6B6B6B]">
-            <input
-              type="checkbox"
-              checked={agreed}
-              onChange={(e) => setAgreed(e.target.checked)}
-              required
-              className="mt-0.5 h-4 w-4 shrink-0 accent-black"
-            />
-            <span>
-              I agree to the{' '}
-              <Link href="/terms" target="_blank" className="font-medium text-[#1E90FF] hover:underline">
-                Terms of Service
-              </Link>{' '}
-              and{' '}
-              <Link href="/privacy" target="_blank" className="font-medium text-[#1E90FF] hover:underline">
-                Privacy Policy
-              </Link>
-              .
-            </span>
-          </label>
-
-          <button
-            type="submit"
-            disabled={loading || !agreed || !handle || usernameStatus === 'taken' || usernameStatus === 'invalid' || !turnstileSiteKey || !captchaToken}
-            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
-          >
-            {loading ? 'Creating account...' : 'Sign Up'}
-          </button>
+          <label className="auth-muted flex items-start gap-2.5 text-xs leading-5"><input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} required className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--auth-primary-bg)]" /><span>I agree to the <Link href="/terms" target="_blank" className="auth-accent font-medium hover:underline">Terms of Service</Link> and <Link href="/privacy" target="_blank" className="auth-accent font-medium hover:underline">Privacy Policy</Link>.</span></label>
+          <EnotesTurnstile ref={turnstileRef} siteKey={turnstileSiteKey} action="signup" onToken={handleCaptchaToken} onExpire={handleCaptchaReset} onError={handleCaptchaError} />
+          <button type="submit" disabled={loading || !agreed || !handle || usernameStatus === 'taken' || usernameStatus === 'invalid' || !turnstileSiteKey || !captchaToken} className="auth-primary-button min-h-[52px] w-full rounded-[14px] px-4 py-3.5 text-[15px] font-semibold shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0">{loading ? 'Creating account...' : 'Sign Up'}</button>
         </form>
-
-        <p className="text-center text-sm text-[#6B6B6B]">
-          Already have an account?{' '}
-          <Link href="/auth/sign-in" className="text-[#1E90FF] font-medium hover:underline">
-            Sign in
-          </Link>
-        </p>
-
-        <p className="text-center text-xs text-[#9B9B9B]">
-          <Link href="/privacy" className="underline">Privacy</Link>
-          <span className="mx-2">·</span>
-          <Link href="/terms" className="underline">Terms</Link>
-          <span className="mx-2">·</span>
-          <Link href="/contact" className="underline">Contact</Link>
-        </p>
       </div>
-    </main>
+    </AuthShell>
   );
 }
