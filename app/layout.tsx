@@ -20,24 +20,19 @@ export const metadata: Metadata = {
     title: 'enotes',
     statusBarStyle: 'default',
   },
+  other: {
+    'mobile-web-app-capable': 'yes',
+  },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  /* Pinch-zoom is disabled on purpose: two-finger gestures inside the
-     journal editor manipulate canvas elements, and an accidental pinch
-     during drag corrupts the editing surface. */
   maximumScale: 1,
   userScalable: false,
   themeColor: '#FFF7F8',
 };
 
-/**
- * Runs BEFORE first paint: applies the saved theme from localStorage so a
- * dark-mode user never sees a white flash on reload. Kept tiny and
- * dependency-free; lib/theme.tsx takes over after hydration.
- */
 const themeBootScript = `
 (function(){try{
   var t=localStorage.getItem('enotes:theme');
@@ -57,6 +52,17 @@ export default function RootLayout({
     <html lang="en" className={poppins.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function () {
+                  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(function () {});
+                });
+              }
+            `,
+          }}
+        />
       </head>
       <body className="font-sans antialiased bg-[#FFF7F8] text-[#111111]">
         <ThemeProvider>
