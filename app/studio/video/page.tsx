@@ -5494,6 +5494,7 @@ function VideoEditor() {
       license?: string;
       creator?: string;
       providerId?: string;
+      storage_path?: string;
     },
     kind: 'music' | 'voiceover'
   ) => {
@@ -5506,6 +5507,7 @@ function VideoEditor() {
       license: s.license,
       creator: s.creator,
       providerId: s.providerId,
+      storage_path: s.storage_path,
       start: 0,
       sourceDuration: Math.max(0.1, Number(s.duration_seconds) || 15),
       trimStart: 0,
@@ -5750,6 +5752,7 @@ function VideoEditor() {
           url: up.url,
           duration_seconds: decodedDuration,
           provider: 'upload',
+          storage_path: up.path,
         },
         'voiceover'
       );
@@ -7827,7 +7830,7 @@ function VideoEditor() {
                         a.onerror = () => res(15);
                         a.src = URL.createObjectURL(file);
                       });
-                      addSoundTrack({ title: file.name, url: up.url, duration_seconds: dur, provider: 'upload' }, 'music');
+                      addSoundTrack({ title: file.name, url: up.url, duration_seconds: dur, provider: 'upload', storage_path: up.path }, 'music');
                     } catch (err) {
                       notify(`Audio upload failed — ${err instanceof Error ? err.message : 'try again'}`);
                     } finally {
