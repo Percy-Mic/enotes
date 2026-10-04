@@ -1909,7 +1909,15 @@ function VideoEditor() {
     /* Never persist a temporary blob: it only exists in this browser tab.
        The background upload replaces it with the durable URL, after which
        autosave can safely persist the project. */
-    if (docRef.current.project.clips.some((clip) => clip.src.startsWith('blob:'))) {
+    const hasTemporaryMedia = [
+      ...docRef.current.project.clips.map((clip) => clip.src),
+      ...docRef.current.project.elements.map((element) => element.src || ''),
+      ...docRef.current.project.audio.map((track) => track.src),
+    ].some((src) => typeof src === 'string' && src.startsWith('blob:'));
+    if (hasTemporaryMedia) {
+      /* A blob: URL is valid only for this browser session. Never write it
+         into video_projects; the next refresh would turn it into a broken
+         image/video source. */
       return false;
     }
     setSaving(true);
