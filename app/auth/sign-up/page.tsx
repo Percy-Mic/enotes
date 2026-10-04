@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('');
@@ -17,6 +18,9 @@ export default function SignUpPage() {
   const [needsConfirmation, setNeedsConfirmation] = useState(false);
   const [resent, setResent] = useState(false);
   const [resending, setResending] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle | null>(null);
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
   const router = useRouter();
 
   /* Where Supabase should send the user after they click the
@@ -28,6 +32,20 @@ export default function SignUpPage() {
       : '/auth/callback?next=/dashboard';
 
   const handle = username.trim().replace(/^@/, '').toLowerCase();
+
+  const handleCaptchaToken = useCallback((token: string) => {
+    setCaptchaToken(token);
+    setError(null);
+  }, []);
+
+  const handleCaptchaReset = useCallback(() => {
+    setCaptchaToken(null);
+  }, []);
+
+  const handleCaptchaError = useCallback(() => {
+    setCaptchaToken(null);
+    setError('The security check could not be completed. Please try again.');
+  }, []);
 
   /* Live username availability check */
   useEffect(() => {
@@ -92,6 +110,8 @@ export default function SignUpPage() {
       );
       setLoading(false);
     } else if (data.session) {
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
       // Email confirmation disabled — go straight to the dashboard
       router.push('/dashboard');
       router.refresh();
@@ -266,7 +286,7 @@ export default function SignUpPage() {
 
           <button
             type="submit"
-            disabled={loading || !agreed || !handle || usernameStatus === 'taken' || usernameStatus === 'invalid'}
+            disabled={loading || !agreed || !handle || usernameStatus === 'taken' || usernameStatus === 'invalid' || !turnstileSiteKey || !captchaToken}
             className="w-full bg-black text-[#FFB6C1] py-3 rounded-lg font-medium shadow hover:opacity-90 disabled:opacity-50 transition"
           >
             {loading ? 'Creating account...' : 'Sign Up'}
