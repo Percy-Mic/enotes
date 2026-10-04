@@ -201,6 +201,9 @@ export default function JournalBookView() {
   const [meId, setMeId] =
     useState<string | null>(null);
 
+  const [canEditJournal, setCanEditJournal] =
+    useState(false);
+
   const [shareOpen, setShareOpen] =
     useState(false);
 
@@ -360,6 +363,23 @@ export default function JournalBookView() {
       const owner =
         !!user?.id &&
         user.id === loadedJournal.owner_id;
+
+      let editorShare = false;
+      if (user?.id && !owner) {
+        const { data: share } = await supabase
+          .from('journal_shares')
+          .select('can_edit, role, status')
+          .eq('journal_id', journalId)
+          .eq('shared_with', user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        editorShare =
+          share?.can_edit === true ||
+          share?.role === 'editor';
+      }
+
+      setCanEditJournal(owner || editorShare);
 
       /*
        * Only fetch metadata at first.
@@ -1467,13 +1487,15 @@ export default function JournalBookView() {
               <Share2 className="h-5 w-5" />
             </button>
 
-            <Link
-              href={`/journals/${journalId}/edit`}
-              aria-label="Edit journal"
-              className="flex h-11 w-11 items-center justify-center border-2 border-[#76563A] bg-[#F6E9D5] shadow-[2px_2px_0_#8D6D4D] transition active:translate-x-[1px] active:translate-y-[1px]"
-            >
-              <Edit3 className="h-5 w-5" />
-            </Link>
+            {canEditJournal && (
+              <Link
+                href={`/journals/${journalId}/edit`}
+                aria-label="Edit journal"
+                className="flex h-11 w-11 items-center justify-center border-2 border-[#76563A] bg-[#F6E9D5] shadow-[2px_2px_0_#8D6D4D] transition active:translate-x-[1px] active:translate-y-[1px]"
+              >
+                <Edit3 className="h-5 w-5" />
+              </Link>
+            )}
 
             <Link
               href={`/journals/${journalId}/settings`}
