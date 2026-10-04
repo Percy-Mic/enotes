@@ -640,6 +640,11 @@ export default function JournalCanvasStudio() {
   ] = useState(true);
 
   const [
+    accessDenied,
+    setAccessDenied,
+  ] = useState(false);
+
+  const [
     saving,
     setSaving,
   ] = useState(false);
@@ -997,6 +1002,39 @@ export default function JournalCanvasStudio() {
 
       const journal =
         journalResult.data;
+
+      /* Only owners and explicitly granted editors may enter the editor. */
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const isOwner =
+        !!user?.id &&
+        !!journal?.owner_id &&
+        user.id === journal.owner_id;
+
+      let hasEditShare = false;
+      if (user?.id && journal?.id && !isOwner) {
+        const { data: share } = await supabase
+          .from('journal_shares')
+          .select('can_edit, role, status')
+          .eq('journal_id', journal.id)
+          .eq('shared_with', user.id)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        hasEditShare =
+          share?.can_edit === true ||
+          share?.role === 'editor';
+      }
+
+      if (!isOwner && !hasEditShare) {
+        if (!cancelled) {
+          setAccessDenied(true);
+          setLoading(false);
+        }
+        return;
+      }
 
       const fetchedPages =
         pagesResult.data;
@@ -3569,7 +3607,7 @@ export default function JournalCanvasStudio() {
     async (
       silent = false,
     ) => {
-      if (!journalId) return;
+      if (!journalId || accessDenied) return;
 
       if (!silent) {
         setSaving(true);
@@ -4624,6 +4662,24 @@ export default function JournalCanvasStudio() {
   const previewScale =
     previewStageWidth /
     BASE_WIDTH;
+
+  if (accessDenied) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#B88C5A] px-6 text-center font-serif text-[#3C2819]">
+        <div className="text-3xl">🔒</div>
+        <h1 className="text-xl font-bold">You don&apos;t have edit access</h1>
+        <p className="max-w-md text-sm opacity-80">
+          This journal is view-only for your account. Only the owner or a person explicitly granted editor access can edit it.
+        </p>
+        <Link
+          href={journalId ? `/journals/${journalId}` : '/journals'}
+          className="rounded-xl bg-white px-5 py-2.5 text-sm font-bold shadow"
+        >
+          Back to journal
+        </Link>
+      </div>
+    );
+  }
 
   if (
     loading ||
