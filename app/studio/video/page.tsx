@@ -90,10 +90,12 @@ const LABEL_W = 64;
 const BASE_PX_PER_SEC = 46;
 /** Tap/slop threshold separating taps from drags. */
 const TAP_SLOP = 8;
-/** Screen-space touch target for transform handles. Keep the visible handle compact; the hit area is larger. */
-const HANDLE_PX = 32;
-/** Distance of the rotate handle above the top edge (canvas units). */
-const ROTATE_HANDLE_DY = 34;
+/** Direct-manipulation gesture slop. No permanent transform controls are rendered. */
+const GESTURE_SLOP = TAP_SLOP;
+/** Invisible boundary band used to infer resize intent from pointer direction. */
+const TRANSFORM_EDGE_BAND = 0.16;
+/** Small canvas-space overshoot allowed when beginning a rotation outside the box. */
+const ROTATE_OUTSIDE_BAND = 28;
 
 const EDITOR_ACTION_PILL = "flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-white/[0.07] px-3 text-[10px] font-semibold text-white/80 active:bg-white/[0.13] focus-visible:ring-2 focus-visible:ring-[#FFB6C1]";
 function fmt(t: number): string {
@@ -4552,63 +4554,13 @@ function VideoEditor() {
     return Math.abs(lx) <= box.w / 2 && Math.abs(ly) <= box.h / 2 ? resolved.clip : null;
   };
 
-  /* Handle positions use exactly the same resolved geometry as the
-     rendered element. This prevents handles from drifting when position,
-     scale or rotation keyframes are active. */
-  const elementHandlePoints = (el: TimelineElement) => {
-    const g = elementVisualGeometry(el);
-    const rad = (g.rotation * Math.PI) / 180;
-    const point = (lx: number, ly: number) => ({
-      x: g.x + g.width / 2 + lx * Math.cos(rad) - ly * Math.sin(rad),
-      y: g.y + g.height / 2 + lx * Math.sin(rad) + ly * Math.cos(rad),
-    });
-    return {
-      'resize-nw': point(-g.width / 2, -g.height / 2),
-      'resize-ne': point(g.width / 2, -g.height / 2),
-      'resize-sw': point(-g.width / 2, g.height / 2),
-      'resize-se': point(g.width / 2, g.height / 2),
-      'resize-n': point(0, -g.height / 2),
-      'resize-s': point(0, g.height / 2),
-      'resize-w': point(-g.width / 2, 0),
-      'resize-e': point(g.width / 2, 0),
-      rotate: point(0, -g.height / 2 - ROTATE_HANDLE_DY),
-    };
-  };
+  /* Geometry helpers are retained for crop/selection calculations. Direct
+     manipulation does NOT expose these as visible or clickable controls. */
 
-  /* handle positions for the selected main clip, in canvas units */
-  const clipHandlePoints = (clip: VideoClip) => {
-    const controlClip = clipControlState(
-      clip,
-      Math.max(0, playheadRef.current - previewClipStart(project, clip.id)),
-    );
-    const box = clipBoxRect(controlClip, project.canvas.width, project.canvas.height);
-    const rad = (controlClip.transform.rotation * Math.PI) / 180;
-    const rot = (lx: number, ly: number) => ({
-      x: box.cx + lx * Math.cos(rad) - ly * Math.sin(rad),
-      y: box.cy + lx * Math.sin(rad) + ly * Math.cos(rad),
-    });
-    return {
-      'resize-nw': rot(-box.w / 2, -box.h / 2),
-      'resize-ne': rot(box.w / 2, -box.h / 2),
-      'resize-sw': rot(-box.w / 2, box.h / 2),
-      'resize-se': rot(box.w / 2, box.h / 2),
-      'resize-n': rot(0, -box.h / 2),
-      'resize-s': rot(0, box.h / 2),
-      'resize-w': rot(-box.w / 2, 0),
-      'resize-e': rot(box.w / 2, 0),
-      rotate: rot(0, -box.h / 2 - ROTATE_HANDLE_DY),
-    };
-  };
 
-  /** Screen-aware hit tolerance. The visible dot stays compact, but the
-      invisible touch target is intentionally large enough for a fingertip. */
-  const handleTolerance = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || previewScale <= 0) return 24;
-    /* Keep transform zones deliberately close to the selection boundary.
-       The interior of an element must remain a reliable move surface. */
-    return Math.max(22, 34 / previewScale);
-  };
+
+
+
 
   /* Active touch pointers on the preview. A second finger switches the
      canvas into multi-touch mode and must suspend the one-finger transform
@@ -4708,15 +4660,20 @@ function VideoEditor() {
       const hh = startGeometry.height / 2;
       const mx = p.x - startX;
       const my = p.y - startY;
-      const movement = Math.max(0.001, Math.hypot(mx, my));
-      const radius = Math.max(0.001, Math.hypot(dx0, dy0));
+      const movement = Math.max(GESTURE_SLOP, Math.hypot(mx, my));
+      const radius = Math.max(1, Math.hypot(dx0, dy0));
       const radial = (mx * dx0 + my * dy0) / (movement * radius);
-      const nearX = Math.abs(ax - hw) <= Math.max(16, hw * 0.16);
-      const nearY = Math.abs(ay - hh) <= Math.max(16, hh * 0.16);
+      const nearX = Math.abs(ax - hw) <= Math.max(16, hw * TRANSFORM_EDGE_BAND);
+      const nearY = Math.abs(ay - hh) <= Math.max(16, hh * TRANSFORM_EDGE_BAND);
       const outside = ax > hw || ay > hh;
-
-      if ((outside || nearX || nearY) && radial < 0.35) return 'rotate';
-      if ((nearX || nearY) && radial > 0.35) {
+      /*
+       * No handle is selected here. The point where the gesture starts gives
+       * us the candidate region, then the first movement vector decides:
+       * outward/away from the centre = resize, tangential/around the centre
+       * = rotate, everything else = move. Once chosen it stays locked.
+       */
+      if ((outside || nearX || nearY) && radial < 0.25) return 'rotate';
+      if ((nearX || nearY) && radial > 0.25) {
         if (nearX && nearY) {
           if (Math.abs(mx) >= Math.abs(my)) return lx < 0 ? 'resize-nw' : 'resize-ne';
           return ly < 0 ? 'resize-nw' : 'resize-sw';
@@ -4820,7 +4777,7 @@ function VideoEditor() {
         return;
       }
 
-      if (isEdgeGesture(gesture)) {
+      if (isEdgeGesture(activeGesture)) {
         const rad = (startEl.rotation * Math.PI) / 180;
         const lx = dx * Math.cos(rad) + dy * Math.sin(rad);
         const ly = -dx * Math.sin(rad) + dy * Math.cos(rad);
@@ -4891,7 +4848,7 @@ function VideoEditor() {
      entrance/exit animations. The clip is represented by its rendered box;
      move = offset_x/y, corner = uniform scale, edges = scale_x/scale_y,
      top handle = rotation. The same numbers drive the export. */
-  const beginClipGesture = (clip: VideoClip, gesture: Gesture, e: React.PointerEvent<HTMLElement>) => {
+  const beginClipGesture = (clip: VideoClip, gesture: Gesture | 'auto', e: React.PointerEvent<HTMLElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     e.preventDefault();
@@ -4917,6 +4874,37 @@ function VideoEditor() {
     const rad = (startClip.transform.rotation * Math.PI) / 180;
     const startAngle = Math.atan2(startY - box.cy, startX - box.cx);
 
+    let activeGesture: Gesture | null = gesture === 'auto' ? null : gesture;
+    const classifyClipGesture = (p: { x: number; y: number }): Gesture => {
+      const dx0 = p.x - box.cx;
+      const dy0 = p.y - box.cy;
+      const localRad = -(startClip.transform.rotation * Math.PI) / 180;
+      const lx = dx0 * Math.cos(localRad) - dy0 * Math.sin(localRad);
+      const ly = dx0 * Math.sin(localRad) + dy0 * Math.cos(localRad);
+      const ax = Math.abs(lx);
+      const ay = Math.abs(ly);
+      const hw = box.w / 2;
+      const hh = box.h / 2;
+      const mx = p.x - startX;
+      const my = p.y - startY;
+      const movement = Math.max(GESTURE_SLOP, Math.hypot(mx, my));
+      const radius = Math.max(1, Math.hypot(dx0, dy0));
+      const radial = (mx * dx0 + my * dy0) / (movement * radius);
+      const nearX = Math.abs(ax - hw) <= Math.max(16, hw * TRANSFORM_EDGE_BAND);
+      const nearY = Math.abs(ay - hh) <= Math.max(16, hh * TRANSFORM_EDGE_BAND);
+      const outside = ax > hw || ay > hh;
+      if ((outside || nearX || nearY) && radial < 0.25) return 'rotate';
+      if ((nearX || nearY) && radial > 0.25) {
+        if (nearX && nearY) {
+          if (Math.abs(mx) >= Math.abs(my)) return lx < 0 ? 'resize-nw' : 'resize-ne';
+          return ly < 0 ? 'resize-nw' : 'resize-sw';
+        }
+        if (nearX) return lx < 0 ? 'resize-w' : 'resize-e';
+        return ly < 0 ? 'resize-n' : 'resize-s';
+      }
+      return 'move';
+    };
+
     const onMove = (ev: PointerEvent) => {
       /* A second touch hands the interaction to useMobileGestures. */
       if (ev.pointerType !== 'mouse' && canvasMultiTouchRef.current) return;
@@ -4926,7 +4914,12 @@ function VideoEditor() {
       const dy = p.y - startY;
       const T = startClip.transform;
 
-      if (gesture === 'move') {
+      if (!activeGesture) {
+        if (Math.hypot(dx, dy) < GESTURE_SLOP) return;
+        activeGesture = classifyClipGesture(p);
+      }
+
+      if (activeGesture === 'move') {
         const nextTransform = containClipTransform(
           clip,
           {
@@ -4946,7 +4939,7 @@ function VideoEditor() {
         return;
       }
 
-      if (gesture === 'resize-uniform') {
+      if (activeGesture === 'resize-uniform') {
         const d0 = Math.hypot(startX - box.cx, startY - box.cy);
         const d1 = Math.hypot(p.x - box.cx, p.y - box.cy);
         const r = clampNum(d1 / Math.max(8, d0), 0.1, 4);
@@ -4965,7 +4958,7 @@ function VideoEditor() {
         return;
       }
 
-      if (isCornerGesture(gesture)) {
+      if (isCornerGesture(activeGesture)) {
         /* Corner controls preserve the source frame shape and stay contained. */
         const d0 = Math.hypot(startX - box.cx, startY - box.cy);
         const d1 = Math.hypot(p.x - box.cx, p.y - box.cy);
@@ -4985,7 +4978,7 @@ function VideoEditor() {
         return;
       }
 
-      if (isEdgeGesture(gesture)) {
+      if (isEdgeGesture(activeGesture)) {
         /* Edge controls resize the complete video proportionally instead of
            squeezing one axis. The video and its control frame therefore remain
            the same shape at every size. */
@@ -5043,22 +5036,34 @@ function VideoEditor() {
     if (cropMode) return; // the crop overlay owns every gesture
     const p = canvasPoint(e);
     if (!p) return;
-    const tol = handleTolerance();
-
-    /* 1) handles of the current MAIN-clip selection win */
+    /*
+     * Direct manipulation has no permanent transform controls. For a selected
+     * object, the canvas itself is the hit surface; the gesture classifier
+     * watches the start region and first movement vector and then locks the
+     * operation. This keeps the artwork unobstructed and makes rotation and
+     * resize discoverable through natural pointer direction.
+     */
+    /* 1) Selected main clip: use a slightly expanded boundary as the invisible
+       candidate region so a drag just outside the media can still rotate it. */
     if (selectedClip) {
-      const pts = clipHandlePoints(selectedClip);
-      for (const g of ['resize-nw', 'resize-ne', 'resize-sw', 'resize-se', 'resize-n', 'resize-s', 'resize-w', 'resize-e', 'resize-uniform', 'rotate'] as Gesture[]) {
-        const pt = pts[g as keyof typeof pts];
-        if (pt && Math.hypot(p.x - pt.x, p.y - pt.y) <= tol) {
-          beginClipGesture(selectedClip, g, e);
-          return;
-        }
+      const resolved = clipControlState(
+        selectedClip,
+        Math.max(0, playheadRef.current - previewClipStart(project, selectedClip.id)),
+      );
+      const box = clipBoxRect(resolved, project.canvas.width, project.canvas.height);
+      const localRad = -(resolved.transform.rotation * Math.PI) / 180;
+      const dx = p.x - box.cx;
+      const dy = p.y - box.cy;
+      const lx = dx * Math.cos(localRad) - dy * Math.sin(localRad);
+      const ly = dx * Math.sin(localRad) + dy * Math.cos(localRad);
+      const margin = Math.max(18, ROTATE_OUTSIDE_BAND / Math.max(0.01, previewScale));
+      if (Math.abs(lx) <= box.w / 2 + margin && Math.abs(ly) <= box.h / 2 + margin) {
+        beginClipGesture(selectedClip, 'auto', e);
+        return;
       }
     }
 
-    /* 2) Selected overlay. There are no visible transform buttons:
-       the first drag direction chooses move/resize/rotate. */
+    /* 2) Selected overlay. The first drag direction chooses move/resize/rotate. */
     if (selectedElement) {
       const el = selectedElement;
       const g = elementVisualGeometry(el);
@@ -5089,7 +5094,7 @@ function VideoEditor() {
     /* 4) the main video's body — select + move */
     const clipHit = clipAt(p.x, p.y);
     if (clipHit) {
-      beginClipGesture(clipHit, 'move', e);
+      beginClipGesture(clipHit, 'auto', e);
       return;
     }
 
@@ -6761,7 +6766,7 @@ function VideoEditor() {
                 onPointerCancel={canvasPointerUp}
                 className="block select-none bg-black"
                 style={{ width: previewSize?.width, height: previewSize?.height, maxWidth: '100%', maxHeight: '100%', touchAction: 'none' }}
-                aria-label="Video preview — tap the video or an overlay to select, drag to move, corners to resize, edge to resize proportionally, top handle to rotate"
+                aria-label="Video preview — tap to select; drag inside to move; drag outward near an edge to resize; move tangentially near an edge to rotate"
               />
               {/* Selection frame only. Transform hit-testing is handled by the
                   canvas itself so the invisible controllers can never cover the
@@ -6826,8 +6831,8 @@ function VideoEditor() {
               {selectedElement && !cropMode && (
                 <span className="pointer-events-none absolute left-2 top-2 max-w-[calc(100%-1rem)] rounded-full border border-white/10 bg-black/65 px-2.5 py-1 text-[9px] font-semibold text-white/75 shadow-lg backdrop-blur">
                   {selectedElement.kind === 'text'
-                    ? 'Drag to move · pinch to resize · twist to rotate · double-tap to edit'
-                    : 'Drag to move · pinch to resize · twist to rotate · drag edges to stretch'}
+                    ? 'Drag inside to move · pull outward near an edge to resize · move around an edge to rotate'
+                    : 'Drag inside to move · pull outward near an edge to resize · move around an edge to rotate'}
                 </span>
               )}
 
@@ -6851,7 +6856,7 @@ function VideoEditor() {
           )}
 
               <p className="mx-auto max-w-md px-2 pb-1 text-center text-[10px] leading-4 text-white/35 sm:hidden">
-                Drag to move · pinch to resize · two-finger twist to rotate · long-press to select
+                Drag inside to move · pull outward to resize · move around the edge to rotate · pinch/twist with two fingers
               </p>
           {/* transport */}
           <div className="flex items-center justify-center gap-2 py-1.5 sm:gap-3">
