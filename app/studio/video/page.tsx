@@ -5020,7 +5020,7 @@ function VideoEditor() {
       const stage = stageRef.current;
       const maxW = Math.max(240, Math.min((stage?.clientWidth ?? window.innerWidth) - 24, window.innerWidth * 0.94));
       const maxH = window.innerWidth < 768
-        ? Math.max(170, Math.min(window.innerHeight * 0.42, 520))
+        ? Math.max(170, Math.min(window.innerHeight * 0.38, 480))
         : Math.max(180, Math.min(window.innerHeight * 0.52, 620));
       const scale = Math.min(maxW / project.canvas.width, maxH / project.canvas.height);
       setPreviewSize({ width: Math.max(1, Math.round(project.canvas.width * scale)), height: Math.max(1, Math.round(project.canvas.height * scale)) });
@@ -6424,7 +6424,7 @@ function VideoEditor() {
           short (landscape phones, small laptops, many timeline lanes) —
           nothing is clipped away, and the page itself never scrolls. */}
       <div
-        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain md:pl-[74px]"
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(58px+env(safe-area-inset-bottom))] md:pl-[74px] md:pb-0"
         onDragEnter={(e) => {
           if (Array.from(e.dataTransfer.types).includes('Files')) {
             e.preventDefault();
@@ -6729,7 +6729,7 @@ function VideoEditor() {
               ruler is sticky so the playhead never scrolls out of view */}
           <div
             ref={timelineRef}
-            className="no-scrollbar relative max-h-[36dvh] overflow-x-auto overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#0c0c0c] sm:max-h-[38dvh]"
+            className="no-scrollbar relative max-h-[40dvh] overflow-x-auto overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-[#0c0c0c] sm:max-h-[42dvh]"
           >
             <div className="relative select-none" style={{ width: timelineWidth, minWidth: '100%' }} onPointerDown={laneTapSeek}>
               {/* ruler + playhead handle (drag to scrub) */}
@@ -9327,7 +9327,7 @@ function VideoEditor() {
 
       {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
       <nav
-        className="sticky bottom-0 z-40 grid grid-cols-8 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:fixed md:bottom-0 md:left-0 md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
+        className="fixed inset-x-0 bottom-0 z-[55] grid grid-cols-8 border-t border-white/10 bg-[#161616]/98 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(0,0,0,.28)] backdrop-blur-xl md:left-0 md:right-auto md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
         aria-label="Editor tools"
       >
         {(
@@ -9348,7 +9348,7 @@ function VideoEditor() {
               if (tool === id && toolDrawerOpen) setToolDrawerOpen(false);
               else openTool(id);
             }}
-            className={`flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] ${tool === id ? 'text-[#FFB6C1]' : 'text-white/50'}`}
+            className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] ${tool === id ? 'text-[#FFB6C1]' : 'text-white/50'}`}
             aria-current={tool === id}
           >
             {icon}
