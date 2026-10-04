@@ -4,7 +4,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
-import AuthShell from '@/components/auth/AuthShell';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -59,8 +58,8 @@ export default function ForgotPasswordPage() {
     <main className="min-h-screen bg-[#FFF7F8] flex items-center justify-center p-6 text-[#111111]">
       <div className="bg-white w-full max-w-md p-8 rounded-[20px] shadow-xl border border-[#E8E2E4] space-y-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Reset password ♡</h1>
-          <p className="text-sm text-[#6B6B6B] mt-1">We will send you a recovery link.</p>
+          <h1 className="text-[23px] font-bold tracking-tight sm:text-2xl">Reset password ♡</h1>
+          <p className="mt-1 text-sm leading-5 text-[#6B6B6B]">We will send you a recovery link.</p>
         </div>
 
           {error && <div className="break-words rounded-xl bg-red-50 p-3 text-sm leading-5 text-red-600">{error}</div>}
@@ -96,7 +95,7 @@ export default function ForgotPasswordPage() {
           <button
             type="submit"
             disabled={loading || !email.trim() || !turnstileSiteKey || !captchaToken}
-            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 disabled:opacity-50"
+            className="min-h-12 w-full rounded-xl bg-black px-3 py-3 text-sm font-semibold sm:px-4 sm:text-base text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 disabled:opacity-50"
           >
             {loading ? 'Sending link...' : !turnstileSiteKey ? 'Security check unavailable' : !captchaToken ? 'Complete security check' : 'Send Reset Link'}
           </button>
