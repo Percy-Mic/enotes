@@ -127,6 +127,8 @@ const EnotesTurnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Eno
         widgetIdRef.current = window.turnstile.render(containerRef.current, {
           sitekey: siteKey,
           theme: 'light',
+          // Flexible mode lets Cloudflare size the challenge to the available
+          // width instead of forcing the desktop 300px widget onto small phones.
           size: 'flexible',
           action,
           callback: (token) => {
@@ -163,15 +165,15 @@ const EnotesTurnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Eno
 
   if (loadError) {
     return (
-      <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-xs leading-relaxed text-amber-900 shadow-sm">
-        <div className="flex items-start gap-2.5">
+      <div className="w-full min-w-0 rounded-2xl border border-amber-200/80 bg-amber-50/80 px-3 py-3 text-xs leading-relaxed text-amber-900 shadow-sm sm:px-4">
+        <div className="flex min-w-0 items-start gap-2.5">
           <span
             aria-hidden="true"
             className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold"
           >
             !
           </span>
-          <div>
+          <div className="min-w-0">
             <p className="font-semibold">Security check unavailable</p>
             <p className="mt-0.5 text-amber-800">{loadError}</p>
           </div>
@@ -182,10 +184,10 @@ const EnotesTurnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Eno
 
   return (
     <section
-      className="w-full rounded-2xl border border-black/[0.07] bg-white/75 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.05)] backdrop-blur-sm sm:p-3.5"
+      className="w-full min-w-0 max-w-full overflow-hidden rounded-2xl border border-black/[0.07] bg-white/75 p-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.05)] backdrop-blur-sm sm:p-3.5"
       aria-label="Security verification"
     >
-      <div className="mb-2.5 flex items-center justify-between gap-3 px-0.5">
+      <div className="mb-2.5 flex min-w-0 items-center justify-between gap-2 px-0.5 sm:gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span
             aria-hidden="true"
@@ -203,14 +205,14 @@ const EnotesTurnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Eno
             </p>
           </div>
         </div>
-        <span className="shrink-0 rounded-full bg-black/[0.035] px-2 py-1 text-[9px] font-medium uppercase tracking-[0.12em] text-black/40">
+        <span className="shrink-0 rounded-full bg-black/[0.035] px-1.5 py-1 text-[8px] font-medium uppercase tracking-[0.1em] text-black/40 sm:px-2 sm:text-[9px] sm:tracking-[0.12em]">
           Protected
         </span>
       </div>
 
       <div
         ref={containerRef}
-        className="flex min-h-[65px] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
+        className="flex min-h-[65px] w-full min-w-0 max-w-full items-center justify-center overflow-hidden rounded-xl bg-white [&>div]:w-full [&>div]:max-w-full [&_iframe]:max-w-full"
       />
     </section>
   );
