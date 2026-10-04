@@ -134,7 +134,7 @@ function SignInForm() {
         </>
       }
     >
-      <div className="min-w-0 space-y-5 sm:space-y-6">
+      <div className="min-w-0 space-y-6 sm:space-y-7">
         {error && (
           <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-[13px] leading-5 text-red-700">
             {error}
@@ -156,15 +156,15 @@ function SignInForm() {
 
         <SocialAuthButtons next="/dashboard" />
 
-        <div className="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-black/35">
+        <div className="flex items-center gap-3 text-[9px] font-semibold uppercase tracking-[0.18em] text-black/35 sm:text-[10px]">
           <span className="h-px min-w-0 flex-1 bg-black/10" />
           <span className="shrink-0">or email</span>
           <span className="h-px min-w-0 flex-1 bg-black/10" />
         </div>
 
-        <form onSubmit={handleSignIn} className="space-y-4">
+        <form onSubmit={handleSignIn} className="space-y-5">
           <div className="space-y-1.5">
-            <label htmlFor="signin-email" className="block text-[12px] font-semibold leading-4 text-[#343434]">
+            <label htmlFor="signin-email" className="block text-[13px] font-semibold leading-4 text-[#252525]">
               Email
             </label>
             <input
@@ -176,13 +176,13 @@ function SignInForm() {
               autoComplete="email"
               inputMode="email"
               placeholder="you@example.com"
-              className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-3.5 py-3 text-[15px] leading-5 text-[#111] outline-none transition placeholder:text-black/30 focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
+              className="min-h-[52px] w-full rounded-[14px] border border-black/10 bg-[#FCFCFC] px-4 py-3.5 text-[15px] leading-5 text-[#111] outline-none transition placeholder:text-black/30 focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
             />
           </div>
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-3">
-              <label htmlFor="signin-password" className="text-[12px] font-semibold leading-4 text-[#343434]">
+              <label htmlFor="signin-password" className="text-[13px] font-semibold leading-4 text-[#252525]">
                 Password
               </label>
               <Link
@@ -201,12 +201,12 @@ function SignInForm() {
                 required
                 autoComplete="current-password"
                 placeholder="Enter your password"
-                className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-3.5 py-3 pr-12 text-[15px] leading-5 text-[#111] outline-none transition placeholder:text-black/30 focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
+                className="min-h-[52px] w-full rounded-[14px] border border-black/10 bg-[#FCFCFC] px-4 py-3.5 pr-12 text-[15px] leading-5 text-[#111] outline-none transition placeholder:text-black/30 focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-xl text-black/40 transition hover:text-black/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#1E90FF]/20"
+                className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[14px] text-black/40 transition hover:text-black/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#1E90FF]/20"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? (
@@ -235,7 +235,7 @@ function SignInForm() {
           <button
             type="submit"
             disabled={loading || !turnstileSiteKey || !captchaToken}
-            className="min-h-12 w-full rounded-xl bg-black px-4 py-3 text-[15px] font-semibold leading-5 text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] focus:outline-none focus:ring-4 focus:ring-black/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+            className="min-h-[52px] w-full rounded-[14px] bg-black px-4 py-3.5 text-[15px] font-semibold leading-5 text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] focus:outline-none focus:ring-4 focus:ring-black/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
