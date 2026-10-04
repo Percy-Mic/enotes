@@ -547,10 +547,19 @@ export interface AudioTrack {
   template_slot?: number;
 }
 
+export interface CanvasBackground {
+  type: 'color' | 'gradient';
+  color: string;
+  color2?: string;
+  angle?: number;
+}
+
 export interface VideoProject {
   version: 1 | 2 | 3;
   aspect: AspectRatio;
   canvas: { width: number; height: number };
+  /** Background behind all video/image content when the media does not fill the canvas. */
+  background?: CanvasBackground;
   clips: VideoClip[];
   elements: TimelineElement[];
   audio: AudioTrack[];
@@ -658,6 +667,15 @@ export function normalizeProject(input: unknown): VideoProject {
   const canvas = {
     width: Number.isFinite(Number(canvasRaw.width)) && Number(canvasRaw.width) > 0 ? Number(canvasRaw.width) : fallbackCanvas.width,
     height: Number.isFinite(Number(canvasRaw.height)) && Number(canvasRaw.height) > 0 ? Number(canvasRaw.height) : fallbackCanvas.height,
+  };
+  const backgroundRaw = raw.background && typeof raw.background === 'object'
+    ? raw.background as Partial<CanvasBackground>
+    : {};
+  const background: CanvasBackground = {
+    type: backgroundRaw.type === 'gradient' ? 'gradient' : 'color',
+    color: typeof backgroundRaw.color === 'string' && backgroundRaw.color ? backgroundRaw.color : '#000000',
+    ...(typeof backgroundRaw.color2 === 'string' && backgroundRaw.color2 ? { color2: backgroundRaw.color2 } : {}),
+    ...(Number.isFinite(Number(backgroundRaw.angle)) ? { angle: Number(backgroundRaw.angle) } : {}),
   };
 
   const clips: VideoClip[] = Array.isArray(raw.clips) ? raw.clips.map((c) => {
@@ -971,6 +989,7 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
     version: 3,
     aspect,
     canvas,
+    background,
     clips: [],
     elements: [],
     audio: [],
@@ -980,6 +999,7 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
       { id: 'track-audio', name: 'Audio', kind: 'audio', order: 2, muted: false, locked: false },
     ],
     masterMuted: false,
+    background: { type: 'color', color: '#000000' },
     markers: [],
   };
 }
