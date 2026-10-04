@@ -24,7 +24,7 @@ export default function AuthShell({
 }: AuthShellProps) {
   return (
     <main className="auth-page min-h-[100dvh] w-full overflow-x-hidden">
-      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1440px] lg:grid-cols-[minmax(0,1.06fr)_minmax(420px,.94fr)]">
+      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1440px] grid-cols-1 lg:grid-cols-[minmax(0,1.06fr)_minmax(420px,.94fr)]">
         <section className="auth-brand-panel relative hidden overflow-hidden p-8 lg:flex lg:flex-col lg:justify-between lg:p-10 xl:p-14">
           <div className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full border-[48px] border-white/25" />
           <div className="pointer-events-none absolute -bottom-36 -left-24 h-[28rem] w-[28rem] rounded-full border-[64px] auth-brand-ring" />
@@ -49,8 +49,8 @@ export default function AuthShell({
           </p>
         </section>
 
-        <section className="flex min-h-[100dvh] w-full items-center justify-center px-3 py-4 sm:px-6 sm:py-8 lg:px-10 xl:px-16">
-          <div className="w-full max-w-[500px] min-w-0">
+        <section className="flex min-h-[100dvh] w-screen max-w-none items-center justify-center justify-self-center px-3 py-4 sm:px-6 sm:py-8 lg:w-full lg:max-w-none lg:px-10 xl:px-16">
+          <div className="mx-auto w-full max-w-[500px] min-w-0">
             <div className="mb-4 flex items-center justify-between gap-3 px-1 sm:mb-6 lg:hidden">
               <Link href="/" className="inline-flex min-w-0 items-center gap-2 text-[16px] font-bold tracking-[-0.02em]">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--auth-primary-bg)] text-[19px] leading-none text-[var(--auth-primary-ink)]">e</span>
