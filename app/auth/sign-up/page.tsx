@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
 import SocialAuthButtons from '@/components/auth/SocialAuthButtons';
+import AuthShell from '@/components/auth/AuthShell';
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('');
@@ -183,16 +184,16 @@ export default function SignUpPage() {
           <p className="text-sm text-[#6B6B6B] mt-1">Start your artistic digital journaling journey.</p>
         </div>
 
-        {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded">{error}</div>}
+        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-3.5 text-sm leading-5 text-red-700">{error}</div>}
 
         <SocialAuthButtons next="/dashboard" />
 
-        <div className="flex items-center gap-3 text-xs text-[#9B9B9B]"><span className="h-px flex-1 bg-[#E8E2E4]" /><span>or sign up with email</span><span className="h-px flex-1 bg-[#E8E2E4]" /></div>
+        <div className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-black/35"><span className="h-px flex-1 bg-black/10" /><span>or email</span><span className="h-px flex-1 bg-black/10" /></div>
 
         <form onSubmit={handleSignUp} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B6B6B] mb-1">Username</label>
-            <div className="flex items-center rounded border border-[#E8E2E4] focus-within:border-[#1E90FF]">
+            <div className="flex min-h-12 items-center rounded-xl border border-black/10 bg-[#FCFCFC] transition focus-within:border-[#1E90FF] focus-within:bg-white focus-within:ring-4 focus-within:ring-[#1E90FF]/10">
               <span className="pl-3 text-[#9B9B9B]">@</span>
               <input
                 type="text"
@@ -203,7 +204,7 @@ export default function SignUpPage() {
                 maxLength={24}
                 autoCapitalize="none"
                 autoComplete="username"
-                className="w-full bg-transparent px-2 py-2 focus:outline-none"
+                className="w-full bg-transparent px-2 py-3 text-sm outline-none"
                 placeholder="alex"
               />
               {usernameStatus === 'checking' && (
@@ -230,7 +231,7 @@ export default function SignUpPage() {
               required
               autoComplete="email"
               inputMode="email"
-              className="min-h-11 w-full rounded-xl border border-[#E8E2E4] px-4 py-2.5 text-sm outline-none transition focus:border-[#1E90FF] focus:ring-2 focus:ring-[#1E90FF]/10"
+              className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
             />
           </div>
 
@@ -244,7 +245,7 @@ export default function SignUpPage() {
                 required
                 minLength={6}
                 autoComplete="new-password"
-                className="w-full px-4 py-2 pr-10 border border-[#E8E2E4] rounded focus:outline-none focus:border-[#1E90FF]"
+                className="w-full min-h-12 rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 pr-11 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
               />
               <button
                 type="button"
@@ -292,7 +293,7 @@ export default function SignUpPage() {
           <button
             type="submit"
             disabled={loading || !agreed || !handle || usernameStatus === 'taken' || usernameStatus === 'invalid' || !turnstileSiteKey || !captchaToken}
-            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             {loading ? 'Creating account...' : 'Sign Up'}
           </button>
