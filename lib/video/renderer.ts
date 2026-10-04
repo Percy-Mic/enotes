@@ -29,7 +29,7 @@ import { drawAdvancedEffectStack } from '@/lib/video/advanced-effects';
 
 import {
   clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder, isAudioPlaceholder,
-  coverFit, croppedAspect, resolveElementValues,
+  containFit, croppedAspect, resolveElementValues,
   type VideoProject, type TimelineElement, type VideoClip, type CropRect, type ClipAdjustments, type EffectType,
 } from '@/lib/video/project';
 
@@ -960,9 +960,15 @@ function clipDrawRect(
   const { scale, scale_x, scale_y, crop } = clip.transform;
   const srcAspect = videoW / Math.max(1, videoH);
   const effAspect = croppedAspect(srcAspect, crop);
-  const cover = coverFit(canvasW, canvasH, effAspect);
-  const dw = cover.w * scale * scale_x * eff.scaleMul;
-  const dh = cover.h * scale * scale_y * eff.scaleMul;
+  /*
+   * Default media placement is CONTAIN, not COVER. A portrait source on a
+   * landscape canvas therefore fits its full height instead of being enlarged
+   * until it overflows. User transforms/keyframes can still scale or move the
+   * media beyond the canvas intentionally after this baseline fit.
+   */
+  const fit = containFit(canvasW, canvasH, effAspect);
+  const dw = fit.w * scale * scale_x * eff.scaleMul;
+  const dh = fit.h * scale * scale_y * eff.scaleMul;
 
   const c: CropRect | null = crop;
   const sx = c ? c.left * videoW : 0;
