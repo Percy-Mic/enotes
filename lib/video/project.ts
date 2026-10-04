@@ -116,6 +116,8 @@ export interface VideoClip {
   src: string;
   /** original file name (for library display) */
   name: string;
+  /** Durable Supabase Storage path for source recovery after refresh. */
+  storage_path?: string;
   /** full duration of the source video, seconds */
   sourceDuration: number;
   /** source pixel dimensions (used for on-canvas box math; optional for legacy projects) */
@@ -431,6 +433,8 @@ export interface TimelineElement {
   content: string;
   /** media url for images; null for text/emoji */
   src: string | null;
+  /** Durable Supabase Storage path for uploaded image/video overlays. */
+  storage_path?: string;
   /** Optional timeline lane. Legacy projects may omit this. */
   track_id?: string;
   /** seconds relative to the PROJECT timeline */
