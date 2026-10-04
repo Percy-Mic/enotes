@@ -2112,109 +2112,101 @@ function VideoEditor() {
 
           setImporting({ name: file.name, percent: 35 });
 
-          /* OFFLINE-FIRST PREVIEW: the browser already has the complete File,
-             so the timeline must never wait for Supabase/Cloudinary before it
-             can render. Keep this object URL alive until the remote upload has
-             completed and the project source has been switched to the durable URL. */
+          /*
+           * IMPORTANT PERSISTENCE RULE:
+           *
+           * The object URL below is browser-session-only. It may be used for
+           * probing/previewing the File, but it must NEVER enter VideoProject,
+           * because video_projects is durable state and a blob: URL dies on
+           * refresh. Upload the source first, resolve the final durable URL,
+           * then commit the clip to project history. This also makes an
+           * accidental refresh during a slow upload safe: the old project
+           * remains intact instead of containing a dead media source.
+           */
           const localUrl = URL.createObjectURL(file);
           const isImage = file.type.startsWith('image/');
           const replacement = replaceClipId
             ? docRef.current.project.clips.find((c) => c.id === replaceClipId)
             : null;
 
-          if (isImage) {
-            const clip: VideoClip = {
-              id: makeVideoId('clip'), src: localUrl, name: file.name,
-              sourceDuration: 4, trimStart: 0, trimEnd: 4, speed: 1, volume: 0, muted: true,
-              media_type: 'image', source_width: meta.w || undefined, source_height: meta.h || undefined,
-              transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
-              filter: 'none', effect: 'ken-burns', effect_intensity: 0.55, reverse: false,
-              audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
-            };
-            updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add image to main track');
-            setSelectedClipId(clip.id);
-            setSelectedElementId(null);
-            notify('Image added instantly. Uploading a durable copy in the background…');
-
+          const uploadDurableUrl = async (mediaType: 'image' | 'video') => {
+            const up = await uploadFile(file, 'studio-media', meId);
+            let mediaUrl = up.url;
             try {
-              const up = await uploadFile(file, 'studio-media', meId);
-              let mediaUrl = up.url;
-              try {
-                const cloudinaryResponse = await fetch('/api/video/cloudinary', {
-                  method: 'POST', headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ url: mediaUrl, mediaType: 'image', mode: project.aspect === '9:16' ? 'vertical' : project.aspect === '1:1' ? 'square' : 'optimize' }),
-                });
-                const cloudinary = await cloudinaryResponse.json().catch(() => ({}));
-                if (cloudinaryResponse.ok && typeof cloudinary.url === 'string' && cloudinary.url) mediaUrl = cloudinary.url;
-              } catch { /* optional optimization */ }
-              updateProject((p) => ({ ...p, clips: p.clips.map((c) => c.id === clip.id ? { ...c, src: mediaUrl } : c) }), 'Finalize image upload');
-              URL.revokeObjectURL(localUrl);
-            } catch (uploadError) {
-              notify(`Upload failed for "${file.name}". The local preview remains available until this page is closed.`);
-            }
-          } else if (replacement) {
-            updateProject((p) => ({
-              ...p,
-              clips: p.clips.map((c) => c.id === replacement.id ? {
-                ...c, src: localUrl, name: file.name, sourceDuration: meta.duration,
-                trimStart: 0, trimEnd: meta.duration, source_width: meta.w || undefined, source_height: meta.h || undefined,
-              } : c),
-            }), 'Replace clip');
-            setSelectedClipId(replacement.id);
-            notify('Clip replaced instantly. Uploading the durable copy in the background…');
-
-            try {
-              const up = await uploadFile(file, 'studio-media', meId);
-              let mediaUrl = up.url;
-              try {
-                const cloudinaryResponse = await fetch('/api/video/cloudinary', {
-                  method: 'POST', headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ url: mediaUrl, mediaType: 'video', mode: project.aspect === '9:16' ? 'vertical' : project.aspect === '1:1' ? 'square' : 'optimize' }),
-                });
-                const cloudinary = await cloudinaryResponse.json().catch(() => ({}));
-                if (cloudinaryResponse.ok && typeof cloudinary.url === 'string' && cloudinary.url) mediaUrl = cloudinary.url;
-              } catch { /* optional optimization */ }
-              updateProject((p) => ({ ...p, clips: p.clips.map((c) => c.id === replacement.id ? { ...c, src: mediaUrl } : c) }), 'Finalize clip upload');
-              URL.revokeObjectURL(localUrl);
+              const cloudinaryResponse = await fetch('/api/video/cloudinary', {
+                method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                  url: mediaUrl,
+                  mediaType,
+                  mode: project.aspect === '9:16' ? 'vertical' : project.aspect === '1:1' ? 'square' : 'optimize',
+                }),
+              });
+              const cloudinary = await cloudinaryResponse.json().catch(() => ({}));
+              if (cloudinaryResponse.ok && typeof cloudinary.url === 'string' && cloudinary.url) {
+                mediaUrl = cloudinary.url;
+              }
             } catch {
-              notify(`Upload failed for "${file.name}". The local preview remains available until this page is closed.`);
+              /* Cloudinary is optional; the Supabase studio-media URL is durable. */
             }
-          } else {
-            const firstMainVideo = !docRef.current.project.clips.some((c) => c.media_type !== 'image');
-            const clip: VideoClip = {
-              id: makeVideoId('clip'), src: localUrl, name: file.name,
-              sourceDuration: meta.duration, trimStart: 0, trimEnd: meta.duration, speed: 1, volume: 1, muted: false,
-              media_type: 'video', source_width: meta.w || undefined, source_height: meta.h || undefined,
-              transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
-              filter: 'none', effect: 'none', reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
-            };
-            updateProject((p) => ({
-              ...p,
-              aspect: firstMainVideo ? 'original' : p.aspect,
-              canvas: firstMainVideo && meta.w && meta.h ? { width: meta.w, height: meta.h } : p.canvas,
-              clips: [...p.clips, clip],
-            }), 'Add clip');
-            setSelectedClipId(clip.id);
-            setSelectedElementId(null);
-            if (firstMainVideo) notify('Video added instantly — canvas matched its orientation. Uploading in the background…');
-            else notify('Video added instantly. Uploading the durable copy in the background…');
+            if (!/^https?:\\/\\//i.test(mediaUrl)) {
+              throw new Error('The media upload completed without a durable URL.');
+            }
+            return mediaUrl;
+          };
 
-            try {
-              const up = await uploadFile(file, 'studio-media', meId);
-              let mediaUrl = up.url;
-              try {
-                const cloudinaryResponse = await fetch('/api/video/cloudinary', {
-                  method: 'POST', headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ url: mediaUrl, mediaType: 'video', mode: project.aspect === '9:16' ? 'vertical' : project.aspect === '1:1' ? 'square' : 'optimize' }),
-                });
-                const cloudinary = await cloudinaryResponse.json().catch(() => ({}));
-                if (cloudinaryResponse.ok && typeof cloudinary.url === 'string' && cloudinary.url) mediaUrl = cloudinary.url;
-              } catch { /* optional optimization */ }
-              updateProject((p) => ({ ...p, clips: p.clips.map((c) => c.id === clip.id ? { ...c, src: mediaUrl } : c) }), 'Finalize clip upload');
-              URL.revokeObjectURL(localUrl);
-            } catch {
-              notify(`Upload failed for "${file.name}". The local preview remains available until this page is closed.`);
+          try {
+            setImporting({ name: file.name, percent: 55 });
+            const mediaUrl = await uploadDurableUrl(isImage ? 'image' : 'video');
+            setImporting({ name: file.name, percent: 90 });
+
+            if (isImage) {
+              const clip: VideoClip = {
+                id: makeVideoId('clip'), src: mediaUrl, name: file.name,
+                sourceDuration: 4, trimStart: 0, trimEnd: 4, speed: 1, volume: 0, muted: true,
+                media_type: 'image', source_width: meta.w || undefined, source_height: meta.h || undefined,
+                transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
+                filter: 'none', effect: 'ken-burns', effect_intensity: 0.55, reverse: false,
+                audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
+              };
+              updateProject((p) => ({ ...p, clips: [...p.clips, clip] }), 'Add image to main track');
+              setSelectedClipId(clip.id);
+              setSelectedElementId(null);
+              notify('Image uploaded and safely added to the timeline.');
+            } else if (replacement) {
+              updateProject((p) => ({
+                ...p,
+                clips: p.clips.map((c) => c.id === replacement.id ? {
+                  ...c, src: mediaUrl, name: file.name, sourceDuration: meta.duration,
+                  trimStart: 0, trimEnd: meta.duration, source_width: meta.w || undefined, source_height: meta.h || undefined,
+                } : c),
+              }), 'Replace clip');
+              setSelectedClipId(replacement.id);
+              notify('Clip uploaded and safely replaced.');
+            } else {
+              const firstMainVideo = !docRef.current.project.clips.some((c) => c.media_type !== 'image');
+              const clip: VideoClip = {
+                id: makeVideoId('clip'), src: mediaUrl, name: file.name,
+                sourceDuration: meta.duration, trimStart: 0, trimEnd: meta.duration, speed: 1, volume: 1, muted: false,
+                media_type: 'video', source_width: meta.w || undefined, source_height: meta.h || undefined,
+                transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
+                filter: 'none', effect: 'none', reverse: false, audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
+              };
+              updateProject((p) => ({
+                ...p,
+                aspect: firstMainVideo ? 'original' : p.aspect,
+                canvas: firstMainVideo && meta.w && meta.h ? { width: meta.w, height: meta.h } : p.canvas,
+                clips: [...p.clips, clip],
+              }), 'Add clip');
+              setSelectedClipId(clip.id);
+              setSelectedElementId(null);
+              notify(firstMainVideo
+                ? 'Video uploaded and added — canvas matched its orientation.'
+                : 'Video uploaded and safely added to the timeline.');
             }
+          } catch (uploadError) {
+            notify(`Upload failed for "${file.name}". Nothing was added or replaced in the saved project.`);
+          } finally {
+            URL.revokeObjectURL(localUrl);
           }
           setImporting(null);
         } catch (e) {
