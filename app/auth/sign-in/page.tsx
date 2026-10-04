@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
 import SocialAuthButtons from '@/components/auth/SocialAuthButtons';
+import AuthShell from '@/components/auth/AuthShell';
 
 function SignInForm() {
   const [email, setEmail] = useState('');
@@ -115,14 +116,23 @@ function SignInForm() {
   };
 
   return (
-    <main className="min-h-screen bg-[#FFF7F8] flex items-center justify-center p-6 text-[#111111]">
-      <div className="w-full max-w-md space-y-6 rounded-[24px] border border-[#E8E2E4] bg-white p-7 shadow-xl sm:p-8">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Welcome back ♡</h1>
-          <p className="text-sm text-[#6B6B6B] mt-1">Sign in to open your journals.</p>
-        </div>
+    <AuthShell
+      eyebrow="Welcome back"
+      title="Welcome back ♡"
+      description="Sign in to open your journals and pick up where you left off."
+      asideTitle="Your journal is waiting for you."
+      footer={
+        <>
+          <p className="text-sm text-black/55">Don&apos;t have a journal desk yet?{' '}
+            <Link href="/auth/sign-up" className="font-semibold text-[#1E90FF] hover:underline">Create an account</Link>
+          </p>
+          <p className="mt-3 text-xs text-black/40"><Link href="/privacy" className="underline">Privacy</Link><span className="mx-2">·</span><Link href="/terms" className="underline">Terms</Link><span className="mx-2">·</span><Link href="/contact" className="underline">Contact</Link></p>
+        </>
+      }
+    >
+      <div className="space-y-6">
 
-        {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded border border-red-200">{error}</div>}
+        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-3.5 text-sm leading-5 text-red-700">{error}</div>}
 
         {showResend && (
           <div className="space-y-2">
@@ -139,7 +149,7 @@ function SignInForm() {
 
         <SocialAuthButtons next="/dashboard" />
 
-        <div className="flex items-center gap-3 text-xs text-[#9B9B9B]"><span className="h-px flex-1 bg-[#E8E2E4]" /><span>or continue with email</span><span className="h-px flex-1 bg-[#E8E2E4]" /></div>
+        <div className="flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-black/35"><span className="h-px flex-1 bg-black/10" /><span>or email</span><span className="h-px flex-1 bg-black/10" /></div>
 
         <form onSubmit={handleSignIn} className="space-y-4">
           <div>
@@ -151,7 +161,7 @@ function SignInForm() {
               required
               autoComplete="email"
               inputMode="email"
-              className="min-h-11 w-full rounded-xl border border-[#E8E2E4] px-4 py-2.5 text-sm outline-none transition focus:border-[#1E90FF] focus:ring-2 focus:ring-[#1E90FF]/10"
+              className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 text-sm outline-none transition placeholder:text-black/30 focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
             />
           </div>
 
@@ -169,7 +179,7 @@ function SignInForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="min-h-11 w-full rounded-xl border border-[#E8E2E4] px-4 py-2.5 pr-10 text-sm outline-none transition focus:border-[#1E90FF] focus:ring-2 focus:ring-[#1E90FF]/10"
+                className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 pr-11 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
               />
               <button
                 type="button"
@@ -203,34 +213,20 @@ function SignInForm() {
           <button
             type="submit"
             disabled={loading || !turnstileSiteKey || !captchaToken}
-            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
 
-        <p className="text-center text-sm text-[#6B6B6B]">
-          Don't have a journal desk yet?{' '}
-          <Link href="/auth/sign-up" className="text-[#1E90FF] font-medium hover:underline">
-            Create an account
-          </Link>
-        </p>
-
-        <p className="text-center text-xs text-[#9B9B9B]">
-          <Link href="/privacy" className="underline">Privacy</Link>
-          <span className="mx-2">·</span>
-          <Link href="/terms" className="underline">Terms</Link>
-          <span className="mx-2">·</span>
-          <Link href="/contact" className="underline">Contact</Link>
-        </p>
       </div>
-    </main>
+    </AuthShell>
   );
 }
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-[#FFF7F8] flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center bg-[#FFF7F8] text-sm text-black/45">Loading...</div>}>
       <SignInForm />
     </Suspense>
   );
