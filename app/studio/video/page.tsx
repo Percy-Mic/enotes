@@ -4639,7 +4639,7 @@ function VideoEditor() {
   };
 
   /* ---------- overlay gestures on the canvas ---------- */
-  const beginElementGesture = (el: TimelineElement, gesture: Gesture, e: React.PointerEvent<HTMLElement>) => {
+  const beginElementGesture = (el: TimelineElement, gesture: Gesture | 'auto', e: React.PointerEvent<HTMLElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     e.preventDefault();
@@ -4693,6 +4693,39 @@ function VideoEditor() {
       return Math.max(8, Math.min(240, startEl.font_size * areaScale));
     };
 
+    let activeGesture: Gesture | null = gesture === 'auto' ? null : gesture;
+
+    const classifyGesture = (p: { x: number; y: number }): Gesture => {
+      const dx0 = p.x - centerX;
+      const dy0 = p.y - centerY;
+      const rad = -(startGeometry.rotation * Math.PI) / 180;
+      const lx = dx0 * Math.cos(rad) - dy0 * Math.sin(rad);
+      const ly = dx0 * Math.sin(rad) + dy0 * Math.cos(rad);
+      const ax = Math.abs(lx);
+      const ay = Math.abs(ly);
+      const hw = startGeometry.width / 2;
+      const hh = startGeometry.height / 2;
+      const mx = p.x - startX;
+      const my = p.y - startY;
+      const movement = Math.max(0.001, Math.hypot(mx, my));
+      const radius = Math.max(0.001, Math.hypot(dx0, dy0));
+      const radial = (mx * dx0 + my * dy0) / (movement * radius);
+      const nearX = Math.abs(ax - hw) <= Math.max(16, hw * 0.16);
+      const nearY = Math.abs(ay - hh) <= Math.max(16, hh * 0.16);
+      const outside = ax > hw || ay > hh;
+
+      if (outside && radial < 0.35) return 'rotate';
+      if ((nearX || nearY) && radial > 0.35) {
+        if (nearX && nearY) {
+          if (Math.abs(mx) >= Math.abs(my)) return lx < 0 ? 'resize-nw' : 'resize-ne';
+          return ly < 0 ? 'resize-nw' : 'resize-sw';
+        }
+        if (nearX) return lx < 0 ? 'resize-w' : 'resize-e';
+        return ly < 0 ? 'resize-n' : 'resize-s';
+      }
+      return 'move';
+    };
+
     const onMove = (ev: PointerEvent) => {
       /* Once a second touch arrives, the mobile gesture recognizer owns the
          interaction. Do not let the original one-finger transform compete. */
@@ -4702,7 +4735,12 @@ function VideoEditor() {
       const dx = p.x - startX;
       const dy = p.y - startY;
 
-      if (gesture === 'move') {
+      if (!activeGesture) {
+        if (Math.hypot(dx, dy) < TAP_SLOP) return;
+        activeGesture = classifyGesture(p);
+      }
+
+      if (activeGesture === 'move') {
         const rawX = startGeometry.x + dx;
         const rawY = startGeometry.y + dy;
         const constrained = startEl.kind === 'text'
@@ -4725,7 +4763,7 @@ function VideoEditor() {
         return;
       }
 
-      if (gesture === 'resize-uniform') {
+      if (activeGesture === 'resize-uniform') {
         const d0 = Math.hypot(startX - centerX, startY - centerY);
         const d1 = Math.hypot(p.x - centerX, p.y - centerY);
         const factor = clampNum(d1 / Math.max(8, d0), 0.05, 8);
@@ -4747,8 +4785,8 @@ function VideoEditor() {
         return;
       }
 
-      if (isCornerGesture(gesture)) {
-        const { sx, sy } = CORNER_SIGNS[gesture];
+      if (isCornerGesture(activeGesture)) {
+        const { sx, sy } = CORNER_SIGNS[activeGesture];
         const rad = (startEl.rotation * Math.PI) / 180;
         /* pointer delta in the element's rotated frame */
         const lx = dx * Math.cos(rad) + dy * Math.sin(rad);
@@ -5011,16 +5049,25 @@ function VideoEditor() {
       }
     }
 
-    /* 2) handles of the current overlay selection */
+    /* 2) Selected overlay. There are no visible transform buttons:
+       the first drag direction chooses move/resize/rotate. */
     if (selectedElement) {
       const el = selectedElement;
-      const pts = elementHandlePoints(el);
-      for (const g of ['resize-nw', 'resize-ne', 'resize-sw', 'resize-se', 'resize-n', 'resize-s', 'resize-w', 'resize-e', 'rotate'] as Gesture[]) {
-        const pt = pts[g as keyof typeof pts];
-        if (pt && Math.hypot(p.x - pt.x, p.y - pt.y) <= tol) {
-          beginElementGesture(el, g, e);
-          return;
-        }
+      const g = elementVisualGeometry(el);
+      const margin = Math.max(18, tol);
+      const rad = -(g.rotation * Math.PI) / 180;
+      const dx = p.x - (g.x + g.width / 2);
+      const dy = p.y - (g.y + g.height / 2);
+      const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+      const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+      if (
+        hitsElement(el, p.x, p.y) ||
+        (el.kind === 'text' &&
+          Math.abs(lx) <= g.width / 2 + margin &&
+          Math.abs(ly) <= g.height / 2 + margin)
+      ) {
+        beginElementGesture(el, 'auto', e);
+        return;
       }
     }
 
@@ -6730,64 +6777,19 @@ function VideoEditor() {
                   zones; there are no transparent buttons sitting over the artwork. */}
               {selectedElement && previewScale > 0 && !cropMode && (() => {
                 const g = elementVisualGeometry(selectedElement);
-                const pts = elementHandlePoints(selectedElement);
-                const handle = (name: Gesture, p: { x: number; y: number }, label: string, glyph: string) => (
-                  <button
-                    key={name}
-                    type="button"
-                    data-canvas-transform-handle="true"
-                    aria-label={label}
-                    title={label}
-                    onPointerDown={(ev) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      ev.currentTarget.setPointerCapture?.(ev.pointerId);
-                      beginElementGesture(selectedElement, name, ev);
-                    }}
-                    className="pointer-events-auto absolute z-[80] flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-full border-0 bg-transparent text-[12px] font-black text-white shadow-none active:scale-95 before:h-9 before:w-9 before:rounded-full before:border-2 before:border-white before:bg-[#E5798F] before:shadow-[0_2px_12px_rgba(0,0,0,.55)]"
-                    style={{
-                      left: p.x * previewScale,
-                      top: p.y * previewScale,
-                    }}
-                  >
-                    {glyph}
-                  </button>
-                );
-                const rotate = pts.rotate;
-                const top = pts['resize-n'];
                 return (
-                  <>
-                    <div
-                      className="pointer-events-none absolute"
-                      style={{
-                        left: g.x * previewScale,
-                        top: g.y * previewScale,
-                        width: g.width * previewScale,
-                        height: g.height * previewScale,
-                        transform: 'rotate(' + g.rotation + 'deg)',
-                        outline: '2px solid rgba(229,121,143,0.98)',
-                        outlineOffset: 0,
-                      }}
-                    />
-                    {(['resize-nw', 'resize-ne', 'resize-sw', 'resize-se'] as Gesture[]).map((name) =>
-                      handle(
-                        name,
-                        pts[name as keyof typeof pts],
-                        name.replace('resize-', 'Resize ') + ' text',
-                        '•',
-                      )
-                    )}
-                    <div
-                      className="pointer-events-none absolute z-[79] h-5 w-px origin-bottom bg-white/90"
-                      style={{
-                        left: rotate.x * previewScale,
-                        top: rotate.y * previewScale,
-                        transform: 'rotate(' + g.rotation + 'deg) translateY(10px)',
-                      }}
-                    />
-                    {handle('rotate', rotate, 'Rotate text', '↻')}
-                    {handle('resize-n', top, 'Resize text vertically', '↕')}
-                  </>
+                  <div
+                    className="pointer-events-none absolute"
+                    aria-hidden="true"
+                    style={{
+                      left: g.x * previewScale,
+                      top: g.y * previewScale,
+                      width: g.width * previewScale,
+                      height: g.height * previewScale,
+                      transform: 'rotate(' + g.rotation + 'deg)',
+                      outline: '2px solid rgba(229,121,143,0.98)',
+                    }}
+                  />
                 );
               })()}
 
