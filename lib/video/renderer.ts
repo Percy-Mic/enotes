@@ -1149,7 +1149,7 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
 
   /* Wrap long text to the actual box instead of letting one unbroken line
      become wider than its selection frame. Explicit newlines are preserved. */
-  const wrapWidth = Math.max(12, el.width * 0.94);
+  const wrapWidth = Math.max(12, el.width);
   const lines = content.split('\n').flatMap((paragraph) => {
     if (!paragraph) return [''];
     const words = paragraph.split(/\s+/);
@@ -1178,8 +1178,8 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
      24px/20px minimums meant a tiny text container could still calculate a
      font from a larger virtual box, making glyphs appear outside the handles. */
   /* Keep only a small breathing room inside the selection box. */
-  const availableWidth = Math.max(1, el.width * 0.94);
-  const availableHeight = Math.max(1, el.height * 0.90);
+  const availableWidth = Math.max(1, el.width);
+  const availableHeight = Math.max(1, el.height);
   const widthFit = longestLine > 0 ? (availableWidth / longestLine) : 1;
   const heightFit = lineHeightRequested * lines.length > 0
     ? (availableHeight / (lineHeightRequested * lines.length))
@@ -1194,8 +1194,8 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
   if (el.background) {
     const metrics = ctx.measureText(lines.reduce((a, b) => (a.length > b.length ? a : b), ''));
     ctx.fillStyle = el.background;
-    const padX = fontSize * (el.background_padding ?? 0.4);
-    const padY = fontSize * ((el.background_padding ?? 0.25) * 0.65);
+    const padX = fontSize * (el.background_padding ?? 0);
+    const padY = fontSize * ((el.background_padding ?? 0) * 0.65);
     const bx = -metrics.width / 2 - padX;
     const by = -totalHeight / 2 - padY;
     const bw = metrics.width + padX * 2;
