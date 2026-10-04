@@ -85,7 +85,7 @@ async function feedRequest(pathname: string, token: string, clientId: string) {
 }
 
 async function signedClips(ids: string[], token: string, clientId: string) {
-  const unique = [...new Set(ids)].filter(Boolean).slice(0, 24);
+  const unique = Array.from(new Set(ids)).filter(Boolean).slice(0, 24);
   if (!unique.length) return [];
   const url = new URL(FEED_BASE + '/v2/clips');
   url.searchParams.set('clipIds', unique.join(','));
