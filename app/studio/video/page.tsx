@@ -4584,6 +4584,29 @@ function VideoEditor() {
      pinch/rotate. */
   const canvasMultiTouchRef = useRef(false);
 
+  /* Text geometry helper: keep the rotated/scaled text box inside
+     the canvas while allowing ordinary media overlays to move freely. */
+  const constrainTextBox = (
+    el: TimelineElement,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    rotation: number,
+  ) => {
+    if (el.kind !== 'text') return { x, y };
+    const scale = Math.max(0.001, el.width > 0 ? width / el.width : 1);
+    const w = Math.max(1, width);
+    const h = Math.max(1, height);
+    const rad = Math.abs(rotation % 180) * Math.PI / 180;
+    const halfW = (Math.abs(Math.cos(rad)) * w + Math.abs(Math.sin(rad)) * h) / 2;
+    const halfH = (Math.abs(Math.sin(rad)) * w + Math.abs(Math.cos(rad)) * h) / 2;
+    const cx = clampNum(x + w / 2, halfW, Math.max(halfW, project.canvas.width - halfW));
+    const cy = clampNum(y + h / 2, halfH, Math.max(halfH, project.canvas.height - halfH));
+    void scale;
+    return { x: cx - w / 2, y: cy - h / 2 };
+  };
+
   /* ---------- overlay gestures on the canvas ---------- */
   const beginElementGesture = (el: TimelineElement, gesture: Gesture, e: React.PointerEvent<HTMLElement>) => {
     const canvas = canvasRef.current;
@@ -4649,12 +4672,17 @@ function VideoEditor() {
       const dy = p.y - startY;
 
       if (gesture === 'move') {
+        const rawX = startGeometry.x + dx;
+        const rawY = startGeometry.y + dy;
+        const constrained = startEl.kind === 'text'
+          ? constrainTextBox(startEl, rawX, rawY, startGeometry.width, startGeometry.height, startGeometry.rotation)
+          : { x: rawX, y: rawY };
         const nx = startEl.kind === 'text'
-          ? clampNum(startGeometry.x + dx, 0, Math.max(0, project.canvas.width - startGeometry.width))
-          : clampNum(startGeometry.x + dx, -startGeometry.width * 0.75, project.canvas.width - startGeometry.width * 0.25);
+          ? constrained.x
+          : clampNum(constrained.x, -startGeometry.width * 0.75, project.canvas.width - startGeometry.width * 0.25);
         const ny = startEl.kind === 'text'
-          ? clampNum(startGeometry.y + dy, 0, Math.max(0, project.canvas.height - startGeometry.height))
-          : clampNum(startGeometry.y + dy, -startGeometry.height * 0.75, project.canvas.height - startGeometry.height * 0.25);
+          ? constrained.y
+          : clampNum(constrained.y, -startGeometry.height * 0.75, project.canvas.height - startGeometry.height * 0.25);
         const baseX = nx + startEl.width * startGeometry.scale / 2 - startEl.width / 2;
         const baseY = ny + startEl.height * startGeometry.scale / 2 - startEl.height / 2;
         updateElement(
@@ -4752,8 +4780,23 @@ function VideoEditor() {
       const angle = Math.atan2(p.y - centerY, p.x - centerX);
       let deg = startEl.rotation + ((angle - startAngle) * 180) / Math.PI;
       const snapped = Math.round(deg / 15) * 15;
-      if (Math.abs(deg - snapped) < 4) deg = snapped; // magnetic 15° snap
-      updateElement(el.id, { rotation: Math.round(deg) }, 'Rotate overlay', `rot-${el.id}`);
+      if (Math.abs(deg - snapped) < 5) deg = snapped;
+      const nextRotation = Math.round(deg);
+      if (startEl.kind === 'text') {
+        const constrained = constrainTextBox(
+          startEl,
+          startGeometry.x,
+          startGeometry.y,
+          startGeometry.width,
+          startGeometry.height,
+          nextRotation,
+        );
+        const baseX = constrained.x + startEl.width * startGeometry.scale / 2 - startEl.width / 2;
+        const baseY = constrained.y + startEl.height * startGeometry.scale / 2 - startEl.height / 2;
+        updateElement(el.id, { rotation: nextRotation, x: Math.round(baseX), y: Math.round(baseY) }, 'Rotate text', `rot-${el.id}`);
+      } else {
+        updateElement(el.id, { rotation: nextRotation }, 'Rotate overlay', `rot-${el.id}`);
+      }
     };
 
     const onUp = () => {
@@ -5093,11 +5136,17 @@ function VideoEditor() {
 
       const element = docRef.current.project.elements.find((el) => el.id === selectedElementId);
       if (element) {
+        const rawX = element.x + delta.x * scaleX;
+        const rawY = element.y + delta.y * scaleY;
+        const visual = elementVisualGeometry(element);
+        const constrained = element.kind === 'text'
+          ? constrainTextBox(element, rawX, rawY, visual.width, visual.height, visual.rotation)
+          : { x: rawX, y: rawY };
         updateElement(
           element.id,
           {
-            x: Math.round(element.x + delta.x * scaleX),
-            y: Math.round(element.y + delta.y * scaleY),
+            x: Math.round(constrained.x),
+            y: Math.round(constrained.y),
           },
           'Two-finger move overlay',
           `pinch-pan-${element.id}`,
@@ -6661,9 +6710,10 @@ function VideoEditor() {
                     onPointerDown={(ev) => {
                       ev.preventDefault();
                       ev.stopPropagation();
+                      ev.currentTarget.setPointerCapture?.(ev.pointerId);
                       beginElementGesture(selectedElement, name, ev);
                     }}
-                    className="pointer-events-auto absolute z-[80] flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-full border-2 border-white bg-[#E5798F] text-[12px] font-black text-white shadow-[0_2px_12px_rgba(0,0,0,.55)] active:scale-95"
+                    className="pointer-events-auto absolute z-[80] flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-full border-0 bg-transparent text-[12px] font-black text-white shadow-none active:scale-95 before:h-9 before:w-9 before:rounded-full before:border-2 before:border-white before:bg-[#E5798F] before:shadow-[0_2px_12px_rgba(0,0,0,.55)]"
                     style={{
                       left: p.x * previewScale,
                       top: p.y * previewScale,
