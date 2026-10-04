@@ -19,6 +19,7 @@ import ForwardSheet from '@/components/chat/ForwardSheet';
 import ReportDialog from '@/components/social/ReportDialog';
 import { useCall } from '@/components/chat/CallProvider';
 import { useGroupCall } from '@/components/chat/GroupCallProvider';
+import GroupAvatar from '@/components/chat/GroupAvatar';
 
 const PAGE_SIZE = 30;
 const ICON_MAX_BYTES = 5 * 1024 * 1024;
@@ -1118,14 +1119,7 @@ function ChatRoom() {
             className="relative shrink-0"
             aria-label="View group members"
           >
-            {conversation.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={conversation.avatar_url} alt="" className="h-10 w-10 rounded-full object-cover ring-1 ring-black/10" />
-            ) : (
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#EDE4FF] to-[#D8C7FA] text-[#6D4AC2]">
-                <Users className="h-5 w-5" />
-              </span>
-            )}
+            <GroupAvatar src={conversation.avatar_url} name={title} size={40} />
           </button>
         ) : (
           <Link href={otherMember?.username ? `/u/${otherMember.username}` : '#'}>
