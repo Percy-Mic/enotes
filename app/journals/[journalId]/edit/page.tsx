@@ -64,7 +64,7 @@ import {
 } from '@/lib/editor/journalDocument';
 
 import { useHistory, useHistoryShortcuts } from '@/lib/editor/history';
-import { uploadFile } from '@/lib/storage/upload';
+import { extractPrivateStoragePath, getMediaUrl, uploadFile } from '@/lib/storage/upload';
 import { useMobileGestures } from '@/lib/gestures/useMobileGestures';
 
 import StickerPicker from '@/components/pickers/StickerPicker';
@@ -75,6 +75,7 @@ import IconPicker, { IconGlyph } from '@/components/pickers/IconPicker';
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 1.25;
 const MOBILE_BP = 1024;
+const JOURNAL_DRAFT_PREFIX = 'enotes:journal-draft:';
 
 const GRID_SIZE = 10;
 const SNAP_DISTANCE = 8;
@@ -1000,6 +1001,63 @@ export default function JournalCanvasStudio() {
       const fetchedPages =
         pagesResult.data;
 
+      const refreshElements = async (
+
+
+        elements: CanvasElement[],
+
+
+      ): Promise<CanvasElement[]> =>
+
+
+        Promise.all(
+
+
+          elements.map(async (element) => {
+
+
+            if (element.type !== 'media' || !element.media_url) return element;
+
+
+            const path =
+
+
+              element.media_path ||
+
+
+              extractPrivateStoragePath('journal-media', element.media_url);
+
+
+            if (!path) return element;
+
+
+            const freshUrl = await getMediaUrl('journal-media', path);
+
+
+            return {
+
+
+              ...element,
+
+
+              media_path: path,
+
+
+              media_url: freshUrl || element.media_url,
+
+
+            };
+
+
+          }),
+
+
+        );
+
+
+      
+
+
       const nextDoc: JournalDocument =
         journal
           ? {
@@ -1073,14 +1131,93 @@ export default function JournalCanvasStudio() {
                 ).map(normalizePage),
             }
           : emptyDocument();
+      let loadedDoc: JournalDocument = {
+        ...nextDoc,
+        coverElements: await refreshElements(nextDoc.coverElements),
+        pages: await Promise.all(
+          nextDoc.pages.map(async (page) => ({
+            ...page,
+            elements: await refreshElements(page.elements),
+          })),
+        ),
+      };
+
+      const coverPath = extractPrivateStoragePath(
+        'journal-media',
+        loadedDoc.coverMediaUrl,
+      );
+      if (coverPath) {
+        const freshCoverUrl = await getMediaUrl(
+          'journal-media',
+          coverPath,
+        );
+        if (freshCoverUrl) {
+          loadedDoc = {
+            ...loadedDoc,
+            coverMediaUrl: freshCoverUrl,
+          };
+        }
+      }
+
+      let recoveredDraft = false;
+      try {
+        const rawDraft = window.localStorage.getItem(
+          JOURNAL_DRAFT_PREFIX + journalId,
+        );
+        if (rawDraft) {
+          const parsed = JSON.parse(rawDraft);
+          if (
+            parsed?.version === 1 &&
+            parsed?.doc &&
+            Array.isArray(parsed.doc.pages)
+          ) {
+            const draftDoc = parsed.doc as JournalDocument;
+            loadedDoc = {
+              ...draftDoc,
+              coverElements: await refreshElements(
+                Array.isArray(draftDoc.coverElements)
+                  ? draftDoc.coverElements
+                  : [],
+              ),
+              pages: await Promise.all(
+                draftDoc.pages.map(async (page) => ({
+                  ...page,
+                  elements: await refreshElements(
+                    Array.isArray(page.elements) ? page.elements : [],
+                  ),
+                })),
+              ),
+            };
+            const draftCoverPath = extractPrivateStoragePath(
+              'journal-media',
+              loadedDoc.coverMediaUrl,
+            );
+            if (draftCoverPath) {
+              const freshDraftCoverUrl = await getMediaUrl(
+                'journal-media',
+                draftCoverPath,
+              );
+              if (freshDraftCoverUrl) {
+                loadedDoc = {
+                  ...loadedDoc,
+                  coverMediaUrl: freshDraftCoverUrl,
+                };
+              }
+            }
+            recoveredDraft = true;
+          }
+        }
+      } catch {}
 
       setInitialDoc(
-        nextDoc,
+        loadedDoc,
       );
 
       reset(
-        nextDoc,
-        'Loaded from database',
+        loadedDoc,
+        recoveredDraft
+          ? 'Recovered unsaved changes'
+          : 'Loaded from database',
       );
 
       if (
@@ -2017,7 +2154,13 @@ export default function JournalCanvasStudio() {
             content:
               file.name,
             media_url:
+
               upload.url,
+
+            media_path:
+
+              upload.path,
+
             media_type:
               mediaType,
             object_fit:
@@ -3406,6 +3549,21 @@ export default function JournalCanvasStudio() {
       },
       [setState],
     );
+  /* Keep a local recovery copy so an accidental refresh cannot beat the
+     database autosave and discard the current editor state. */
+  useEffect(() => {
+    if (!journalId || !initialDoc || !dirty) return;
+    try {
+      window.localStorage.setItem(
+        JOURNAL_DRAFT_PREFIX + journalId,
+        JSON.stringify({
+          version: 1,
+          savedAt: Date.now(),
+          doc,
+        }),
+      );
+    } catch {}
+  }, [journalId, initialDoc, dirty, doc]);
 
   const saveAll = useCallback(
     async (
@@ -3604,6 +3762,22 @@ export default function JournalCanvasStudio() {
         setDeletedPageIds(
           [],
         );
+
+        try {
+
+
+          window.localStorage.removeItem(
+
+
+            JOURNAL_DRAFT_PREFIX + journalId,
+
+
+          );
+
+
+        } catch {}
+
+
 
         setLastSavedAt(
           new Date(),

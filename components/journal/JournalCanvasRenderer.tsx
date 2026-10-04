@@ -42,6 +42,7 @@ export interface CanvasElement {
 
   media_url?: string;
   media_type?: string;
+  media_path?: string;
 
   href?: string;
 
@@ -439,6 +440,11 @@ export function normalizeElement(
           : type === 'text' && contentLooksLikeGifUrl
             ? String(raw.content).trim()
             : undefined,
+
+    media_path:
+      raw?.media_path != null
+        ? String(raw.media_path).trim()
+        : undefined,
 
     media_type:
       raw?.media_type != null

@@ -15,6 +15,7 @@ export interface CanvasElement {
   content: string;
   media_url?: string;
   media_type?: string;
+  media_path?: string;
   href?: string;
   position_x: number;
   position_y: number;

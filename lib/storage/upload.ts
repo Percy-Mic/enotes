@@ -201,3 +201,25 @@ export async function getMediaUrl(bucket: UploadContext, path: string): Promise<
   if (error || !data) return '';
   return data.signedUrl;
 }
+
+/** Recover the durable Supabase Storage object path from a signed URL. */
+export function extractPrivateStoragePath(
+  bucket: UploadContext,
+  value: string | null | undefined,
+): string | null {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    const signed = `/storage/v1/object/sign/${bucket}/`;
+    const publicObject = `/storage/v1/object/public/${bucket}/`;
+    if (parsed.pathname.startsWith(signed)) {
+      return decodeURIComponent(parsed.pathname.slice(signed.length)).replace(/^\/+/, '') || null;
+    }
+    if (parsed.pathname.startsWith(publicObject)) {
+      return decodeURIComponent(parsed.pathname.slice(publicObject.length)).replace(/^\/+/, '') || null;
+    }
+  } catch {}
+  return null;
+}
