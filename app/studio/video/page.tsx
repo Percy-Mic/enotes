@@ -787,9 +787,11 @@ function clipBoxRect(clip: VideoClip, canvasW: number, canvasH: number) {
       ? clip.source_width / clip.source_height
       : canvasW / Math.max(1, canvasH);
   const effAspect = croppedAspect(srcAspect, clip.transform.crop);
-  const cover = coverFit(canvasW, canvasH, effAspect);
-  const w = cover.w * clip.transform.scale * clip.transform.scale_x;
-  const h = cover.h * clip.transform.scale * clip.transform.scale_y;
+  /* Match renderer.ts: the source starts contained, then user transforms may
+     deliberately move/scale it beyond the canvas for entrance animations. */
+  const fit = containFit(canvasW, canvasH, effAspect);
+  const w = fit.w * clip.transform.scale * clip.transform.scale_x;
+  const h = fit.h * clip.transform.scale * clip.transform.scale_y;
   return {
     cx: canvasW / 2 + clip.transform.offset_x,
     cy: canvasH / 2 + clip.transform.offset_y,
@@ -849,25 +851,20 @@ function maxContainedClipScale(clip: VideoClip, canvasW: number, canvasH: number
 function containClipTransform(
   clip: VideoClip,
   transform: VideoClip['transform'],
-  canvasW: number,
-  canvasH: number,
+  _canvasW: number,
+  _canvasH: number,
 ) {
-  const next = {
-    ...transform,
-    scale: clampNum(
-      Number.isFinite(transform.scale) ? transform.scale : 1,
-      0.05,
-      maxContainedClipScale({ ...clip, transform }, canvasW, canvasH),
-    ),
-  };
-  const box = clipBoxRect({ ...clip, transform: next }, canvasW, canvasH);
-  const ext = rotatedHalfExtents(box.w, box.h, next.rotation);
-  const cx = clampNum(box.cx, ext.x, Math.max(ext.x, canvasW - ext.x));
-  const cy = clampNum(box.cy, ext.y, Math.max(ext.y, canvasH - ext.y));
+  /* Allow intentional off-canvas movement; only bound scale itself. */
+  void clip;
+  void _canvasW;
+  void _canvasH;
   return {
-    ...next,
-    offset_x: Math.round(cx - canvasW / 2),
-    offset_y: Math.round(cy - canvasH / 2),
+    ...transform,
+    scale: clampNum(Number.isFinite(transform.scale) ? transform.scale : 1, 0.05, 4),
+    scale_x: clampNum(Number.isFinite(transform.scale_x) ? transform.scale_x : 1, 0.05, 4),
+    scale_y: clampNum(Number.isFinite(transform.scale_y) ? transform.scale_y : 1, 0.05, 4),
+    offset_x: Number.isFinite(transform.offset_x) ? transform.offset_x : 0,
+    offset_y: Number.isFinite(transform.offset_y) ? transform.offset_y : 0,
   };
 }
 
@@ -3872,44 +3869,114 @@ function VideoEditor() {
     setSelectedElementId(el.id);
     setSelectedClipId(null);
     setPointerDragId(el.id);
+
     const startX = e.clientX;
     const startY = e.clientY;
+    const originalStart = el.start;
+    const originalTrackId = el.track_id || project.tracks.find((t) => t.kind === 'overlay')?.id;
     const len = Math.max(0.2, el.end - el.start);
-    const startStart = el.start;
-    const maxStart = Math.max(duration, el.end) - len;
     let moved = false;
-    let currentTrack = el.track_id || project.tracks[0]?.id || '';
+    let invalidDrop = false;
+    let currentTrack = originalTrackId || '';
 
     const laneRects = () =>
       Array.from(timelineRef.current?.querySelectorAll<HTMLElement>('[data-lane-id]') || []).map((n) => ({
         id: n.dataset.laneId || '',
+        kind: n.dataset.laneKind || '',
         top: n.getBoundingClientRect().top,
         bottom: n.getBoundingClientRect().bottom,
       }));
 
+    const overlaps = (p: VideoProject, laneId: string, start: number, end: number) =>
+      p.elements.some((other) => {
+        if (other.id === el.id) return false;
+        const otherLane = other.track_id || p.tracks.find((t) => t.kind === 'overlay')?.id;
+        if (otherLane !== laneId) return false;
+        return start < other.end - 0.001 && end > other.start + 0.001;
+      });
+
+    const restoreOriginal = () => {
+      updateElement(el.id, { start: originalStart, end: originalStart + len, track_id: originalTrackId }, 'Restore overlay position', 'elrestore-' + el.id);
+      currentTrack = originalTrackId || '';
+    };
+
     const onMove = (ev: PointerEvent) => {
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < TAP_SLOP) return;
       moved = true;
-      const dx = (ev.clientX - startX) / Math.max(1, pxPerSec);
-      let nextStart = Math.max(0, Math.min(maxStart, startStart + dx));
-      nextStart = snapTimelineTime(nextStart);
-      updateElement(el.id, { start: nextStart, end: nextStart + len }, 'Move overlay on timeline', `tlmove-${el.id}`);
 
-      /* vertical: switch lane when the finger crosses one */
-      const lane = laneRects().find((l) => ev.clientY >= l.top && ev.clientY <= l.bottom);
-      if (!lane || lane.id === currentTrack) return;
-      if (lane.id === '__main') {
+      const dx = (ev.clientX - startX) / Math.max(1, pxPerSec);
+      const nextStart = snapTimelineTime(Math.max(0, originalStart + dx));
+      const nextEnd = nextStart + len;
+      const lanes = laneRects();
+
+      const lane = lanes.find((l) => ev.clientY >= l.top && ev.clientY <= l.bottom);
+      if (lane && lane.id === '__main') {
         if (el.kind === 'video') {
           const latest = docRef.current.project.elements.find((x) => x.id === el.id);
-          if (latest) { moveVideoOverlayToMainTrack(latest); setPointerDragId(null); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp); }
+          if (latest) {
+            moveVideoOverlayToMainTrack(latest);
+            setPointerDragId(null);
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+            window.removeEventListener('pointercancel', onUp);
+          }
         }
         return;
       }
-      currentTrack = lane.id;
-      moveElementToEditorTrack(el.id, lane.id);
+
+      const overlayLanes = lanes.filter((l) => l.kind === 'overlay').sort((a, b) => a.top - b.top);
+      const lastOverlay = overlayLanes[overlayLanes.length - 1];
+      const belowLastLane = !!lastOverlay && ev.clientY > lastOverlay.bottom;
+
+      if (belowLastLane && lastOverlay?.id === currentTrack) {
+        updateProject((p) => {
+          const liveLanes = p.tracks.filter((t) => t.kind === 'overlay').sort((a, b) => a.order - b.order);
+          const liveLast = liveLanes[liveLanes.length - 1];
+          if (!liveLast || liveLast.id !== currentTrack) return p;
+          const newTrack: TimelineTrack = {
+            id: makeVideoId('track'),
+            name: 'Overlay ' + (liveLanes.length + 1),
+            kind: 'overlay',
+            order: Math.max(...p.tracks.map((t) => t.order), -1) + 1,
+            muted: false,
+            locked: false,
+          };
+          currentTrack = newTrack.id;
+          invalidDrop = false;
+          return {
+            ...p,
+            tracks: [...p.tracks, newTrack],
+            elements: p.elements.map((item) => item.id === el.id
+              ? { ...item, start: nextStart, end: nextEnd, track_id: newTrack.id }
+              : item),
+          };
+        }, 'Create overlay track', 'ellane-' + el.id);
+        return;
+      }
+
+      if (lane && lane.kind === 'overlay' && lane.id !== currentTrack) {
+        const target = docRef.current.project.tracks.find((t) => t.id === lane.id);
+        if (!target || target.locked || overlaps(docRef.current.project, target.id, nextStart, nextEnd)) {
+          invalidDrop = true;
+          return;
+        }
+        currentTrack = target.id;
+        invalidDrop = false;
+        updateElement(el.id, { start: nextStart, end: nextEnd, track_id: target.id }, 'Move overlay to track', 'tltrack-' + el.id);
+        return;
+      }
+
+      if (currentTrack && overlaps(docRef.current.project, currentTrack, nextStart, nextEnd)) {
+        invalidDrop = true;
+        return;
+      }
+      invalidDrop = false;
+      updateElement(el.id, { start: nextStart, end: nextEnd, track_id: currentTrack }, 'Move overlay on timeline', 'tlmove-' + el.id);
     };
+
     const onUp = () => {
       setPointerDragId(null);
+      if (invalidDrop) restoreOriginal();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -3967,11 +4034,12 @@ function VideoEditor() {
     setPointerDragId(a.id);
 
     const startX = e.clientX;
-    const startY = e.clientY;
-    const startStart = a.start;
-    const startTrackId = a.track_id || project.tracks.find((t) => t.kind === 'audio')?.id;
+    const originalStart = a.start;
+    const originalTrackId = a.track_id || project.tracks.find((t) => t.kind === 'audio')?.id;
+    const clipLen = Math.max(0.1, a.trimEnd - a.trimStart);
     let moved = false;
-    let currentTrackId = startTrackId;
+    let invalidDrop = false;
+    let currentTrackId = originalTrackId;
 
     const laneRects = () =>
       Array.from(timelineRef.current?.querySelectorAll<HTMLElement>('[data-lane-kind="audio"]') || []).map((n) => ({
@@ -3980,60 +4048,83 @@ function VideoEditor() {
         bottom: n.getBoundingClientRect().bottom,
       }));
 
+    const overlaps = (p: VideoProject, laneId: string, start: number, end: number) =>
+      p.audio.some((other) => {
+        if (other.id === a.id) return false;
+        const otherLane = other.track_id || p.tracks.find((t) => t.kind === 'audio')?.id;
+        if (otherLane !== laneId) return false;
+        const otherStart = other.start;
+        const otherEnd = otherStart + Math.max(0.1, other.trimEnd - other.trimStart);
+        return start < otherEnd - 0.001 && end > otherStart + 0.001;
+      });
+
+    const restoreOriginal = () => {
+      updateAudio(a.id, { start: originalStart, track_id: originalTrackId }, 'Restore audio position', 'audrestore-' + a.id);
+      currentTrackId = originalTrackId;
+    };
+
     const onMove = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < TAP_SLOP) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - e.clientY) < TAP_SLOP) return;
       moved = true;
 
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
-      const ns = snapTimelineTime(Math.max(0, startStart + d));
+      const ns = snapTimelineTime(Math.max(0, originalStart + d));
+      const nextEnd = ns + clipLen;
       const lanes = laneRects();
-      const currentLane = lanes.find((l) => l.id === currentTrackId);
-      const belowLastLane = lanes.length > 0 && ev.clientY > Math.max(...lanes.map((l) => l.bottom));
+      const audioTracks = docRef.current.project.tracks.filter((t) => t.kind === 'audio').sort((x, y) => x.order - y.order);
+      const lastAudio = audioTracks[audioTracks.length - 1];
 
-      if (belowLastLane) {
+      const belowLastLane = !!lastAudio && lanes.length > 0 && ev.clientY > Math.max(...lanes.map((l) => l.bottom));
+      if (belowLastLane && lastAudio?.id === currentTrackId) {
         updateProject((p) => {
-          const audioTracks = p.tracks.filter((t) => t.kind === 'audio').sort((x, y) => x.order - y.order);
-          const last = audioTracks[audioTracks.length - 1];
-          if (!last || last.id !== currentTrackId) {
-            return { ...p, audio: p.audio.map((item) => item.id === a.id ? { ...item, start: ns } : item) };
-          }
-
-          const newTrack = {
+          const liveTracks = p.tracks.filter((t) => t.kind === 'audio').sort((x, y) => x.order - y.order);
+          const liveLast = liveTracks[liveTracks.length - 1];
+          if (!liveLast || liveLast.id !== currentTrackId) return p;
+          const newTrack: TimelineTrack = {
             id: makeVideoId('track'),
-            name: `A${audioTracks.length + 1}`,
-            kind: 'audio' as const,
+            name: 'A' + (liveTracks.length + 1),
+            kind: 'audio',
             order: Math.max(...p.tracks.map((t) => t.order), -1) + 1,
             muted: false,
             locked: false,
             solo: false,
           };
-
           currentTrackId = newTrack.id;
+          invalidDrop = false;
           return {
             ...p,
             tracks: [...p.tracks, newTrack],
             audio: p.audio.map((item) => item.id === a.id ? { ...item, start: ns, track_id: newTrack.id } : item),
           };
-        }, 'Create audio track', `audlane-${a.id}`);
+        }, 'Create audio track', 'audlane-' + a.id);
         return;
       }
 
       const lane = lanes.find((l) => ev.clientY >= l.top && ev.clientY <= l.bottom);
       if (lane && lane.id !== currentTrackId) {
         const target = docRef.current.project.tracks.find((t) => t.id === lane.id);
-        if (target && !target.locked) {
-          currentTrackId = target.id;
-          updateAudio(a.id, { start: ns, track_id: target.id }, 'Move audio to track', `audtrack-${a.id}`);
+        if (!target || target.locked || overlaps(docRef.current.project, target.id, ns, nextEnd)) {
+          invalidDrop = true;
           return;
         }
+        currentTrackId = target.id;
+        invalidDrop = false;
+        updateAudio(a.id, { start: ns, track_id: target.id }, 'Move audio to track', 'audtrack-' + a.id);
+        return;
       }
 
-      updateAudio(a.id, { start: ns }, 'Move audio', `audmove-${a.id}`);
+      if (currentTrackId && overlaps(docRef.current.project, currentTrackId, ns, nextEnd)) {
+        invalidDrop = true;
+        return;
+      }
+      invalidDrop = false;
+      updateAudio(a.id, { start: ns, track_id: currentTrackId }, 'Move audio', 'audmove-' + a.id);
     };
 
     const onUp = () => {
       setPointerDragId(null);
       if (!moved) openTool('audio');
+      else if (invalidDrop) restoreOriginal();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
