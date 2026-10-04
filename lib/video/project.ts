@@ -990,7 +990,6 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
     version: 3,
     aspect,
     canvas,
-    background,
     clips: [],
     elements: [],
     audio: [],
