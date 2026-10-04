@@ -15,6 +15,11 @@ export const metadata: Metadata = {
   description: 'An artistic, interactive, highly customizable online journal.',
   manifest: '/manifest.webmanifest',
   applicationName: 'enotes',
+  appleWebApp: {
+    capable: true,
+    title: 'enotes',
+    statusBarStyle: 'default',
+  },
 };
 
 export const viewport: Viewport = {
