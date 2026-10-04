@@ -4715,7 +4715,7 @@ function VideoEditor() {
       const nearY = Math.abs(ay - hh) <= Math.max(16, hh * 0.16);
       const outside = ax > hw || ay > hh;
 
-      if (outside && radial < 0.35) return 'rotate';
+      if ((outside || nearX || nearY) && radial < 0.35) return 'rotate';
       if ((nearX || nearY) && radial > 0.35) {
         if (nearX && nearY) {
           if (Math.abs(mx) >= Math.abs(my)) return lx < 0 ? 'resize-nw' : 'resize-ne';
@@ -4771,13 +4771,20 @@ function VideoEditor() {
         const nw = clampNum(startGeometry.width * factor, minSize, 1400);
         const nh = clampNum(startGeometry.height * factor, minSize, 1400);
         const nextFont = scaledTextSize(nw, nh);
+        let nextX = centerX - (nw / Math.max(0.001, startGeometry.scale)) / 2;
+        let nextY = centerY - (nh / Math.max(0.001, startGeometry.scale)) / 2;
+        if (startEl.kind === 'text') {
+          const constrained = constrainTextBox(startEl, nextX, nextY, nw, nh, startGeometry.rotation);
+          nextX = constrained.x;
+          nextY = constrained.y;
+        }
         updateElement(
           el.id,
           {
             width: Math.round(nw / Math.max(0.001, startGeometry.scale)),
             height: Math.round(nh / Math.max(0.001, startGeometry.scale)),
-            x: Math.round(centerX - (nw / Math.max(0.001, startGeometry.scale)) / 2),
-            y: Math.round(centerY - (nh / Math.max(0.001, startGeometry.scale)) / 2),
+            x: Math.round(nextX),
+            y: Math.round(nextY),
             ...(nextFont != null ? { font_size: nextFont } : {}),
           },
           'Resize overlay',
@@ -10636,7 +10643,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
             <Move className="h-4 w-4 shrink-0 text-[#E5798F]" />
             <div className="min-w-0">
               <p className="text-[10px] font-bold text-white">Transform on canvas</p>
-              <p className="text-[9px] leading-4 text-white/40">Drag to position · use the floating controls to resize or rotate · pinch with two fingers on touch.</p>
+              <p className="text-[9px] leading-4 text-white/40">Drag inside to move · drag outward from an edge to resize · drag around the edge to rotate · pinch or twist on touch.</p>
             </div>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
