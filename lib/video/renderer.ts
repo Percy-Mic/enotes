@@ -1146,7 +1146,27 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
 
   const rawContent = el.content || '';
   const content = el.text_case === 'uppercase' ? rawContent.toUpperCase() : el.text_case === 'lowercase' ? rawContent.toLowerCase() : el.text_case === 'capitalize' ? rawContent.replace(/\b\w/g, (m) => m.toUpperCase()) : rawContent;
-  const lines = content.split('\n');
+
+  /* Wrap long text to the actual box instead of letting one unbroken line
+     become wider than its selection frame. Explicit newlines are preserved. */
+  const wrapWidth = Math.max(12, el.width * 0.94);
+  const lines = content.split('\n').flatMap((paragraph) => {
+    if (!paragraph) return [''];
+    const words = paragraph.split(/\s+/);
+    const wrapped: string[] = [];
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? line + ' ' + word : word;
+      if (line && ctx.measureText(candidate).width > wrapWidth) {
+        wrapped.push(line);
+        line = word;
+      } else {
+        line = candidate;
+      }
+    }
+    wrapped.push(line);
+    return wrapped;
+  });
 
   /* Typography is container-aware: the requested size is the design size,
      but the renderer automatically fits it inside the element box. This
@@ -1158,8 +1178,8 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
      24px/20px minimums meant a tiny text container could still calculate a
      font from a larger virtual box, making glyphs appear outside the handles. */
   /* Keep only a small breathing room inside the selection box. */
-  const availableWidth = Math.max(1, el.width * 0.97);
-  const availableHeight = Math.max(1, el.height * 0.94);
+  const availableWidth = Math.max(1, el.width * 0.94);
+  const availableHeight = Math.max(1, el.height * 0.90);
   const widthFit = longestLine > 0 ? (availableWidth / longestLine) : 1;
   const heightFit = lineHeightRequested * lines.length > 0
     ? (availableHeight / (lineHeightRequested * lines.length))
