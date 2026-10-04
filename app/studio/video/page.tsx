@@ -4718,6 +4718,8 @@ function VideoEditor() {
   };
 
   /* ---------- main-clip gestures on the canvas ----------
+     Main media may intentionally travel beyond the canvas for keyframed
+     entrance/exit animations; only the visible canvas area is composited. */
      The clip is represented by its rendered box (cover-fit × scale ×
      axis-scale, offset from center). Move = offset_x/y, corner =
      uniform scale, edges = scale_x/scale_y, top handle = rotation.
