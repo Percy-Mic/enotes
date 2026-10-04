@@ -4497,6 +4497,65 @@ function VideoEditor() {
 
   /** Geometry actually rendered at the current playhead. The preview,
       selection frame, hit-testing and handles must all use this same box. */
+  const tightenTextElement = useCallback((el: TimelineElement) => {
+    if (el.kind !== 'text' || !el.content) return;
+    /* Text controllers must wrap the actual rendered text, not the old
+       oversized editing rectangle. Measure with the same font settings used
+       by the canvas renderer and preserve the element center while tightening. */
+    if (typeof document === 'undefined') return;
+    const probe = document.createElement('canvas');
+    const ctx = probe.getContext('2d');
+    if (!ctx) return;
+    const size = Math.max(1, el.font_size || 48);
+    ctx.font = `${el.font_weight || 700} ${size}px ${el.font_family || 'Poppins, sans-serif'}`;
+    const raw = el.text_case === 'uppercase'
+      ? el.content.toUpperCase()
+      : el.text_case === 'lowercase'
+        ? el.content.toLowerCase()
+        : el.text_case === 'capitalize'
+          ? el.content.replace(/\b\w/g, (m) => m.toUpperCase())
+          : el.content;
+    const maxWidth = Math.max(12, el.width);
+    const lines = raw.split('\\n').flatMap((paragraph) => {
+      if (!paragraph) return [''];
+      const words = paragraph.split(/\s+/);
+      const out: string[] = [];
+      let line = '';
+      for (const word of words) {
+        const candidate = line ? `${line} ${word}` : word;
+        if (line && ctx.measureText(candidate).width > maxWidth) {
+          out.push(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      }
+      out.push(line);
+      return out;
+    });
+    const longest = lines.reduce((m, line) => Math.max(m, ctx.measureText(line).width), 0);
+    const lineHeight = size * (el.line_height || 1.25);
+    const nextWidth = Math.max(24, Math.ceil(longest));
+    const nextHeight = Math.max(24, Math.ceil(lines.length * lineHeight));
+    if (nextWidth >= el.width - 2 && nextHeight >= el.height - 2) return;
+    const cx = el.x + el.width / 2;
+    const cy = el.y + el.height / 2;
+    const patch = {
+      width: nextWidth,
+      height: nextHeight,
+      x: Math.round(cx - nextWidth / 2),
+      y: Math.round(cy - nextHeight / 2),
+      background_padding: 0,
+    };
+    updateElement(el.id, patch, 'Tighten text container', `tight-text-${el.id}`);
+  }, [updateElement]);
+
+  useEffect(() => {
+    if (!selectedElementId) return;
+    const el = docRef.current.project.elements.find((item) => item.id === selectedElementId);
+    if (el?.kind === 'text') tightenTextElement(el);
+  }, [selectedElementId, tightenTextElement]);
+
   const elementVisualGeometry = (el: TimelineElement) => {
     const timeIn = Math.max(0, Math.min(el.end - el.start, playheadRef.current - el.start));
     const v = resolveElementValues(el, timeIn);
