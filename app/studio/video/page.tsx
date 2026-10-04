@@ -1307,7 +1307,10 @@ function VideoEditor() {
         };
 
         updateProject(
-          (p) => ({ ...p, audio: [...p.audio, track] }),
+          (p) => {
+            const lane = assignAudioTrack(p, track.start, track.start + Math.max(0.1, track.trimEnd - track.trimStart));
+            return { ...p, tracks: lane.tracks, audio: [...p.audio, { ...track, track_id: lane.trackId }] };
+          },
           'Add AI audio',
         );
 
@@ -1926,7 +1929,10 @@ function VideoEditor() {
         trimStart: 0, trimEnd: Math.max(1, Math.min(data.duration_seconds || 15, 15)),
         volume: 0.8, fadeIn: 0.5, fadeOut: 1, kind: 'music',
       };
-      updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'Add sound from library');
+      updateProject((p) => {
+        const lane = assignAudioTrack(p, track.start, track.start + Math.max(0.1, track.trimEnd - track.trimStart));
+        return { ...p, tracks: lane.tracks, audio: [...p.audio, { ...track, track_id: lane.trackId }] };
+      }, 'Add sound from library');
       notify(`“${data.title}” added to your timeline.`);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4203,6 +4209,31 @@ function VideoEditor() {
   };
 
   /* ---------- element ops ---------- */
+  const assignAudioTrack = (p: VideoProject, start: number, end: number) => {
+    const lanes = p.tracks.filter((t) => t.kind === 'audio').sort((a, b) => a.order - b.order);
+    const free = lanes.find((lane) =>
+      !lane.locked && !lane.muted &&
+      p.audio.every((other) => {
+        const otherLane = other.track_id || lanes[0]?.id;
+        if (otherLane !== lane.id) return true;
+        const otherEnd = other.start + Math.max(0.1, other.trimEnd - other.trimStart);
+        return end <= other.start + 0.001 || start >= otherEnd - 0.001;
+      })
+    );
+    if (free) return { tracks: p.tracks, trackId: free.id };
+    const next: TimelineTrack = {
+      id: makeVideoId('track'),
+      name: 'A' + (lanes.length + 1),
+      kind: 'audio',
+      order: Math.max(...p.tracks.map((t) => t.order), -1) + 1,
+      muted: false,
+      locked: false,
+      solo: false,
+    };
+    return { tracks: [...p.tracks, next], trackId: next.id };
+  };
+
+
   /*
    * Overlay lanes are exclusive: two elements may share a lane only when
    * their timeline intervals do not overlap. New elements automatically use
@@ -7914,7 +7945,10 @@ function VideoEditor() {
                 kind: 'music',
               };
 
-              updateProject((p) => ({ ...p, audio: [...p.audio, track] }), 'AI add library audio');
+              updateProject((p) => {
+                const lane = assignAudioTrack(p, track.start, track.start + Math.max(0.1, track.trimEnd - track.trimStart));
+                return { ...p, tracks: lane.tracks, audio: [...p.audio, { ...track, track_id: lane.trackId }] };
+              }, 'AI add library audio');
               setSelectedAudioId(track.id);
               openTool('audio');
               notify('“' + data.title + '” added from the sound library.');
