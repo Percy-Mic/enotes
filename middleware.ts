@@ -30,6 +30,11 @@ const GOOGLE_VERIFICATION_PATH =
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // The PWA service worker is a public browser resource and must never be auth-redirected.
+  if (pathname === '/sw.js') {
+    return NextResponse.next();
+  }
+
   /*
    * IMPORTANT:
    * Google Search Console must be able to access this file
