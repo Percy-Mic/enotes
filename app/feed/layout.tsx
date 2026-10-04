@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-const SITE_URL = 'https://enotes-amber.vercel.app';
+const SITE_URL = 'https://enotes-ph.vercel.app';
 
 export const metadata: Metadata = {
   title: 'Feed | enotes',
