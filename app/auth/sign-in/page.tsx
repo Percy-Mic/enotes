@@ -159,7 +159,7 @@ function SignInForm() {
         <div className="flex items-center gap-3 auth-divider text-[9px] font-semibold uppercase tracking-[0.18em] sm:text-[10px]">
           <span className="h-px min-w-0 flex-1 auth-divider-line" />
           <span className="shrink-0">or email</span>
-          <span className="h-px min-w-0 flex-1 bg-black/10" />
+          <span className="h-px min-w-0 flex-1 auth-divider-line" />
         </div>
 
         <form onSubmit={handleSignIn} className="space-y-5">
@@ -176,18 +176,18 @@ function SignInForm() {
               autoComplete="email"
               inputMode="email"
               placeholder="you@example.com"
-              className="min-h-[52px] w-full rounded-[14px] auth-border auth-input border px-4 py-3.5 auth-ink text-[15px] leading-5 outline-none transition placeholder:text-[var(--auth-placeholder)] focus:border-[#1E90FF] focus:bg-[var(--auth-input-focus)] focus:ring-4 focus:ring-[#1E90FF]/10"
+              className="min-h-[52px] w-full rounded-[14px] auth-border auth-input border px-4 py-3.5 auth-ink text-[15px] leading-5 outline-none transition placeholder:text-[var(--auth-placeholder)] focus:border-[var(--auth-accent)] focus:bg-[var(--auth-input-focus)] focus:ring-4 focus:ring-[var(--auth-accent)]/10"
             />
           </div>
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-3">
-              <label htmlFor="signin-password" className="text-[13px] font-semibold leading-4 text-[#252525]">
+              <label htmlFor="signin-password" className="auth-ink text-[13px] font-semibold leading-4">
                 Password
               </label>
               <Link
                 href="/auth/forgot-password"
-                className="shrink-0 text-[12px] font-medium leading-4 text-[#1E90FF] hover:underline focus:outline-none focus:ring-2 focus:ring-[#1E90FF]/20"
+                className="auth-accent shrink-0 text-[12px] font-medium leading-4 hover:underline focus:outline-none focus:ring-2 focus:ring-[var(--auth-accent)]/20"
               >
                 Forgot password?
               </Link>
@@ -201,12 +201,12 @@ function SignInForm() {
                 required
                 autoComplete="current-password"
                 placeholder="Enter your password"
-                className="min-h-[52px] w-full rounded-[14px] border border-black/10 bg-[#FCFCFC] px-4 py-3.5 pr-12 text-[15px] leading-5 text-[#111] outline-none transition placeholder:text-black/30 focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
+                className="auth-border auth-input auth-ink min-h-[52px] w-full rounded-[14px] border px-4 py-3.5 pr-12 text-[15px] leading-5 outline-none transition placeholder:text-[var(--auth-placeholder)] focus:border-[var(--auth-accent)] focus:bg-[var(--auth-input-focus)] focus:ring-4 focus:ring-[var(--auth-accent)]/10"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[14px] auth-control-icon transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#1E90FF]/20"
+                className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[14px] auth-control-icon transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--auth-accent)]/25"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? (
