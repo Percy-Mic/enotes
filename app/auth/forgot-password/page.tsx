@@ -4,6 +4,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
+import AuthShell from '@/components/auth/AuthShell';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -71,14 +72,14 @@ export default function ForgotPasswordPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-2 border border-[#E8E2E4] rounded focus:outline-none focus:border-[#1E90FF]"
+              className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading || !turnstileSiteKey || !captchaToken}
-            className="w-full bg-black text-[#FFB6C1] py-3 rounded-lg font-medium shadow hover:opacity-90 disabled:opacity-50 transition"
+            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 disabled:opacity-50"
           >
             {loading ? 'Sending link...' : 'Send Reset Link'}
           </button>
