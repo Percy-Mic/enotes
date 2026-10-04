@@ -25,38 +25,38 @@ export default function AuthShell({
   return (
     <main className="min-h-[100dvh] overflow-hidden bg-[#FFF7F8] text-[#111]">
       <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1440px] lg:grid-cols-[minmax(0,1.05fr)_minmax(480px,.95fr)]">
-        <section className="relative hidden overflow-hidden bg-[#FFB6C1] p-10 lg:flex lg:flex-col lg:justify-between xl:p-14">
+        <section className="relative hidden overflow-hidden bg-[#FFB6C1] p-8 text-[#111111] lg:flex lg:flex-col lg:justify-between lg:p-10 lg:flex lg:flex-col lg:justify-between xl:p-14">
           <div className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full border-[48px] border-white/25" />
           <div className="pointer-events-none absolute -bottom-36 -left-24 h-[28rem] w-[28rem] rounded-full border-[64px] border-[#E5798F]/30" />
           <div className="relative z-10">
-            <Link href="/" className="inline-flex items-center gap-2 text-lg font-bold tracking-tight">
+            <Link href="/" className="inline-flex items-center gap-2 text-base font-bold tracking-tight sm:text-lg font-bold tracking-tight">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-black text-[#FFB6C1]">e</span>
               <span>enotes</span>
             </Link>
           </div>
           <div className="relative z-10 max-w-xl pb-8">
-            <div className="mb-5 inline-flex items-center rounded-full border border-black/10 bg-white/45 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-black/70">
+            <div className="mb-5 inline-flex items-center rounded-full border border-black/10 bg-white/60 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-black/80">
               Your digital journal
             </div>
             <h2 className="max-w-lg font-serif text-5xl font-bold leading-[1.02] tracking-[-0.04em] xl:text-6xl">
               {asideTitle}
             </h2>
-            <p className="mt-6 max-w-md text-base leading-7 text-black/65">{asideDescription}</p>
+            <p className="mt-6 max-w-md text-base leading-7 text-black/75">{asideDescription}</p>
           </div>
-          <p className="relative z-10 text-xs text-black/55">A private space for your everyday memories.</p>
+          <p className="relative z-10 text-xs text-black/65">A private space for your everyday memories.</p>
         </section>
 
-        <section className="flex min-h-[100dvh] items-center justify-center px-5 py-8 sm:px-8 lg:px-12 xl:px-16">
+        <section className="flex min-h-[100dvh] items-center justify-center px-3 py-5 sm:px-6 sm:py-8 lg:px-10 xl:px-16">
           <div className="w-full max-w-[480px]">
-            <div className="mb-7 flex items-center justify-between lg:hidden">
+            <div className="mb-5 flex items-center justify-between lg:hidden sm:mb-7">
               <Link href="/" className="inline-flex items-center gap-2 text-lg font-bold tracking-tight">
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-black text-[#FFB6C1]">e</span>
                 <span>enotes</span>
               </Link>
-              <span className="text-xs font-medium text-black/45">{eyebrow}</span>
+              <span className="text-xs font-medium text-black/65">{eyebrow}</span>
             </div>
 
-            <div className="rounded-[28px] border border-black/[0.07] bg-white p-6 shadow-[0_24px_70px_rgba(17,17,17,0.10)] sm:p-8">
+            <div className="rounded-[24px] border border-black/[0.07] bg-white p-5 sm:rounded-[28px] sm:p-7 md:p-8 shadow-[0_24px_70px_rgba(17,17,17,0.10)] sm:p-8">
               <div className="mb-7">
                 <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#1E90FF]">{eyebrow}</p>
                 <h1 className="font-serif text-[32px] font-bold leading-tight tracking-[-0.035em]">{title}</h1>
