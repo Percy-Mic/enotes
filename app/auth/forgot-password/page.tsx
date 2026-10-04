@@ -63,18 +63,18 @@ export default function ForgotPasswordPage() {
           <p className="text-sm text-[#6B6B6B] mt-1">We will send you a recovery link.</p>
         </div>
 
-        {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded">{error}</div>}
-        {message && <div className="p-3 bg-green-50 text-green-600 text-sm rounded">{message}</div>}
+          {error && <div className="break-words rounded-xl bg-red-50 p-3 text-sm leading-5 text-red-600">{error}</div>}
+          {message && <div className="break-words rounded-xl bg-green-50 p-3 text-sm leading-5 text-green-600">{message}</div>}
 
-        <form onSubmit={handlePasswordReset} className="space-y-4">
+          <form onSubmit={handlePasswordReset} className="min-w-0 space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-[#6B6B6B] mb-1">Email</label>
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#6B6B6B]">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="min-h-12 w-full rounded-xl border border-black/10 bg-[#FCFCFC] px-4 py-3 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
+              className="min-h-12 w-full min-w-0 rounded-xl border border-black/10 bg-[#FCFCFC] px-3.5 py-3 text-sm outline-none transition focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10 sm:px-4"
             />
           </div>
 
@@ -102,7 +102,7 @@ export default function ForgotPasswordPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-[#6B6B6B]">
+            <p className="pt-1 text-center text-sm leading-5 text-[#6B6B6B]">
           Remember your password?{' '}
           <Link href="/auth/sign-in" className="text-[#1E90FF] font-medium hover:underline">
             Sign in
