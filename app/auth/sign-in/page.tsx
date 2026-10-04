@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
+import SocialAuthButtons from '@/components/auth/SocialAuthButtons';
 
 function SignInForm() {
   const [email, setEmail] = useState('');
@@ -135,6 +136,10 @@ function SignInForm() {
             {resendStatus && <p className="text-xs font-semibold text-[#6B6B6B]">{resendStatus}</p>}
           </div>
         )}
+
+        <SocialAuthButtons next="/dashboard" />
+
+        <div className="flex items-center gap-3 text-xs text-[#9B9B9B]"><span className="h-px flex-1 bg-[#E8E2E4]" /><span>or continue with email</span><span className="h-px flex-1 bg-[#E8E2E4]" /></div>
 
         <form onSubmit={handleSignIn} className="space-y-4">
           <div>
