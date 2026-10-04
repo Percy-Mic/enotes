@@ -70,7 +70,7 @@ interface EditorDoc {
    Cache API stores the local File under its durable remote URL, so a later
    preview can reopen the media even when the connection is poor/offline. */
 
-const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'ai', 'crop', 'export'] as const;
+const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'ai', 'export'] as const;
 type Tool = (typeof TOOLS)[number];
 
 const TOOL_LABELS: Record<Tool, string> = {
@@ -81,7 +81,6 @@ const TOOL_LABELS: Record<Tool, string> = {
   motion: 'Motion',
   look: 'Effects',
   ai: 'AI Studio',
-  crop: 'Crop',
   export: 'Export',
 };
 
@@ -5047,7 +5046,6 @@ function VideoEditor() {
     if (!selectedClip) return;
     setPlaying(false);
     setCropMode({ type: 'clip', id: selectedClip.id, initial: selectedClip.transform.crop });
-    openTool('crop');
   };
 
   const startElementCrop = () => {
@@ -9330,7 +9328,7 @@ function VideoEditor() {
 
       {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
       <nav
-        className="sticky bottom-0 z-40 grid grid-cols-9 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:fixed md:bottom-0 md:left-0 md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
+        className="sticky bottom-0 z-40 grid grid-cols-8 border-t border-white/10 bg-[#161616]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:fixed md:bottom-0 md:left-0 md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
         aria-label="Editor tools"
       >
         {(
@@ -9342,7 +9340,6 @@ function VideoEditor() {
             ['motion', <Sparkles key="mo" className="h-5 w-5" />],
             ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
             ['ai', <Bot key="ai" className="h-5 w-5" />],
-            ['crop', <Crop key="c" className="h-5 w-5" />],
             ['export', <Upload key="e" className="h-5 w-5" />],
           ] as [Tool, React.ReactNode][]
         ).map(([id, icon]) => (
