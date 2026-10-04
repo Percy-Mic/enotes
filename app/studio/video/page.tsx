@@ -1844,6 +1844,23 @@ function VideoEditor() {
          * on every project load so a refresh can never turn a real upload into
          * a broken image/video reference.
          */
+        const recoveredAudio = await Promise.all(loadedProject.audio.map(async (track) => {
+          if (track.storage_path) {
+            const { data: publicData } = supabase.storage.from('studio-media').getPublicUrl(track.storage_path);
+            if (publicData?.publicUrl) return { ...track, src: publicData.publicUrl };
+          }
+          if (track.provider === 'feed' && track.providerId) {
+            try {
+              const response = await fetch('/api/studio/music?clipId=' + encodeURIComponent(track.providerId), { cache: 'no-store' });
+              const json = await response.json();
+              const fresh = Array.isArray(json?.results) ? json.results[0] : null;
+              if (response.ok && fresh?.url) return { ...track, src: fresh.url };
+            } catch {
+              /* A licensed track can become unavailable by territory/rights. */
+            }
+          }
+          return track;
+        }));
         const recoveredProject = {
           ...loadedProject,
           clips: loadedProject.clips.map((clip) => {
@@ -1856,11 +1873,7 @@ function VideoEditor() {
             const { data: publicData } = supabase.storage.from('studio-media').getPublicUrl(element.storage_path);
             return publicData?.publicUrl ? { ...element, src: publicData.publicUrl } : element;
           }),
-          audio: loadedProject.audio.map((track) => {
-            if (!track.storage_path) return track;
-            const { data: publicData } = supabase.storage.from('studio-media').getPublicUrl(track.storage_path);
-            return publicData?.publicUrl ? { ...track, src: publicData.publicUrl } : track;
-          }),
+          audio: recoveredAudio,
         };
         history.reset({ title: data.title, project: recoveredProject }, 'Loaded project');
         setSavedProjectId(data.id);
