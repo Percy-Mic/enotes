@@ -6058,6 +6058,7 @@ function VideoEditor() {
       return {
         ...clip,
         src: placeholderSrc(slot),
+        storage_path: undefined,
         name: clip.media_type === 'image' ? `Photo ${slot + 1}` : `Video ${slot + 1}`,
       };
     });
@@ -6068,6 +6069,7 @@ function VideoEditor() {
       return {
         ...el,
         src: placeholderSrc(slot),
+        storage_path: undefined,
         content: el.kind === 'image' ? `Photo ${slot + 1}` : `Video ${slot + 1}`,
       };
     });
@@ -6075,6 +6077,8 @@ function VideoEditor() {
     const tplAudio = project.audio.map((track, index) => ({
       ...track,
       src: isAudioPlaceholder(track.src) ? track.src : audioPlaceholderSrc(index),
+      providerId: undefined,
+      storage_path: undefined,
       name: isAudioPlaceholder(track.src) ? track.name : `Sound ${index + 1}`,
       template_slot: index,
     }));
