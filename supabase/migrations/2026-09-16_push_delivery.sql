@@ -12,7 +12,7 @@
 -- production deployment. Update platform_config key 'push_endpoint'
 -- after deploying, e.g.
 --   insert into platform_config (key, value) values
---     ('push_endpoint', '"https://enotes-amber.vercel.app/api/push/send"')
+--     ('push_endpoint', '"https://enotes-ph.vercel.app/api/push/send"')
 --   on conflict (key) do update set value = excluded.value;
 --
 -- The endpoint URL is intentionally stored in the DB (not a secret):
