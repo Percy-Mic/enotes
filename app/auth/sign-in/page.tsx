@@ -116,7 +116,7 @@ function SignInForm() {
 
   return (
     <main className="min-h-screen bg-[#FFF7F8] flex items-center justify-center p-6 text-[#111111]">
-      <div className="bg-white w-full max-w-md p-8 rounded-[20px] shadow-xl border border-[#E8E2E4] space-y-6">
+      <div className="w-full max-w-md space-y-6 rounded-[24px] border border-[#E8E2E4] bg-white p-7 shadow-xl sm:p-8">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Welcome back ♡</h1>
           <p className="text-sm text-[#6B6B6B] mt-1">Sign in to open your journals.</p>
@@ -151,7 +151,7 @@ function SignInForm() {
               required
               autoComplete="email"
               inputMode="email"
-              className="w-full px-4 py-2 border border-[#E8E2E4] rounded focus:outline-none focus:border-[#1E90FF]"
+              className="min-h-11 w-full rounded-xl border border-[#E8E2E4] px-4 py-2.5 text-sm outline-none transition focus:border-[#1E90FF] focus:ring-2 focus:ring-[#1E90FF]/10"
             />
           </div>
 
@@ -169,7 +169,7 @@ function SignInForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="w-full px-4 py-2 pr-10 border border-[#E8E2E4] rounded focus:outline-none focus:border-[#1E90FF]"
+                className="min-h-11 w-full rounded-xl border border-[#E8E2E4] px-4 py-2.5 pr-10 text-sm outline-none transition focus:border-[#1E90FF] focus:ring-2 focus:ring-[#1E90FF]/10"
               />
               <button
                 type="button"
@@ -203,7 +203,7 @@ function SignInForm() {
           <button
             type="submit"
             disabled={loading || !turnstileSiteKey || !captchaToken}
-            className="w-full bg-black text-[#FFB6C1] py-3 rounded-lg font-medium shadow hover:opacity-90 disabled:opacity-50 transition"
+            className="w-full min-h-12 rounded-xl bg-black px-4 py-3 font-semibold text-[#FFB6C1] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
