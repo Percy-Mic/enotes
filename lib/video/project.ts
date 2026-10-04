@@ -668,6 +668,14 @@ export function coverFit(boxW: number, boxH: number, aspect: number): { w: numbe
   return { w: boxW, h: boxW / aspect };
 }
 
+/** Contain-fit a region of `aspect` inside a box without cropping or overflow. */
+export function containFit(boxW: number, boxH: number, aspect: number): { w: number; h: number } {
+  const safeAspect = Math.max(0.01, aspect);
+  const boxAspect = boxW / Math.max(1, boxH);
+  if (safeAspect > boxAspect) return { w: boxW, h: boxW / safeAspect };
+  return { w: boxH * safeAspect, h: boxH };
+}
+
 export function normalizeProject(input: unknown): VideoProject {
   const raw = (input && typeof input === 'object' ? input : {}) as Partial<VideoProject> & Record<string, unknown>;
   const aspect = (['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'] as AspectRatio[]).includes(raw.aspect as AspectRatio)
