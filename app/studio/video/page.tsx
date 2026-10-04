@@ -3999,14 +3999,26 @@ function VideoEditor() {
     const startStart = el.start;
     const startEnd = el.end;
     const maxEnd = Math.max(duration, el.end);
+    const laneId = el.track_id || project.tracks.find((t) => t.kind === 'overlay')?.id;
+    const conflicts = (start: number, end: number) =>
+      docRef.current.project.elements.some((other) =>
+        other.id !== el.id &&
+        (other.track_id || docRef.current.project.tracks.find((t) => t.kind === 'overlay')?.id) === laneId &&
+        start < other.end - 0.001 &&
+        end > other.start + 0.001
+      );
     const onMove = (ev: PointerEvent) => {
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
       if (edge === 'start') {
         const ns = Math.max(0, Math.min(startEnd - 0.2, startStart + d));
-        updateElement(el.id, { start: ns }, 'Trim overlay start', `tltrim-${el.id}`);
+        if (!conflicts(ns, startEnd)) {
+          updateElement(el.id, { start: ns }, 'Trim overlay start', `tltrim-${el.id}`);
+        }
       } else {
         const ne = Math.max(startStart + 0.2, Math.min(maxEnd, startEnd + d));
-        updateElement(el.id, { end: ne }, 'Trim overlay end', `tltrim-${el.id}`);
+        if (!conflicts(startStart, ne)) {
+          updateElement(el.id, { end: ne }, 'Trim overlay end', `tltrim-${el.id}`);
+        }
       }
     };
     const onUp = () => {
@@ -4143,15 +4155,18 @@ function VideoEditor() {
     const startX = e.clientX;
     const startTrimS = a.trimStart;
     const startTrimE = a.trimEnd;
+    const laneId = a.track_id || project.tracks.find((t) => t.kind === 'audio')?.id;
+    const conflicts = (start: number, end: number) =>
+      docRef.current.project.audio.some((other) => {
+        if (other.id === a.id) return false;
+        const otherLane = other.track_id || docRef.current.project.tracks.find((t) => t.kind === 'audio')?.id;
+        if (otherLane !== laneId) return false;
+        const otherEnd = other.start + Math.max(0.1, other.trimEnd - other.trimStart);
+        return start < otherEnd - 0.001 && end > other.start + 0.001;
+      });
     const onMove = (ev: PointerEvent) => {
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
       if (edge === 'start') {
-        /*
-         * The left edge is a PROJECT-TIMELINE edge, so moving it must move
-         * both the track start and the source trim start by the same amount.
-         * Previously only trimStart changed while CSS left stayed fixed,
-         * making a "drag the left handle" gesture visually trim the wrong side.
-         */
         const sourceDuration = Math.max(startTrimE, Number(a.sourceDuration) || startTrimE);
         const maxDelta = Math.max(-startTrimS, startTrimE - startTrimS - 0.2);
         const delta = Math.max(-startTrimS, Math.min(maxDelta, d));
@@ -4161,29 +4176,20 @@ function VideoEditor() {
         const safeDelta = Math.max(-startTrimS, Math.min(startTrimE - startTrimS - 0.2, snappedDelta));
         const ns = Math.max(0, Math.min(sourceDuration - 0.2, startTrimS + safeDelta));
         const nextStart = Math.max(0, a.start + (ns - startTrimS));
-        updateAudio(
-          a.id,
-          { start: nextStart, trimStart: ns },
-          'Trim audio start',
-          `audtrim-${a.id}`
-        );
+        if (!conflicts(nextStart, a.start + Math.max(0.1, startTrimE - ns))) {
+          updateAudio(a.id, { start: nextStart, trimStart: ns }, 'Trim audio start', `audtrim-${a.id}`);
+        }
       } else {
-        const sourceDuration = Math.max(
-          startTrimE,
-          Number(a.sourceDuration) || startTrimE
-        );
-        const neRaw = Math.max(
-          startTrimS + 0.2,
-          Math.min(sourceDuration, startTrimE + d)
-        );
+        const sourceDuration = Math.max(startTrimE, Number(a.sourceDuration) || startTrimE);
+        const neRaw = Math.max(startTrimS + 0.2, Math.min(sourceDuration, startTrimE + d));
         const endProject = a.start + Math.max(0.1, neRaw - startTrimS);
         const snappedEnd = snapTimelineTime(endProject);
         const snappedDelta = snappedEnd - (a.start + Math.max(0.1, startTrimE - startTrimS));
-        const ne = Math.max(
-          startTrimS + 0.2,
-          Math.min(sourceDuration, startTrimE + snappedDelta)
-        );
-        updateAudio(a.id, { trimEnd: ne }, 'Trim audio end', `audtrim-${a.id}`);
+        const ne = Math.max(startTrimS + 0.2, Math.min(sourceDuration, startTrimE + snappedDelta));
+        const nextEnd = a.start + Math.max(0.1, ne - startTrimS);
+        if (!conflicts(a.start, nextEnd)) {
+          updateAudio(a.id, { trimEnd: ne }, 'Trim audio end', `audtrim-${a.id}`);
+        }
       }
     };
     const onUp = () => {
