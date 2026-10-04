@@ -28,7 +28,7 @@ import { drawAdvancedEffectStack } from '@/lib/video/advanced-effects';
    ============================================================ */
 
 import {
-  clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder,
+  clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder, isAudioPlaceholder,
   coverFit, croppedAspect, resolveElementValues,
   type VideoProject, type TimelineElement, type VideoClip, type CropRect, type ClipAdjustments, type EffectType,
 } from '@/lib/video/project';
@@ -2616,6 +2616,8 @@ export class VideoRenderer {
       const audioTracks = project.tracks.filter((t) => t.kind === 'audio');
       const audioSoloActive = audioTracks.some((t) => t.solo);
       for (const audio of project.audio) {
+        /* Template sound slots are intentionally silent until replaced. */
+        if (isAudioPlaceholder(audio.src)) continue;
         const lane = audioTracks.find((t) => t.id === audio.track_id) || audioTracks[0];
         if (lane?.muted) continue;
         if (audioSoloActive && !lane?.solo) continue;
@@ -2700,7 +2702,7 @@ export class VideoRenderer {
           (el.volume ?? 1) > 0
         ) ||
         scaled.audio.some((track) => {
-          if (!track.src || track.volume <= 0) return false;
+          if (!track.src || isAudioPlaceholder(track.src) || track.volume <= 0) return false;
           const lane = exportAudioLanes.find((t) => t.id === track.track_id) || exportAudioLanes[0];
           if (lane?.muted) return false;
           if (exportSoloActive && !lane?.solo) return false;
