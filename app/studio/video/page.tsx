@@ -6029,6 +6029,86 @@ function VideoEditor() {
   };
 
   const placeholders = project.clips.filter((c) => isPlaceholder(c.src));
+  const templateMediaSlots = [
+    ...project.clips.filter((c) => isPlaceholder(c.src)).map((c) => ({ kind: 'clip' as const, id: c.id, slot: Number(c.src.split('/').pop()) || 0, name: c.name })),
+    ...project.elements.filter((e) => (e.kind === 'image' || e.kind === 'video') && isPlaceholder(e.src)).map((e) => ({ kind: 'element' as const, id: e.id, slot: Number((e.src || '').split('/').pop()) || 0, name: e.content || e.kind })),
+  ].sort((a, b) => a.slot - b.slot);
+  const templateAudioSlots = project.audio
+    .filter((a) => isAudioPlaceholder(a.src))
+    .map((a) => ({ ...a, slot: Number(a.template_slot ?? a.src.split('/').pop()) || 0 }))
+    .sort((a, b) => a.slot - b.slot);
+
+  const batchReplaceTemplateMedia = useCallback(async (files: FileList | File[]) => {
+    if (!meId || !templateMediaSlots.length) return;
+    const incoming = Array.from(files).filter((file) => file.type.startsWith('video/') || file.type.startsWith('image/'));
+    if (!incoming.length) return notify('Choose video or image files for the template media slots.');
+    const replacements: Array<{ slot: number; url: string; name: string; mediaType: 'video' | 'image'; duration: number; w: number; h: number }> = [];
+    for (let i = 0; i < Math.min(incoming.length, templateMediaSlots.length); i++) {
+      const file = incoming[i];
+      try {
+        let meta = { duration: 4, w: 1080, h: 1080 };
+        if (file.type.startsWith('image/')) {
+          const local = URL.createObjectURL(file);
+          try { const img = new Image(); img.src = local; await img.decode(); meta = { duration: 4, w: img.naturalWidth || 1080, h: img.naturalHeight || 1080 }; } finally { URL.revokeObjectURL(local); }
+        } else {
+          const local = URL.createObjectURL(file);
+          try {
+            meta = await new Promise<{duration:number;w:number;h:number}>((resolve, reject) => {
+              const v = document.createElement('video'); v.preload = 'metadata';
+              v.onloadedmetadata = async () => resolve({ duration: await normalizeVideoDuration(v) || 5, w: v.videoWidth || 1080, h: v.videoHeight || 1920 });
+              v.onerror = () => reject(new Error('Could not read ' + file.name)); v.src = local;
+            });
+          } finally { URL.revokeObjectURL(local); }
+        }
+        const up = await uploadFile(file, 'studio-media', meId);
+        replacements.push({ slot: templateMediaSlots[i].slot, url: up.url, name: file.name, mediaType: file.type.startsWith('image/') ? 'image' : 'video', ...meta });
+      } catch (e) { notify(e instanceof Error ? e.message : 'Could not upload template media.'); }
+    }
+    if (!replacements.length) return;
+    updateProject((p) => ({
+      ...p,
+      clips: p.clips.map((clip) => {
+        const slot = Number(clip.src.split('/').pop());
+        const r = replacements.find((item) => item.slot === slot);
+        return r ? { ...clip, src: r.url, name: r.name, media_type: r.mediaType, sourceDuration: r.duration, trimStart: 0, trimEnd: r.mediaType === 'image' ? 4 : r.duration, volume: r.mediaType === 'image' ? 0 : clip.volume, muted: r.mediaType === 'image' ? true : clip.muted, source_width: r.w, source_height: r.h } : clip;
+      }),
+      elements: p.elements.map((el) => {
+        if (!isPlaceholder(el.src)) return el;
+        const slot = Number((el.src || '').split('/').pop());
+        const r = replacements.find((item) => item.slot === slot);
+        return r ? { ...el, src: r.url, content: r.name, media_type: r.mediaType, source_duration: r.duration, trim_start: 0, trim_end: r.duration } : el;
+      }),
+    }), 'Batch replace template media');
+    notify(`${replacements.length} template media slot${replacements.length === 1 ? '' : 's'} replaced. The edit recipe stayed intact.`);
+  }, [meId, notify, templateMediaSlots, updateProject]);
+
+  const batchReplaceTemplateAudio = useCallback(async (files: FileList | File[]) => {
+    if (!meId || !templateAudioSlots.length) return;
+    const incoming = Array.from(files).filter((file) => file.type.startsWith('audio/'));
+    if (!incoming.length) return notify('Choose audio files for the template sound slots.');
+    const replacements: Array<{ slot: number; url: string; name: string; duration: number }> = [];
+    for (let i = 0; i < Math.min(incoming.length, templateAudioSlots.length); i++) {
+      const file = incoming[i];
+      try {
+        const local = URL.createObjectURL(file);
+        const duration = await new Promise<number>((resolve) => { const a = document.createElement('audio'); a.preload = 'metadata'; a.onloadedmetadata = () => resolve(Number.isFinite(a.duration) && a.duration > 0 ? a.duration : 15); a.onerror = () => resolve(15); a.src = local; });
+        URL.revokeObjectURL(local);
+        const up = await uploadFile(file, 'studio-media', meId);
+        replacements.push({ slot: templateAudioSlots[i].slot, url: up.url, name: file.name, duration });
+      } catch (e) { notify(e instanceof Error ? e.message : 'Could not upload template sound.'); }
+    }
+    if (!replacements.length) return;
+    updateProject((p) => ({
+      ...p,
+      audio: p.audio.map((track) => {
+        const slot = Number(track.template_slot ?? (track.src || '').split('/').pop());
+        const r = replacements.find((item) => item.slot === slot);
+        if (!r) return track;
+        return { ...track, src: r.url, name: r.name, sourceDuration: r.duration, trimStart: 0, trimEnd: Math.min(r.duration, Math.max(0.1, track.trimEnd)), provider: 'upload' };
+      }),
+    }), 'Batch replace template sounds');
+    notify(`${replacements.length} template sound${replacements.length === 1 ? '' : 's'} replaced. Timing and effects stayed intact.`);
+  }, [meId, notify, templateAudioSlots, updateProject]);
 
   /* ruler tick step adapts to zoom so labels never collide */
   const tickStep = pxPerSec >= 90 ? 1 : pxPerSec >= 45 ? 2 : 5;
@@ -6180,7 +6260,19 @@ function VideoEditor() {
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center">
             <span className="font-bold text-[#FFB6C1]">Template remix</span>
             <span>Transitions, effects, text, timing and sound processing stay locked into this project.</span>
-            <span className="text-white/50">Select a media clip or sound and use Replace to swap the source without rebuilding the edit.</span>
+            <span className="text-white/50">Replace the source media or sounds — the template's transitions, effects, text, timing and keyframes stay intact.</span>
+            {templateMediaSlots.length > 0 && (
+              <label className="cursor-pointer rounded-full bg-white px-3 py-1.5 text-[9px] font-bold text-black hover:bg-white/90">
+                Batch replace media
+                <input type="file" accept="video/*,image/*" multiple className="hidden" onChange={(e) => { void batchReplaceTemplateMedia(e.target.files || []); e.currentTarget.value = ''; }} />
+              </label>
+            )}
+            {templateAudioSlots.length > 0 && (
+              <label className="cursor-pointer rounded-full border border-white/20 bg-black/20 px-3 py-1.5 text-[9px] font-bold text-white hover:bg-white/10">
+                Replace sounds
+                <input type="file" accept="audio/*" multiple className="hidden" onChange={(e) => { void batchReplaceTemplateAudio(e.target.files || []); e.currentTarget.value = ''; }} />
+              </label>
+            )}
           </div>
         </div>
       )}
