@@ -4197,6 +4197,34 @@ function VideoEditor() {
   };
 
   /* ---------- element ops ---------- */
+  /*
+   * Overlay lanes are exclusive: two elements may share a lane only when
+   * their timeline intervals do not overlap. New elements automatically use
+   * the first free lane; if every lane is occupied, a new lane is created.
+   */
+  const assignOverlayTrack = (p: VideoProject, start: number, end: number): { tracks: TimelineTrack[]; trackId: string } => {
+    const lanes = p.tracks.filter((track) => track.kind === 'overlay').sort((a, b) => a.order - b.order);
+    const free = lanes.find((lane) =>
+      !lane.locked &&
+      !p.elements.some((other) =>
+        (other.track_id || lanes[0]?.id) === lane.id &&
+        start < other.end - 0.001 &&
+        end > other.start + 0.001
+      )
+    );
+    if (free) return { tracks: p.tracks, trackId: free.id };
+
+    const next: TimelineTrack = {
+      id: makeVideoId('track'),
+      name: 'Overlay ' + (lanes.length + 1),
+      kind: 'overlay',
+      order: Math.max(...p.tracks.map((track) => track.order), -1) + 1,
+      muted: false,
+      locked: false,
+    };
+    return { tracks: [...p.tracks, next], trackId: next.id };
+  };
+
   const addCaptionElement = () => {
     const start = playheadRef.current;
     const el: TimelineElement = {
@@ -4204,7 +4232,7 @@ function VideoEditor() {
       kind: 'text',
       content: 'Caption',
       src: null,
-      track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
+      track_id: undefined,
       start,
       end: Math.min(duration, start + 3),
       x: project.canvas.width * 0.08,
@@ -4224,7 +4252,10 @@ function VideoEditor() {
       shadow: true,
       animation: 'pop',
     };
-    updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add caption');
+    updateProject((p) => {
+      const lane = assignOverlayTrack(p, el.start, el.end);
+      return { ...p, tracks: lane.tracks, elements: [...p.elements, { ...el, track_id: lane.trackId }] };
+    }, 'Add caption');
     setSelectedClipId(null);
     setSelectedElementId(el.id);
     openTool('text');
@@ -4280,7 +4311,7 @@ function VideoEditor() {
   const addTextElement = () => {
     const hasContent = project.clips.length + project.elements.length + project.audio.length > 0;
     const el: TimelineElement = {
-      id: makeVideoId('el'), kind: 'text', content: 'Your text', src: null, track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
+      id: makeVideoId('el'), kind: 'text', content: 'Your text', src: null, track_id: undefined,
       start: playheadRef.current, end: hasContent ? Math.min(duration, playheadRef.current + 3) : playheadRef.current + 3,
       /* New text is created around the canvas center, not near the bottom.
          x/y are the element's top-left coordinates throughout the editor. */
@@ -4292,7 +4323,10 @@ function VideoEditor() {
       font_size: 54, font_family: 'Poppins, sans-serif', font_weight: 700, color: '#FFFFFF',
       align: 'center', background: null, stroke_color: '#000000', shadow: true, animation: 'pop',
     };
-    updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add text');
+    updateProject((p) => {
+      const lane = assignOverlayTrack(p, el.start, el.end);
+      return { ...p, tracks: lane.tracks, elements: [...p.elements, { ...el, track_id: lane.trackId }] };
+    }, 'Add text');
     setSelectedElementId(el.id);
     openTool('text');
   };
@@ -4327,7 +4361,10 @@ function VideoEditor() {
     const width = Math.min(project.canvas.width * 0.45, Math.max(120, item.width || 320));
     const height = width * ((item.height || 240) / Math.max(1, item.width || 320));
     const el: TimelineElement = { id: makeVideoId('el'), kind: 'gif', content: item.description || 'GIF', src: item.url, track_id: project.tracks[0]?.id, start, end, x: project.canvas.width / 2 - width / 2, y: project.canvas.height / 2 - height / 2, width, height, rotation: 0, opacity: 1, z: project.elements.length + 1, animation: 'pop', object_fit: 'contain' };
-    updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add GIF');
+    updateProject((p) => {
+      const lane = assignOverlayTrack(p, el.start, el.end);
+      return { ...p, tracks: lane.tracks, elements: [...p.elements, { ...el, track_id: lane.trackId }] };
+    }, 'Add GIF');
     setSelectedElementId(el.id); setSelectedClipId(null); notify('GIF added to the overlay track.');
   }, [duration, notify, project.audio.length, project.canvas.height, project.canvas.width, project.clips.length, project.elements.length, project.tracks, updateProject]);
 
@@ -4362,7 +4399,10 @@ function VideoEditor() {
         start: playheadRef.current, end: Math.min(duration, playheadRef.current + durationForLayer),
         x: (project.canvas.width - width) / 2, y: (project.canvas.height - height) / 2, width, height, rotation: 0, opacity: 1, z: project.elements.length + 1, animation: 'fade',
       };
-      updateProject((p) => ({ ...p, elements: [...p.elements, el] }), 'Add video overlay');
+      updateProject((p) => {
+        const lane = assignOverlayTrack(p, el.start, el.end);
+        return { ...p, tracks: lane.tracks, elements: [...p.elements, { ...el, track_id: lane.trackId }] };
+      }, 'Add video overlay');
       setSelectedElementId(el.id);
       setSelectedClipId(null);
       notify('Video overlay added. Drag it on the canvas or timeline.');
