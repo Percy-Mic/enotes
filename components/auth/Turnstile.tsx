@@ -48,9 +48,11 @@ function loadTurnstile(): Promise<void> {
 
     if (existing) {
       existing.addEventListener('load', finish, { once: true });
-      existing.addEventListener('error', () => reject(new Error('Could not load Cloudflare Turnstile.')), {
-        once: true,
-      });
+      existing.addEventListener(
+        'error',
+        () => reject(new Error('Could not load Cloudflare Turnstile.')),
+        { once: true }
+      );
       return;
     }
 
@@ -161,18 +163,56 @@ const EnotesTurnstile = forwardRef<TurnstileHandle, TurnstileProps>(function Eno
 
   if (loadError) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">
-        {loadError}
+      <div className="rounded-2xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-xs leading-relaxed text-amber-900 shadow-sm">
+        <div className="flex items-start gap-2.5">
+          <span
+            aria-hidden="true"
+            className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-[11px] font-bold"
+          >
+            !
+          </span>
+          <div>
+            <p className="font-semibold">Security check unavailable</p>
+            <p className="mt-0.5 text-amber-800">{loadError}</p>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="flex min-h-[65px] w-full justify-center overflow-hidden rounded-lg"
+    <section
+      className="w-full rounded-2xl border border-black/[0.07] bg-white/75 p-3 shadow-[0_8px_24px_rgba(0,0,0,0.05)] backdrop-blur-sm sm:p-3.5"
       aria-label="Security verification"
-    />
+    >
+      <div className="mb-2.5 flex items-center justify-between gap-3 px-0.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden="true"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#1e90ff]/10 text-[#1e90ff]"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 3 5 6v5c0 4.5 2.9 8.4 7 10 4.1-1.6 7-5.5 7-10V6l-7-3Z" />
+              <path d="m9.2 12 1.8 1.8 3.8-4" />
+            </svg>
+          </span>
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold leading-tight text-black">Security check</p>
+            <p className="mt-0.5 text-[11px] leading-tight text-black/50">
+              Verify that you’re human to continue.
+            </p>
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full bg-black/[0.035] px-2 py-1 text-[9px] font-medium uppercase tracking-[0.12em] text-black/40">
+          Protected
+        </span>
+      </div>
+
+      <div
+        ref={containerRef}
+        className="flex min-h-[65px] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
+      />
+    </section>
   );
 });
 
