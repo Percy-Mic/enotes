@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Bookmark, BookmarkCheck, ChevronDown, ChevronRight, Crown, Film, Image as ImageIcon, Play, Search, Sparkles, Star } from 'lucide-react';
+import { ArrowRight, Bookmark, BookmarkCheck, ChevronDown, ChevronRight, Crown, Film, Play, Search, Sparkles, Star } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useEntitlements } from '@/lib/entitlements';
 
@@ -267,5 +267,5 @@ export default function TemplatesPage() {
         </div>
       </div>
     </main>
-  );  );
+  );
 }
