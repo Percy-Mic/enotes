@@ -1,19 +1,37 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
 
 function SignInForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [resendStatus, setResendStatus] = useState<string | null>(null);
+  const turnstileRef = useRef<TurnstileHandle | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
+
+  const handleCaptchaToken = useCallback((token: string) => {
+    setCaptchaToken(token);
+    setError(null);
+  }, []);
+
+  const handleCaptchaReset = useCallback(() => {
+    setCaptchaToken(null);
+  }, []);
+
+  const handleCaptchaError = useCallback(() => {
+    setCaptchaToken(null);
+    setError('The security check could not be completed. Please try again.');
+  }, []);
 
   useEffect(() => {
     const errorParam = searchParams.get('error');
@@ -27,17 +45,34 @@ function SignInForm() {
     setLoading(true);
     setError(null);
 
+    if (!turnstileSiteKey) {
+      setError('The security check is not configured yet. Please contact support.');
+      setLoading(false);
+      return;
+    }
+
+    if (!captchaToken) {
+      setError('Please complete the security check before signing in.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
+        options: { captchaToken },
       });
 
       if (error) {
         console.error('Sign-in error:', error.message);
         setError(error.message);
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
         setLoading(false);
       } else {
+        turnstileRef.current?.reset();
+        setCaptchaToken(null);
         /* Middleware sets ?redirect=/path when bouncing anonymous visitors;
            honor it (local paths only — same guard as /auth/callback). */
         const raw = searchParams.get('redirect');
@@ -48,6 +83,8 @@ function SignInForm() {
     } catch (err: any) {
       console.error('Unexpected sign-in exception:', err);
       setError(err.message || 'An unexpected error occurred during sign in.');
+      turnstileRef.current?.reset();
+      setCaptchaToken(null);
       setLoading(false);
     }
   };
@@ -142,16 +179,25 @@ function SignInForm() {
                 ) : (
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477-2.943-8.268-7-9.542-7z" />
                   </svg>
                 )}
               </button>
             </div>
           </div>
 
+          <EnotesTurnstile
+            ref={turnstileRef}
+            siteKey={turnstileSiteKey}
+            action="login"
+            onToken={handleCaptchaToken}
+            onExpire={handleCaptchaReset}
+            onError={handleCaptchaError}
+          />
+
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !turnstileSiteKey || !captchaToken}
             className="w-full bg-black text-[#FFB6C1] py-3 rounded-lg font-medium shadow hover:opacity-90 disabled:opacity-50 transition"
           >
             {loading ? 'Signing in...' : 'Sign In'}
