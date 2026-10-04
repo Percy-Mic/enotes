@@ -4052,6 +4052,7 @@ function VideoEditor() {
     setPointerDragId(a.id);
 
     const startX = e.clientX;
+    const startY = e.clientY;
     const originalStart = a.start;
     const originalTrackId = a.track_id || project.tracks.find((t) => t.kind === 'audio')?.id;
     const clipLen = Math.max(0.1, a.trimEnd - a.trimStart);
@@ -4082,7 +4083,7 @@ function VideoEditor() {
     };
 
     const onMove = (ev: PointerEvent) => {
-      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - e.clientY) < TAP_SLOP) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < TAP_SLOP) return;
       moved = true;
 
       const d = (ev.clientX - startX) / Math.max(1, pxPerSec);
