@@ -145,6 +145,9 @@ export interface VideoClip {
   effect_intensity?: number;
   /** Multiple composable effects. Legacy `effect` remains as the first layer when this is absent. */
   effects?: VideoEffectLayer[];
+  /** Template media slot metadata. `template_duration` controls the initial fill length, then normal editing can change it. */
+  template_slot?: number;
+  template_duration?: number;
   /** transition INTO this clip (plays over the previous clip's tail) */
   transitionIn: { type: TransitionType; duration: number };
   /** Optional transform/audio keyframes for professional motion control. */
@@ -734,6 +737,8 @@ export function normalizeProject(input: unknown): VideoProject {
       ...(sanitizeKeyframes(clip.keyframes) ? { keyframes: sanitizeKeyframes(clip.keyframes) } : {}),
       ...(Number(clip.source_width) > 0 ? { source_width: Number(clip.source_width) } : {}),
       ...(Number(clip.source_height) > 0 ? { source_height: Number(clip.source_height) } : {}),
+      ...(Number(clip.template_slot) >= 0 ? { template_slot: Number(clip.template_slot) } : {}),
+      ...(Number(clip.template_duration) > 0 ? { template_duration: Number(clip.template_duration) } : {}),
     };
   }) : [];
 
@@ -1119,16 +1124,19 @@ export function templatePlaceholders(project: VideoProject): TemplatePlaceholder
 export function fillPlaceholder(project: VideoProject, slot: number, src: string, sourceDuration: number, name: string): VideoProject {
   return {
     ...project,
-    clips: project.clips.map((clip) =>
-      clip.src === placeholderSrc(slot)
-        ? {
-            ...clip,
-            src,
-            name,
-            sourceDuration: sourceDuration || clip.sourceDuration || 10,
-            trimEnd: Math.min(clip.trimEnd || 10, sourceDuration || clip.trimEnd || 10),
-          }
-        : clip
-    ),
+    clips: project.clips.map((clip) => {
+      if (clip.src !== placeholderSrc(slot)) return clip;
+      const actualDuration = Math.max(0.1, Number(sourceDuration) || 0.1);
+      const templateDuration = Math.max(0.1, Number(clip.template_duration) || clipDuration(clip));
+      const replacementDuration = Math.min(actualDuration, templateDuration * Math.max(clip.speed, 0.05));
+      return {
+        ...clip,
+        src,
+        name,
+        sourceDuration: actualDuration,
+        trimStart: 0,
+        trimEnd: Math.max(0.1, replacementDuration),
+      };
+    }),
   };
 }
