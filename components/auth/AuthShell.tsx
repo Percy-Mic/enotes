@@ -53,10 +53,10 @@ export default function AuthShell({
           <div className="w-full max-w-[500px] min-w-0">
             <div className="mb-4 flex items-center justify-between gap-3 px-1 sm:mb-6 lg:hidden">
               <Link href="/" className="inline-flex min-w-0 items-center gap-2 text-[16px] font-bold tracking-[-0.02em]">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-black text-[19px] leading-none text-[#FFB6C1]">e</span>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--auth-primary-bg)] text-[19px] leading-none text-[var(--auth-primary-ink)]">e</span>
                 <span>enotes</span>
               </Link>
-              <span className="shrink-0 rounded-full bg-black/[0.045] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] auth-subtle">
+              <span className="shrink-0 rounded-full auth-brand-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] auth-subtle">
                 {eyebrow}
               </span>
             </div>
@@ -67,7 +67,7 @@ export default function AuthShell({
                 <h1 className="font-[cursive] text-[30px] font-bold leading-[1.08] tracking-[-0.02em] sm:text-[34px]">
                   {title}
                 </h1>
-                <p className="mt-2.5 max-w-[43ch] text-[13px] leading-[1.55] text-black/55 sm:text-[14px]">
+                <p className="mt-2.5 max-w-[43ch] text-[13px] leading-[1.55] auth-muted sm:text-[14px]">
                   {description}
                 </p>
               </div>
