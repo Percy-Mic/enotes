@@ -4165,6 +4165,28 @@ function VideoEditor() {
     return up.url;
   }, [meId, project.aspect]);
 
+  const uploadStudioMediaWithMeta = useCallback(async (file: File): Promise<{ url: string; path: string }> => {
+    if (!meId) throw new Error('Sign in to upload media.');
+    const up = await uploadFile(file, 'studio-media', meId);
+    let mediaUrl = up.url;
+    try {
+      const response = await fetch('/api/video/cloudinary', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          url: up.url,
+          mediaType: file.type.startsWith('image/') ? 'image' : file.type.startsWith('audio/') ? 'audio' : 'video',
+          mode: project.aspect === '9:16' ? 'vertical' : project.aspect === '1:1' ? 'square' : 'optimize',
+        }),
+      });
+      const cloudinary = await response.json().catch(() => ({}));
+      if (response.ok && typeof cloudinary.url === 'string' && cloudinary.url) mediaUrl = cloudinary.url;
+    } catch {
+      /* Keep the durable Supabase URL if Cloudinary is unavailable. */
+    }
+    return { url: mediaUrl, path: up.path };
+  }, [meId, project.aspect]);
+
   const addTextElement = () => {
     const hasContent = project.clips.length + project.elements.length + project.audio.length > 0;
     const el: TimelineElement = {
@@ -4239,12 +4261,13 @@ function VideoEditor() {
       });
       URL.revokeObjectURL(probeUrl);
       setImporting({ name: file.name, percent: 45 });
-      const mediaUrl = await uploadStudioMedia(file);
+      const uploaded = await uploadStudioMediaWithMeta(file);
+      const mediaUrl = uploaded.url;
       const durationForLayer = Math.max(0.2, Math.min(meta.duration || 5, Math.max(0.2, duration - playheadRef.current)));
       const width = Math.min(project.canvas.width * 0.55, Math.max(180, meta.w || 640));
       const height = width * ((meta.h || 360) / Math.max(1, meta.w || 640));
       const el: TimelineElement = {
-        id: makeVideoId('el'), kind: 'video', content: file.name, src: mediaUrl, media_type: 'video', track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
+        id: makeVideoId('el'), kind: 'video', content: file.name, src: mediaUrl, storage_path: uploaded.path, media_type: 'video', track_id: project.tracks.find((track) => track.kind === 'overlay')?.id,
         source_duration: meta.duration, trim_start: 0, trim_end: Math.min(meta.duration, durationForLayer), speed: 1, volume: 1, muted: false, object_fit: 'contain',
         start: playheadRef.current, end: Math.min(duration, playheadRef.current + durationForLayer),
         x: (project.canvas.width - width) / 2, y: (project.canvas.height - height) / 2, width, height, rotation: 0, opacity: 1, z: project.elements.length + 1, animation: 'fade',
