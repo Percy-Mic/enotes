@@ -6425,7 +6425,7 @@ function VideoEditor() {
           short (landscape phones, small laptops, many timeline lanes) —
           nothing is clipped away, and the page itself never scrolls. */}
       <div
-        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain md:pl-[74px]"
         onDragEnter={(e) => {
           if (Array.from(e.dataTransfer.types).includes('Files')) {
             e.preventDefault();
