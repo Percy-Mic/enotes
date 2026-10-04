@@ -6569,7 +6569,7 @@ function VideoEditor() {
               onAspect={cropToAspect}
               onRotate={setCropRotation}
               onFlip={setCropFlip}
-              onReset={() => applyCropChange(null)}
+              onReset={() => { setCropAspectRatio(null); applyCropChange(null); }}
               onCancel={cancelCrop}
               onApply={() => { setCropAspectRatio(null); setCropMode(null); notify('Crop applied — crop and transform settings are preserved.'); }}
             />
@@ -9667,7 +9667,10 @@ function CropOverlay({ base, crop, rotation = 0, aspectRatio, onChange, onRotate
   const begin = (ev: React.PointerEvent<HTMLDivElement>) => {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     const target = ev.target as HTMLElement | null;
-    const mode = (target?.closest?.('[data-crop-handle]') as HTMLElement | null)?.dataset.cropHandle as
+    const handleTarget = target?.closest?.('[data-crop-handle]') as HTMLElement | null;
+    const moveTarget = target?.closest?.('[data-crop-move]') as HTMLElement | null;
+    if (!handleTarget && !moveTarget) return;
+    const mode = handleTarget?.dataset.cropHandle as
       'move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw' || 'move';
 
     pointersRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
@@ -9831,7 +9834,7 @@ function CropOverlay({ base, crop, rotation = 0, aspectRatio, onChange, onRotate
       </div>
 
       <div className="absolute z-20" style={{ left, top, width, height, touchAction: 'none' }}>
-        <div className="absolute inset-0 cursor-move" data-crop-handle="move" />
+        <div className="absolute inset-0 cursor-move" data-crop-move="true" />
         {handle('nw', '-left-5 -top-5', 'cursor-nwse-resize')}
         {handle('ne', '-right-5 -top-5', 'cursor-nesw-resize')}
         {handle('sw', '-left-5 -bottom-5', 'cursor-nesw-resize')}
