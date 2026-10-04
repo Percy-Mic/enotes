@@ -4674,9 +4674,13 @@ function VideoEditor() {
        */
       if ((outside || nearX || nearY) && radial < 0.25) return 'rotate';
       if ((nearX || nearY) && radial > 0.25) {
+        /* Corner/edge direction comes from the pointer's actual local position,
+           not from the drag vector. This makes every corner predictable. */
         if (nearX && nearY) {
-          if (Math.abs(mx) >= Math.abs(my)) return lx < 0 ? 'resize-nw' : 'resize-ne';
-          return ly < 0 ? 'resize-nw' : 'resize-sw';
+          if (lx < 0 && ly < 0) return 'resize-nw';
+          if (lx >= 0 && ly < 0) return 'resize-ne';
+          if (lx < 0 && ly >= 0) return 'resize-sw';
+          return 'resize-se';
         }
         if (nearX) return lx < 0 ? 'resize-w' : 'resize-e';
         return ly < 0 ? 'resize-n' : 'resize-s';
@@ -5043,6 +5047,27 @@ function VideoEditor() {
      * operation. This keeps the artwork unobstructed and makes rotation and
      * resize discoverable through natural pointer direction.
      */
+    /* 2) Selected overlay. The first drag direction chooses move/resize/rotate. */
+    if (selectedElement) {
+      const el = selectedElement;
+      const g = elementVisualGeometry(el);
+      const margin = Math.max(18, ROTATE_OUTSIDE_BAND / Math.max(0.01, previewScale));
+      const rad = -(g.rotation * Math.PI) / 180;
+      const dx = p.x - (g.x + g.width / 2);
+      const dy = p.y - (g.y + g.height / 2);
+      const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
+      const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
+      if (
+        hitsElement(el, p.x, p.y) ||
+        (el.kind === 'text' &&
+          Math.abs(lx) <= g.width / 2 + margin &&
+          Math.abs(ly) <= g.height / 2 + margin)
+      ) {
+        beginElementGesture(el, 'auto', e);
+        return;
+      }
+    }
+
     /* 1) Selected main clip: use a slightly expanded boundary as the invisible
        candidate region so a drag just outside the media can still rotate it. */
     if (selectedClip) {
@@ -5063,26 +5088,7 @@ function VideoEditor() {
       }
     }
 
-    /* 2) Selected overlay. The first drag direction chooses move/resize/rotate. */
-    if (selectedElement) {
-      const el = selectedElement;
-      const g = elementVisualGeometry(el);
-      const margin = Math.max(18, tol);
-      const rad = -(g.rotation * Math.PI) / 180;
-      const dx = p.x - (g.x + g.width / 2);
-      const dy = p.y - (g.y + g.height / 2);
-      const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
-      const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
-      if (
-        hitsElement(el, p.x, p.y) ||
-        (el.kind === 'text' &&
-          Math.abs(lx) <= g.width / 2 + margin &&
-          Math.abs(ly) <= g.height / 2 + margin)
-      ) {
-        beginElementGesture(el, 'auto', e);
-        return;
-      }
-    }
+
 
     /* 3) tap/drag any overlay under the finger — topmost wins */
     const hit = elementAt(p.x, p.y);
