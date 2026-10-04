@@ -50,17 +50,17 @@ export default function SocialAuthButtons({ next = '/dashboard' }: Props) {
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button type="button" onClick={() => continueWith('google')} disabled={!!loading}
-          className="flex min-h-12 items-center justify-center gap-2.5 rounded-xl border border-[#E8E2E4] bg-white px-4 py-3 text-sm font-semibold text-[#111] shadow-sm transition hover:-translate-y-0.5 hover:border-black/20 hover:bg-[#FAFAFA] hover:shadow-md focus:outline-none focus:ring-4 focus:ring-[#1E90FF]/10 disabled:cursor-not-allowed disabled:opacity-60">
+          className="flex min-h-12 items-center justify-center gap-2.5 rounded-xl auth-border auth-surface auth-ink border px-4 py-3 text-sm font-semibold shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--auth-accent)] hover:bg-[var(--auth-input-hover)] hover:shadow-md focus:outline-none focus:ring-4 focus:ring-[var(--auth-accent)]/10 disabled:cursor-not-allowed disabled:opacity-60">
           <GoogleIcon />
           {loading === 'google' ? 'Connecting…' : 'Continue with Google'}
         </button>
         <button type="button" onClick={() => continueWith('facebook')} disabled={!!loading}
-          className="flex min-h-12 items-center justify-center gap-2.5 rounded-xl border border-[#E8E2E4] bg-white px-4 py-3 text-sm font-semibold text-[#111] shadow-sm transition hover:border-[#CFC7CB] hover:bg-[#FAFAFA] focus:outline-none focus:ring-2 focus:ring-[#1E90FF]/20 disabled:cursor-not-allowed disabled:opacity-60">
+          className="flex min-h-12 items-center justify-center gap-2.5 rounded-xl auth-border auth-surface auth-ink border px-4 py-3 text-sm font-semibold shadow-sm transition hover:border-[var(--auth-accent)] hover:bg-[var(--auth-input-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--auth-accent)]/20 disabled:cursor-not-allowed disabled:opacity-60">
           <FacebookIcon />
           {loading === 'facebook' ? 'Connecting…' : 'Continue with Facebook'}
         </button>
       </div>
-      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs leading-relaxed text-red-600">{error}</p>}
+      {error && <p role="alert" className="rounded-xl border border-red-300/40 bg-red-500/10 p-3 text-xs leading-relaxed text-red-600">{error}</p>}
     </div>
   );
 }
