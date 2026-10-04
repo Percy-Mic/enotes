@@ -6112,8 +6112,8 @@ function VideoEditor() {
     setExportProgress({ phase: 'preparing', percent: 0, message: 'Checking project…' });
 
     /* validate BEFORE recording so users get a clear reason, not a dead MP4 */
-    const exportProject = docRef.current.project;
-    const invalid = rendererRef.current.validateForExport(exportProject);
+    const validationProject = docRef.current.project;
+    const invalid = rendererRef.current.validateForExport(validationProject);
     if (invalid) {
       setExportProgress({ phase: 'failed', percent: 100, message: invalid });
       setExportError(invalid);
@@ -6128,6 +6128,13 @@ function VideoEditor() {
       setExportError(msg);
       return;
     }
+
+    /*
+     * Re-read AFTER saveNow(). Saving can finish a pending history update or
+     * normalize a project snapshot; exporting the pre-save reference could
+     * therefore flatten the edit that was visible one render ago.
+     */
+    const exportProject = docRef.current.project;
 
     setExporting(true);
     try {
