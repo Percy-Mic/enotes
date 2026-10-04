@@ -571,6 +571,7 @@ async function geminiStructured(
 async function geminiPlannerJsonOnce(
   prompt: string,
   model: string,
+  schema?: Record<string, unknown>,
   media?: Array<{
     url?: string | null;
     type?: 'video' | 'image' | 'audio' | null;
@@ -600,7 +601,11 @@ async function geminiPlannerJsonOnce(
         ...mediaParts.map((part) => part.inline_data ? { inline_data: part.inline_data } : { file_data: part.file_data }),
         { text: prompt },
       ] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
+      generationConfig: {
+        responseMimeType: 'application/json',
+        ...(schema ? { responseSchema: schema } : {}),
+        temperature: 0.2,
+      },
     }),
     cache: 'no-store',
   });
@@ -695,10 +700,10 @@ async function geminiPlannerStructured(
       for(const model of models){
         try{
           try{
-            return await geminiPlannerJsonOnce(prompt,model,media);
+            return await geminiPlannerJsonOnce(prompt,model,schema,media);
           }catch(visualError){
             console.error('[video-ai] Gemini planner visual request failed; retrying text-only:',model,visualError instanceof Error?visualError.message:String(visualError));
-            return await geminiPlannerJsonOnce(prompt,model);
+            return await geminiPlannerJsonOnce(prompt,model,schema);
           }
         }catch(error){
           lastError=error;
@@ -1345,27 +1350,41 @@ function buildCaptions(
 function parseJson(
   text: string,
 ) {
-  const cleaned = text
-    .replace(
-      /^\s*```(?:json)?/i,
-      '',
-    )
-    .replace(
-      /```\s*$/i,
-      '',
-    )
+  const cleaned = String(text || '')
+    .replace(/^\s*\`\`\`(?:json)?\s*/i, '')
+    .replace(/\s*\`\`\`\s*$/i, '')
     .trim();
 
+  const candidates = [cleaned];
+  const firstObject = cleaned.indexOf('{');
+  const lastObject = cleaned.lastIndexOf('}');
+
+  // Gemini can occasionally wrap otherwise valid JSON in a sentence or
+  // markdown despite JSON mode. Extract the outer object before giving up.
+  if (firstObject >= 0 && lastObject > firstObject) {
+    candidates.push(cleaned.slice(firstObject, lastObject + 1));
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      // Try the next representation.
+    }
+  }
+
+  // Conservative repair for trailing commas.
+  const objectCandidate =
+    firstObject >= 0 && lastObject > firstObject
+      ? cleaned.slice(firstObject, lastObject + 1)
+      : cleaned;
   try {
-    return JSON.parse(
-      cleaned,
-    );
+    return JSON.parse(objectCandidate.replace(/,\s*([}\]])/g, '$1'));
   } catch {
-    return {
-      text: cleaned,
-    };
+    return { text: cleaned };
   }
 }
+
 
 async function loadAIMemoryContext(
   supabase: Awaited<
@@ -3302,14 +3321,19 @@ ${beatsForPlan}
       !Array.isArray(plan.actions) ||
       !plan.actions.length
     ) {
-      /* Never turn a provider failure into a fake “AI edit”. The client must
-         receive the real failure so the user can fix the provider/configuration
-         instead of silently receiving generic edits. */
-      throw new Error(
-        plannerError ||
-          'Gemini did not return a usable editing plan. Please try again.',
+      /*
+       * Gemini/Groq formatting failures must not make the editing assistant
+       * unusable. This fallback uses only the real project timeline and local
+       * editor actions, and does not claim to understand unavailable footage.
+       */
+      plan = buildDeterministicEditPlan();
+      console.warn(
+        '[video-ai] using deterministic edit-plan fallback:',
+        plannerError || 'provider returned no usable actions',
       );
     }
+
+
 
     /*
      * Keep the server-side safety limit aligned
