@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const SITE_URL = 'https://enotes-amber.vercel.app';
+const SITE_URL = 'https://enotes-ph.vercel.app';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
