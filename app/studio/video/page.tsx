@@ -6087,6 +6087,8 @@ function VideoEditor() {
 
 
   /* ---------- export ---------- */
+  /* Export parity: always snapshot the post-save project so the MP4 cannot
+     lag one React/history update behind the edit currently visible on canvas. */
   const [exportSettings, setExportSettings] = useState<ExportSettings | null>(null);
   const settings: ExportSettings = exportSettings ?? defaultExportSettings(project);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
