@@ -27,7 +27,7 @@ The API returns short-lived signed URLs. enotes stores the provider clip ID in t
 
 The catalog is provider-controlled. A song being visible in a provider catalog does not mean it is available in every territory or for every export/share workflow.
 
-Feed Clips' current go-live documentation says its Clips service is restricted to the US and its territories and that downloads of synced content require direct rights-holder approval. Therefore the Popular music tab is intentionally empty/disabled when the provider says the current territory or collection is unavailable.
+Feed.fm currently markets a global Feed Clips offering, but the exact catalog, territories, sharing and download rights are still controlled by the contract and collections enabled for the enotes account. The editor therefore treats provider playability as authoritative instead of assuming every song is globally available. Downloads of synced clips may also require direct rights-holder approval.
 
 For the Philippines/OPM catalog, use a provider/rights deal that explicitly grants enotes the territory, synchronization, UGC, export and (if needed) commercial rights for the recordings and compositions. Do not substitute Spotify URLs or scrape CapCut.
 
