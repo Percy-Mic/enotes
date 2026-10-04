@@ -527,10 +527,14 @@ export interface AudioTrack {
   /** Timeline lane used by this audio clip. */
   track_id?: string;
   /** Optional source metadata for stock/library audio. */
-  provider?: 'library' | 'freesound' | 'jamendo' | 'coverr' | 'upload' | 'recording';
+  provider?: 'library' | 'freesound' | 'jamendo' | 'coverr' | 'feed' | 'epidemic' | 'upload' | 'recording';
   sourceUrl?: string;
   license?: string;
   creator?: string;
+  /** Provider-native identifier used to refresh expiring licensed audio URLs. */
+  providerId?: string;
+  /** Durable Supabase Storage path for user-uploaded audio. */
+  storage_path?: string;
   /** seconds into the project where playback begins */
   start: number;
   /** original source duration in seconds, when known */
