@@ -6306,6 +6306,9 @@ function VideoEditor() {
                   onApply={() => { setCropMode(null); notify('Crop applied — it renders in the export too.'); }}
                   onCancel={cancelCrop}
                   onReset={() => applyCropChange(null)}
+                  preview={{ project, time: playhead }}
+                  playhead={playhead}
+                  onSeek={seekTo}
                 />
               )}
 
@@ -9372,7 +9375,7 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, onChange
     </aside>
   );
 }
-function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, onCancel, onReset }: {
+function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, onCancel, onReset, preview, playhead = 0, onSeek }: {
   base: { left: number; top: number; width: number; height: number };
   crop: CropRect | null;
   rotation?: number;
@@ -9381,16 +9384,50 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
   onApply: () => void;
   onCancel: () => void;
   onReset: () => void;
+  preview?: { project: VideoProject; time: number };
+  playhead?: number;
+  onSeek?: (time: number) => void;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
   const cropRef = useRef<CropRect>(crop ?? { top: 0, right: 0, bottom: 0, left: 0 });
   const rotationRef = useRef(rotation);
   const pointersRef = useRef(new Map<number, { x: number; y: number }>());
   const singleRef = useRef<{ pointerId:number; mode:'move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'; startX:number; startY:number; startCrop:CropRect } | null>(null);
-  const multiRef = useRef<{ distance:number; angle:number; center:{x:number;y:number}; crop:CropRect; rotation:number } | null>(null);
+  const multiRef = useRef<{ distance:number; angle:number; crop:CropRect; rotation:number } | null>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement>(null);
+  const previewAreaRef = useRef<HTMLDivElement>(null);
+  const [frameRect, setFrameRect] = useState({ left: 0, top: 0, width: 1, height: 1 });
 
   useEffect(() => { cropRef.current = crop ?? { top: 0, right: 0, bottom: 0, left: 0 }; }, [crop]);
   useEffect(() => { rotationRef.current = rotation; }, [rotation]);
+
+  useEffect(() => {
+    if (!preview) return;
+    const canvas = previewCanvasRef.current;
+    const area = previewAreaRef.current;
+    if (!canvas || !area) return;
+    const renderer = new VideoRenderer();
+    let cancelled = false;
+    const draw = async () => {
+      if (cancelled) return;
+      try {
+        await renderer.drawFrame(canvas, preview.project, preview.time, { previewing: true, playing: false });
+      } catch { /* keep last frame while a source seeks */ }
+    };
+    void draw();
+    const update = () => {
+      const rect = area.getBoundingClientRect();
+      const W = Math.max(1, preview.project.canvas.width);
+      const H = Math.max(1, preview.project.canvas.height);
+      const scale = Math.min(rect.width / W, rect.height / H);
+      const width = W * scale;
+      const height = H * scale;
+      setFrameRect({ left: (rect.width - width) / 2, top: (rect.height - height) / 2, width, height });
+    };
+    update();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
+    ro?.observe(area);
+    return () => { cancelled = true; ro?.disconnect(); };
+  }, [preview?.project, preview?.time]);
 
   const emitCrop = (next: CropRect) => {
     const safe = sanitizeCrop(next);
@@ -9398,24 +9435,27 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
     onChange(safe);
   };
 
+  const baseScreen = preview
+    ? {
+        left: frameRect.left + base.left * (frameRect.width / Math.max(1, preview.project.canvas.width)),
+        top: frameRect.top + base.top * (frameRect.height / Math.max(1, preview.project.canvas.height)),
+        width: base.width * (frameRect.width / Math.max(1, preview.project.canvas.width)),
+        height: base.height * (frameRect.height / Math.max(1, preview.project.canvas.height)),
+      }
+    : base;
+
   const begin = (ev: React.PointerEvent) => {
     if (ev.pointerType === 'mouse' && ev.button !== 0) return;
     const target = ev.target as HTMLElement | null;
-    if (target?.closest?.('button')) return; /* let Cancel/Reset/Apply clicks through untouched */
+    if (target?.closest?.('button') || target?.closest?.('input')) return;
     const mode = (target?.closest?.('[data-crop-handle]') as HTMLElement | null)?.dataset.cropHandle as 'move'|'n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw' || 'move';
     pointersRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (pointersRef.current.size === 1) {
-      singleRef.current = { pointerId:ev.pointerId, mode, startX:ev.clientX, startY:ev.clientY, startCrop:{...cropRef.current} };
+      singleRef.current = { pointerId: ev.pointerId, mode, startX: ev.clientX, startY: ev.clientY, startCrop: { ...cropRef.current } };
     } else if (pointersRef.current.size === 2) {
       const [a,b] = Array.from(pointersRef.current.values());
       const dx=b.x-a.x, dy=b.y-a.y;
-      multiRef.current = {
-        distance:Math.max(1,Math.hypot(dx,dy)),
-        angle:Math.atan2(dy,dx)*180/Math.PI,
-        center:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},
-        crop:{...cropRef.current},
-        rotation:rotationRef.current,
-      };
+      multiRef.current = { distance: Math.max(1, Math.hypot(dx,dy)), angle: Math.atan2(dy,dx)*180/Math.PI, crop: { ...cropRef.current }, rotation: rotationRef.current };
       singleRef.current = null;
     }
     try { ev.currentTarget.setPointerCapture(ev.pointerId); } catch {}
@@ -9423,29 +9463,26 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
 
   const move = (ev: React.PointerEvent) => {
     if (!pointersRef.current.has(ev.pointerId)) return;
-    pointersRef.current.set(ev.pointerId,{x:ev.clientX,y:ev.clientY});
-    const entries=Array.from(pointersRef.current.entries());
+    pointersRef.current.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    const entries = Array.from(pointersRef.current.entries());
     if (entries.length >= 2 && multiRef.current) {
       ev.preventDefault();
-      const [a,b]=entries.slice(0,2).map(([,p])=>p);
-      const dx=b.x-a.x, dy=b.y-a.y;
+      const [pa,pb] = entries.slice(0,2).map(([,p]) => p);
+      const dx=pb.x-pa.x, dy=pb.y-pa.y;
       const distance=Math.max(1,Math.hypot(dx,dy));
       const angle=Math.atan2(dy,dx)*180/Math.PI;
-      const center={x:(a.x+b.x)/2,y:(a.y+b.y)/2};
-      const rect=ev.currentTarget.getBoundingClientRect();
-      if (!rect || rect.width<=0 || rect.height<=0) return;
       const start=multiRef.current;
       const zoom=clampNum(distance/start.distance,0.25,4);
       const sw=1-start.crop.left-start.crop.right;
       const sh=1-start.crop.top-start.crop.bottom;
-      /* Pinching outward should zoom INTO the source, so the visible crop
-         window becomes smaller. Pinching inward reveals more of the source. */
       const nw=clampNum(sw/zoom,0.06,1);
       const nh=clampNum(sh/zoom,0.06,1);
-      const cx=clampNum((center.x-rect.left)/rect.width,0,1);
-      const cy=clampNum((center.y-rect.top)/rect.height,0,1);
-      let left=clampNum(cx-(cx-start.crop.left)*(nw/Math.max(.001,sw)),0,1-nw);
-      let top=clampNum(cy-(cy-start.crop.top)*(nh/Math.max(.001,sh)),0,1-nh);
+      const center={x:(pa.x+pb.x)/2,y:(pa.y+pb.y)/2};
+      const rect={left:baseScreen.left,top:baseScreen.top,width:baseScreen.width,height:baseScreen.height};
+      const cx=clampNum((center.x-rect.left)/Math.max(1,rect.width),0,1);
+      const cy=clampNum((center.y-rect.top)/Math.max(1,rect.height),0,1);
+      const left=clampNum(cx-(cx-start.crop.left)*(nw/Math.max(.001,sw)),0,1-nw);
+      const top=clampNum(cy-(cy-start.crop.top)*(nh/Math.max(.001,sh)),0,1-nh);
       emitCrop({left,right:1-left-nw,top,bottom:1-top-nh});
       if (onRotate) {
         const delta=normalizeCropAngle(angle-start.angle);
@@ -9460,8 +9497,8 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
     const g=singleRef.current;
     if (!g || g.pointerId!==ev.pointerId) return;
     ev.preventDefault();
-    const dx=(ev.clientX-g.startX)/Math.max(1,base.width);
-    const dy=(ev.clientY-g.startY)/Math.max(1,base.height);
+    const dx=(ev.clientX-g.startX)/Math.max(1,baseScreen.width);
+    const dy=(ev.clientY-g.startY)/Math.max(1,baseScreen.height);
     let {top,right,bottom,left}=g.startCrop;
     const min=.06;
     if (g.mode==='move') {
@@ -9480,69 +9517,85 @@ function CropOverlay({ base, crop, rotation = 0, onChange, onRotate, onApply, on
     pointersRef.current.delete(ev.pointerId);
     try { ev.currentTarget.releasePointerCapture(ev.pointerId); } catch {}
     if(pointersRef.current.size===0){singleRef.current=null;multiRef.current=null;}
-    else if(pointersRef.current.size===1){
-      const [id,p]=Array.from(pointersRef.current.entries())[0];
-      singleRef.current={pointerId:id,mode:'move',startX:p.x,startY:p.y,startCrop:{...cropRef.current}};
-      multiRef.current=null;
-    }
   };
 
   const current=cropRef.current;
   const inner={
-    left:base.left+current.left*base.width,
-    top:base.top+current.top*base.height,
-    width:Math.max(8,(1-current.left-current.right)*base.width),
-    height:Math.max(8,(1-current.top-current.bottom)*base.height),
+    left:baseScreen.left+current.left*baseScreen.width,
+    top:baseScreen.top+current.top*baseScreen.height,
+    width:Math.max(8,(1-current.left-current.right)*baseScreen.width),
+    height:Math.max(8,(1-current.top-current.bottom)*baseScreen.height),
   };
 
-  return (
-    <div
-      ref={ref}
-      className="absolute inset-0 z-[70] overflow-hidden pointer-events-none"
-      role="dialog"
-      aria-label="Crop editor"
-    >
-      <div className="pointer-events-none absolute inset-0 bg-black/[0.18]" />
-      <div
-        className="pointer-events-auto absolute overflow-visible"
-        style={{left:base.left,top:base.top,width:base.width,height:base.height,touchAction:'none'}}
-        onPointerDown={begin}
-        onPointerMove={move}
-        onPointerUp={end}
-        onPointerCancel={end}
-      >
-      <div className="pointer-events-none absolute border-2 border-white shadow-[0_0_0_1px_rgba(255,255,255,0.25)]" style={{left:current.left*base.width,top:current.top*base.height,width:Math.max(8,(1-current.left-current.right)*base.width),height:Math.max(8,(1-current.top-current.bottom)*base.height)}}>
-        <div className="absolute inset-0">
-          <div className="absolute inset-y-0 left-1/3 w-px bg-white/30" />
-          <div className="absolute inset-y-0 left-2/3 w-px bg-white/30" />
-          <div className="absolute inset-x-0 top-1/3 h-px bg-white/30" />
-          <div className="absolute inset-x-0 top-2/3 h-px bg-white/30" />
+  const content = (
+    <>
+      {preview && (
+        <div ref={previewAreaRef} className="relative flex h-[min(54vh,420px)] w-full items-center justify-center overflow-hidden bg-[#f4f5f7]">
+          <canvas ref={previewCanvasRef} className="absolute inset-0 h-full w-full object-contain" />
+          <div className="pointer-events-none absolute inset-0 bg-black/[0.08]" />
+          <div
+            className="pointer-events-auto absolute overflow-visible"
+            style={{ left: baseScreen.left, top: baseScreen.top, width: baseScreen.width, height: baseScreen.height, touchAction: 'none' }}
+            onPointerDown={begin}
+            onPointerMove={move}
+            onPointerUp={end}
+            onPointerCancel={end}
+          >
+            <div className="pointer-events-none absolute border-2 border-[#12b8d6] shadow-[0_0_0_1px_rgba(18,184,214,.3)]" style={{ left: current.left*baseScreen.width, top: current.top*baseScreen.height, width: Math.max(8,(1-current.left-current.right)*baseScreen.width), height: Math.max(8,(1-current.top-current.bottom)*baseScreen.height) }}>
+              <div className="absolute inset-0">
+                <div className="absolute inset-y-0 left-1/3 w-px bg-white/50" /><div className="absolute inset-y-0 left-2/3 w-px bg-white/50" />
+                <div className="absolute inset-x-0 top-1/3 h-px bg-white/50" /><div className="absolute inset-x-0 top-2/3 h-px bg-white/50" />
+              </div>
+              {([['nw','-left-5 -top-5 cursor-nwse-resize'],['ne','-right-5 -top-5 cursor-nesw-resize'],['sw','-left-5 -bottom-5 cursor-nesw-resize'],['se','-right-5 -bottom-5 cursor-nwse-resize']] as const).map(([mode,cls]) => (
+                <span key={mode} data-crop-handle={mode} className={"absolute z-20 h-11 w-11 touch-none rounded-md "+cls} role="slider" aria-label={"Resize crop "+mode}>
+                  <span className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-[4px] border-2 border-[#12b8d6] bg-white shadow-lg" />
+                </span>
+              ))}
+              {([['n','left-1/2 top-0 h-10 w-14 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],['s','left-1/2 bottom-0 h-10 w-14 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],['w','top-1/2 left-0 h-14 w-10 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],['e','top-1/2 right-0 h-14 w-10 translate-x-1/2 -translate-y-1/2 cursor-ew-resize']] as const).map(([mode,cls]) => (
+                <span key={mode} data-crop-handle={mode} className={"absolute z-20 touch-none "+cls} role="slider" aria-label={"Resize crop "+mode}><span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#12b8d6] shadow" /></span>
+              ))}
+            </div>
+          </div>
         </div>
-        {([
-          ['nw','-left-5 -top-5 cursor-nwse-resize'],['ne','-right-5 -top-5 cursor-nesw-resize'],
-          ['sw','-left-5 -bottom-5 cursor-nesw-resize'],['se','-right-5 -bottom-5 cursor-nwse-resize']
-        ] as const).map(([mode,cls]) => (
-          <span key={mode} data-crop-handle={mode} className={"absolute z-20 h-11 w-11 touch-none rounded-md "+cls} role="slider" aria-label={"Resize crop "+mode}>
-            <span className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-lg" />
-          </span>
-        ))}
-        {([
-          ['n','left-1/2 top-0 h-10 w-14 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize'],['s','left-1/2 bottom-0 h-10 w-14 -translate-x-1/2 translate-y-1/2 cursor-ns-resize'],
-          ['w','top-1/2 left-0 h-14 w-10 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize'],['e','top-1/2 right-0 h-14 w-10 translate-x-1/2 -translate-y-1/2 cursor-ew-resize']
-        ] as const).map(([mode,cls]) => (
-          <span key={mode} data-crop-handle={mode} className={"absolute z-20 touch-none "+cls} role="slider" aria-label={"Resize crop "+mode}>
-            <span className="absolute left-1/2 top-1/2 h-1.5 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" />
-          </span>
-        ))}
-      </div>
-      </div>
-      <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
-        <div className="rounded-full bg-black/65 px-3 py-1 text-[10px] font-semibold text-white/90 backdrop-blur">Drag · Pinch to zoom · Two fingers to move · Rotate</div>
-      </div>
-      <div className="pointer-events-auto absolute inset-x-0 bottom-2 flex items-center justify-center gap-2">
-        <button onClick={onCancel} className="flex items-center gap-1 rounded-full border border-white/25 bg-black/75 px-4 py-2 text-xs font-semibold backdrop-blur"><X className="h-3.5 w-3.5" />Cancel</button>
-        <button onClick={onReset} className="rounded-full border border-white/25 bg-black/75 px-4 py-2 text-xs font-semibold backdrop-blur">Reset</button>
-        <button onClick={onApply} className="flex items-center gap-1 rounded-full bg-[#E5798F] px-4 py-2 text-xs font-bold text-white shadow"><Check className="h-3.5 w-3.5" />Apply</button>
+      )}
+      {!preview && (
+        <div className="relative h-full w-full" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end}>
+          <div className="pointer-events-none absolute inset-0 bg-black/[0.18]" />
+          <div className="pointer-events-auto absolute overflow-visible" style={{left:baseScreen.left,top:baseScreen.top,width:baseScreen.width,height:baseScreen.height,touchAction:'none'}}>
+            <div className="pointer-events-none absolute border-2 border-[#12b8d6]" style={{left:current.left*baseScreen.width,top:current.top*baseScreen.height,width:Math.max(8,(1-current.left-current.right)*baseScreen.width),height:Math.max(8,(1-current.top-current.bottom)*baseScreen.height)}} />
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  if (!preview) return <div className="absolute inset-0 z-[70]">{content}</div>;
+
+  const total = projectDuration(preview.project);
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/55 p-3 backdrop-blur-[2px]" role="dialog" aria-modal="true" aria-label="Crop editor">
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white text-[#111] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-[#e5e7eb] px-4 py-3">
+          <p className="text-base font-bold">Crop</p>
+          <button type="button" onClick={onCancel} className="flex h-8 w-8 items-center justify-center rounded-full text-[#555] hover:bg-black/5" aria-label="Close crop"><X className="h-4 w-4" /></button>
+        </div>
+        {content}
+        <div className="border-t border-[#e5e7eb] px-4 py-3">
+          {onSeek && total > 0.1 && (
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => onSeek(Math.max(0, playhead - 0.1))} className="text-[#111]"><SkipBack className="h-4 w-4" /></button>
+              <input type="range" min={0} max={total} step={0.01} value={Math.min(total, playhead)} onChange={(e) => onSeek(Number(e.target.value))} className="h-1 flex-1 accent-[#12b8d6]" aria-label="Crop preview timeline" />
+              <span className="w-20 text-right text-[10px] tabular-nums text-[#666]">{fmt(playhead)} / {fmt(total)}</span>
+            </div>
+          )}
+          <div className="mt-3 flex items-center gap-3">
+            <span className="text-xs text-[#666]">Rotate</span>
+            <input type="range" min={-180} max={180} step={1} value={Math.round(rotation)} onChange={(e) => onRotate?.(Number(e.target.value))} className="h-1 flex-1 accent-[#12b8d6]" aria-label="Rotate crop" />
+            <span className="w-12 rounded-lg bg-[#f1f2f4] px-2 py-1.5 text-center text-xs font-semibold tabular-nums">{Math.round(rotation)}°</span>
+            <button type="button" onClick={onReset} className="rounded-lg border border-[#d8dadd] px-3 py-2 text-xs font-semibold text-[#555]">Reset</button>
+            <button type="button" onClick={onApply} className="rounded-lg bg-[#12b8d6] px-4 py-2 text-xs font-bold text-white">Done</button>
+          </div>
+        </div>
       </div>
     </div>
   );
