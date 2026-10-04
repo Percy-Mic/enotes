@@ -22,7 +22,9 @@ for(const viewport of [{width:1440,height:900},{width:390,height:844}]){
       const r=await x.page.goto(base+route,{waitUntil:'domcontentloaded',timeout:8000}).catch(()=>null);
       const status=r?.status()||0;
       expect(status).toBeLessThan(500);
-      expect(new URL(x.page.url()).pathname).not.toBe('/auth/sign-in');
+      const finalPath=new URL(x.page.url()).pathname;
+      if(route==='/auth/callback') expect(finalPath).toBe('/auth/sign-in');
+      else expect(finalPath).not.toBe('/auth/sign-in');
     }
     await close(x);
   });
