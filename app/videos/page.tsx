@@ -309,7 +309,7 @@ export default function VideosPage() {
             {myLiveStream ? 'You are live · tap to end' : 'Go live'}
           </button>
           <Link
-            href="/studio/video"
+            href="/studio"
             className="rounded-full bg-[#E5798F] px-4 py-1.5 text-xs font-semibold backdrop-blur transition hover:opacity-90"
           >
             + Create video
