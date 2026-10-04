@@ -68,6 +68,31 @@ alter table public.journals enable row level security;
 alter table public.journal_pages enable row level security;
 alter table public.journal_shares enable row level security;
 
+/*
+  RLS policies are permissive (OR-ed), so leaving an older broad UPDATE policy
+  in place would still allow unauthorized edits. Remove every pre-existing
+  policy on these three tables before installing the owner/editor policies.
+*/
+do $
+declare
+  p record;
+begin
+  for p in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in ('journals', 'journal_pages', 'journal_shares')
+  loop
+    execute format(
+      'drop policy if exists %I on %I.%I',
+      p.policyname,
+      p.schemaname,
+      p.tablename
+    );
+  end loop;
+end
+$;
+
 drop policy if exists journals_select_access on public.journals;
 drop policy if exists journals_insert_owner on public.journals;
 drop policy if exists journals_update_owner on public.journals;
