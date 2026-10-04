@@ -6144,7 +6144,7 @@ function VideoEditor() {
     if (!meId || !templateMediaSlots.length) return;
     const incoming = Array.from(files).filter((file) => file.type.startsWith('video/') || file.type.startsWith('image/'));
     if (!incoming.length) return notify('Choose video or image files for the template media slots.');
-    const replacements: Array<{ slot: number; url: string; name: string; mediaType: 'video' | 'image'; duration: number; w: number; h: number }> = [];
+    const replacements: Array<{ slot: number; url: string; storage_path: string; name: string; mediaType: 'video' | 'image'; duration: number; w: number; h: number }> = [];
     for (let i = 0; i < Math.min(incoming.length, templateMediaSlots.length); i++) {
       const file = incoming[i];
       try {
@@ -6163,7 +6163,7 @@ function VideoEditor() {
           } finally { URL.revokeObjectURL(local); }
         }
         const up = await uploadFile(file, 'studio-media', meId);
-        replacements.push({ slot: templateMediaSlots[i].slot, url: up.url, name: file.name, mediaType: file.type.startsWith('image/') ? 'image' : 'video', ...meta });
+        replacements.push({ slot: templateMediaSlots[i].slot, url: up.url, storage_path: up.path, name: file.name, mediaType: file.type.startsWith('image/') ? 'image' : 'video', ...meta });
       } catch (e) { notify(e instanceof Error ? e.message : 'Could not upload template media.'); }
     }
     if (!replacements.length) return;
@@ -6172,13 +6172,13 @@ function VideoEditor() {
       clips: p.clips.map((clip) => {
         const slot = Number(clip.src.split('/').pop());
         const r = replacements.find((item) => item.slot === slot);
-        return r ? { ...clip, src: r.url, name: r.name, media_type: r.mediaType, sourceDuration: r.duration, trimStart: 0, trimEnd: r.mediaType === 'image' ? 4 : r.duration, volume: r.mediaType === 'image' ? 0 : clip.volume, muted: r.mediaType === 'image' ? true : clip.muted, source_width: r.w, source_height: r.h } : clip;
+        return r ? { ...clip, src: r.url, storage_path: r.storage_path, name: r.name, media_type: r.mediaType, sourceDuration: r.duration, trimStart: 0, trimEnd: r.mediaType === 'image' ? 4 : r.duration, volume: r.mediaType === 'image' ? 0 : clip.volume, muted: r.mediaType === 'image' ? true : clip.muted, source_width: r.w, source_height: r.h } : clip;
       }),
       elements: p.elements.map((el) => {
         if (!isPlaceholder(el.src)) return el;
         const slot = Number((el.src || '').split('/').pop());
         const r = replacements.find((item) => item.slot === slot);
-        return r ? { ...el, src: r.url, content: r.name, media_type: r.mediaType, source_duration: r.duration, trim_start: 0, trim_end: r.duration } : el;
+        return r ? { ...el, src: r.url, storage_path: r.storage_path, content: r.name, media_type: r.mediaType, source_duration: r.duration, trim_start: 0, trim_end: r.duration } : el;
       }),
     }), 'Batch replace template media');
     notify(`${replacements.length} template media slot${replacements.length === 1 ? '' : 's'} replaced. The edit recipe stayed intact.`);
@@ -6188,7 +6188,7 @@ function VideoEditor() {
     if (!meId || !templateAudioSlots.length) return;
     const incoming = Array.from(files).filter((file) => file.type.startsWith('audio/'));
     if (!incoming.length) return notify('Choose audio files for the template sound slots.');
-    const replacements: Array<{ slot: number; url: string; name: string; duration: number }> = [];
+    const replacements: Array<{ slot: number; url: string; storage_path: string; name: string; duration: number }> = [];
     for (let i = 0; i < Math.min(incoming.length, templateAudioSlots.length); i++) {
       const file = incoming[i];
       try {
@@ -6196,7 +6196,7 @@ function VideoEditor() {
         const duration = await new Promise<number>((resolve) => { const a = document.createElement('audio'); a.preload = 'metadata'; a.onloadedmetadata = () => resolve(Number.isFinite(a.duration) && a.duration > 0 ? a.duration : 15); a.onerror = () => resolve(15); a.src = local; });
         URL.revokeObjectURL(local);
         const up = await uploadFile(file, 'studio-media', meId);
-        replacements.push({ slot: templateAudioSlots[i].slot, url: up.url, name: file.name, duration });
+        replacements.push({ slot: templateAudioSlots[i].slot, url: up.url, storage_path: up.path, name: file.name, duration });
       } catch (e) { notify(e instanceof Error ? e.message : 'Could not upload template sound.'); }
     }
     if (!replacements.length) return;
@@ -6206,7 +6206,7 @@ function VideoEditor() {
         const slot = Number(track.template_slot ?? (track.src || '').split('/').pop());
         const r = replacements.find((item) => item.slot === slot);
         if (!r) return track;
-        return { ...track, src: r.url, name: r.name, sourceDuration: r.duration, trimStart: 0, trimEnd: Math.min(r.duration, Math.max(0.1, track.trimEnd)), provider: 'upload' };
+        return { ...track, src: r.url, storage_path: r.storage_path, name: r.name, sourceDuration: r.duration, trimStart: 0, trimEnd: Math.min(r.duration, Math.max(0.1, track.trimEnd)), provider: 'upload' };
       }),
     }), 'Batch replace template sounds');
     notify(`${replacements.length} template sound${replacements.length === 1 ? '' : 's'} replaced. Timing and effects stayed intact.`);
