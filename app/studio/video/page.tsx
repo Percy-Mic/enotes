@@ -14,6 +14,7 @@ import { useMobileGestures } from '@/lib/gestures/useMobileGestures';
 import { useHistory, useHistoryShortcuts } from '@/lib/editor/history';
 import { useEntitlements } from '@/lib/entitlements';
 import { uploadFile } from '@/lib/storage/upload';
+import { audioPlaceholderSrc, isAudioPlaceholder } from '@/lib/video/project';
 import { normalizeVideoDuration, ExportCancelledError } from '@/lib/video/renderer';
 import SharePostPicker from '@/components/community/SharePostPicker';
 import VideoAIStudio, { type VideoAIEditAction } from '@/components/studio/VideoAIStudio';
@@ -5905,14 +5906,45 @@ function VideoEditor() {
       console.warn('[template] preview generation failed — submitting without it:', e);
     }
 
-    // templates use placeholders so buyers insert their own media
+    /*
+     * Templates preserve the creator's edit recipe — timing, transitions,
+     * effects, keyframes, text and audio processing — while replacing the
+     * creator's source media with explicit slots. The buyer gets a real remix,
+     * not a flattened video.
+     */
+    let mediaSlot = 0;
+    const tplClips = project.clips.map((clip) => {
+      if (isPlaceholder(clip.src)) return clip;
+      const slot = mediaSlot++;
+      return {
+        ...clip,
+        src: placeholderSrc(slot),
+        name: clip.media_type === 'image' ? `Photo ${slot + 1}` : `Video ${slot + 1}`,
+      };
+    });
+
+    const tplElements = project.elements.map((el) => {
+      if ((el.kind !== 'image' && el.kind !== 'video') || !el.src || isPlaceholder(el.src)) return el;
+      const slot = mediaSlot++;
+      return {
+        ...el,
+        src: placeholderSrc(slot),
+        content: el.kind === 'image' ? `Photo ${slot + 1}` : `Video ${slot + 1}`,
+      };
+    });
+
+    const tplAudio = project.audio.map((track, index) => ({
+      ...track,
+      src: isAudioPlaceholder(track.src) ? track.src : audioPlaceholderSrc(index),
+      name: isAudioPlaceholder(track.src) ? track.name : `Sound ${index + 1}`,
+      template_slot: index,
+    }));
+
     const tplProject: VideoProject = {
       ...project,
-      clips: project.clips.map((c, i) =>
-        isPlaceholder(c.src) ? c : { ...c, src: placeholderSrc(i), name: `Media ${i + 1}` }
-      ),
-      elements: project.elements.filter((el) => el.kind !== 'image' || isPlaceholder(el.src)),
-      audio: [],
+      clips: tplClips,
+      elements: tplElements,
+      audio: tplAudio,
     };
     const { error } = await supabase.from('templates').insert({
       creator_id: meId,
