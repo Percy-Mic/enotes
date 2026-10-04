@@ -527,7 +527,7 @@ export interface AudioTrack {
   /** Timeline lane used by this audio clip. */
   track_id?: string;
   /** Optional source metadata for stock/library audio. */
-  provider?: 'library' | 'freesound' | 'jamendo' | 'upload' | 'recording';
+  provider?: 'library' | 'freesound' | 'jamendo' | 'coverr' | 'upload' | 'recording';
   sourceUrl?: string;
   license?: string;
   creator?: string;
@@ -771,6 +771,7 @@ export function normalizeProject(input: unknown): VideoProject {
         const provider =
           track.provider === 'freesound' ||
           track.provider === 'jamendo' ||
+          track.provider === 'coverr' ||
           track.provider === 'upload' ||
           track.provider === 'recording' ||
           track.provider === 'library'
