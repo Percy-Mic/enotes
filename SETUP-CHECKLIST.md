@@ -201,7 +201,7 @@ TENOR_API_KEY=your-tenor-google-cloud-key
 # Production: change MAYA_ENV to production only after Maya merchant onboarding/live approval.
 #
 # Maya webhook URL:
-# https://enotes-amber.vercel.app/api/billing/webhook
+# https://enotes-ph.vercel.app/api/billing/webhook
 # Register PAYMENT_SUCCESS, PAYMENT_FAILED, PAYMENT_EXPIRED and PAYMENT_CANCELLED in Maya Manager.
 #
 # Run supabase/migrations/2026-09-27_pro_billing_transactions.sql in Supabase SQL Editor
@@ -252,7 +252,7 @@ NEXT_PUBLIC_VAPID_PUBLIC_KEY=<generated public key>
 VAPID_PRIVATE_KEY=<generated private key>
 VAPID_SUBJECT=mailto:enotes@example.com
 PUSH_SEND_SECRET=<long random secret>
-NEXT_PUBLIC_SITE_URL=https://enotes-amber.vercel.app
+NEXT_PUBLIC_SITE_URL=https://enotes-ph.vercel.app
 ```
 
 Use the same values for Production (and Preview if you want push there). Redeploy
@@ -265,7 +265,7 @@ After the Vercel deployment exists, run this in **Supabase → SQL Editor**:
 ```sql
 insert into public.platform_config (key, value)
 values
-  ('push_endpoint', '"https://enotes-amber.vercel.app/api/push/send"'),
+  ('push_endpoint', '"https://enotes-ph.vercel.app/api/push/send"'),
   ('push_send_secret', '"<the exact PUSH_SEND_SECRET from Vercel>"')
 on conflict (key) do update
 set value = excluded.value;
