@@ -5143,7 +5143,8 @@ function VideoEditor() {
     source?: string;
     tags?: string[];
     description?: string;
-    provider?: 'library' | 'freesound' | 'jamendo' | 'coverr';
+    provider?: 'library' | 'freesound' | 'jamendo' | 'coverr' | 'feed' | 'epidemic';
+    providerId?: string;
     image?: string;
     licenseUrl?: string;
     audiodownload_allowed?: boolean;
@@ -5154,7 +5155,7 @@ function VideoEditor() {
   const [soundCategory, setSoundCategory] = useState('Cinematic');
   const [jamendoSearchMode, setJamendoSearchMode] = useState<'all' | 'title' | 'artist' | 'album' | 'genre'>('all');
   const [jamendoFeed, setJamendoFeed] = useState<'search' | 'latest' | 'trending'>('search');
-  const [soundProvider, setSoundProvider] = useState<'library' | 'freesound' | 'jamendo' | 'coverr'>('library');
+  const [soundProvider, setSoundProvider] = useState<'library' | 'freesound' | 'jamendo' | 'coverr' | 'feed'>('library');
   const [soundPage, setSoundPage] = useState(1);
   const [soundPages, setSoundPages] = useState(1);
   const [soundCount, setSoundCount] = useState(0);
@@ -5209,6 +5210,9 @@ function VideoEditor() {
     soundPreviewRef.current = audio;
     setPreviewSoundTime(0);
     setPreviewingSoundId(sound.id);
+    if (sound.provider === 'feed' && sound.providerId) {
+      void fetch('/api/studio/music/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clipId: sound.providerId, event: 'preview' }) }).catch(() => {});
+    }
     void audio.play().catch(() => {
       if (soundPreviewRef.current === audio) {
         soundPreviewRef.current = null;
@@ -5335,6 +5339,45 @@ function VideoEditor() {
     }
   };
 
+  const searchFeedMusic = async (
+    query = soundQuery,
+    page = 1,
+    append = false
+  ) => {
+    setSoundBusy(true);
+    try {
+      const params = new URLSearchParams({ q: query.trim(), page: String(page), limit: '24' });
+      const res = await fetch('/api/studio/music?' + params.toString(), { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not load licensed music.');
+      const mapped: SoundBrowserItem[] = (json.results || []).map((s: any) => ({
+        id: 'feed-' + s.id,
+        providerId: String(s.providerId || s.id),
+        title: s.title,
+        artist: s.artist || 'Artist',
+        url: s.url,
+        duration_seconds: Number(s.duration_seconds || 30),
+        category: s.category || 'Popular',
+        license: s.license || 'Licensed music',
+        source: s.source,
+        tags: Array.isArray(s.tags) ? s.tags : [],
+        description: s.album ? 'Album: ' + s.album : 'Licensed popular music',
+        provider: 'feed',
+        image: s.image || undefined,
+        licenseUrl: s.licenseUrl || undefined,
+      }));
+      setSounds((prev) => append ? [...prev, ...mapped] : mapped);
+      setSoundPage(Number(json.page) || page);
+      setSoundPages(Number(json.pages) || 1);
+      setSoundCount(Number(json.count) || mapped.length);
+      if (json.error && !mapped.length) notify(json.error);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Could not load licensed music.');
+    } finally {
+      setSoundBusy(false);
+    }
+  };
+
   const searchJamendo = async (
     query = soundQuery,
     page = 1,
@@ -5400,6 +5443,9 @@ function VideoEditor() {
     if (tool === 'audio' && soundProvider === 'coverr' && sounds.length === 0) {
       void searchCoverr('', 1, false);
     }
+    if (tool === 'audio' && soundProvider === 'feed' && sounds.length === 0) {
+      void searchFeedMusic('', 1, false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, soundProvider]);
 
@@ -5412,6 +5458,7 @@ function VideoEditor() {
       sourceUrl?: string;
       license?: string;
       creator?: string;
+      providerId?: string;
     },
     kind: 'music' | 'voiceover'
   ) => {
@@ -5423,6 +5470,7 @@ function VideoEditor() {
       sourceUrl: s.sourceUrl,
       license: s.license,
       creator: s.creator,
+      providerId: s.providerId,
       start: 0,
       sourceDuration: Math.max(0.1, Number(s.duration_seconds) || 15),
       trimStart: 0,
@@ -5466,6 +5514,9 @@ function VideoEditor() {
     setSelectedClipId(null);
     setSelectedElementId(null);
     setSelectedAudioId(track.id);
+    if (s.provider === 'feed' && s.providerId) {
+      void fetch('/api/studio/music/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ clipId: s.providerId, event: 'add' }) }).catch(() => {});
+    }
     notify(`“${s.title}” added to the timeline.`);
   };
 
@@ -7764,6 +7815,18 @@ function VideoEditor() {
                 <button
                   type="button"
                   onClick={() => {
+                    setSoundProvider('feed');
+                    setSoundCategory('Popular');
+                    setSoundQuery('');
+                    void searchFeedMusic('', 1, false);
+                  }}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'feed' ? 'bg-white/15 text-white' : 'text-white/45'}`}
+                >
+                  Popular music
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setSoundProvider('freesound');
                     setSoundCategory('Cinematic');
                     if (sounds.length === 0) void searchFreesound('', 1, false, 'Cinematic');
@@ -7800,7 +7863,49 @@ function VideoEditor() {
                 </button>
               </div>
 
-              {soundProvider === 'freesound' ? (
+              {soundProvider === 'feed' ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-bold">Licensed popular music</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-white/45">Real licensed song clips supplied by a music-rights provider. The catalog shown depends on enotes' active territory and collection agreement.</p>
+                  </div>
+                  <form onSubmit={(e) => { e.preventDefault(); void searchFeedMusic(soundQuery, 1, false); }} className="flex gap-2">
+                    <div className="relative min-w-0 flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                      <input value={soundQuery} onChange={(e) => setSoundQuery(e.target.value)} placeholder="Search artist, song, OPM…" aria-label="Search licensed music" className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]" />
+                    </div>
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">Search</button>
+                  </form>
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    {['Trending', 'Popular', 'OPM / Filipino', 'Viral', 'Love', 'R&B', 'Hip-hop', 'Chill'].map((tag) => (
+                      <button key={tag} type="button" onClick={() => { const q = tag === 'OPM / Filipino' ? 'Filipino' : tag; setSoundQuery(q); void searchFeedMusic(q, 1, false); }} className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[9px] font-semibold text-white/55 hover:text-white">{tag}</button>
+                    ))}
+                  </div>
+                  <div className="text-[9px] text-white/35">{soundCount ? `${soundCount.toLocaleString()} licensed clips` : 'Licensed clips'}</div>
+                  {soundBusy && sounds.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-xs text-white/45"><Loader2 className="h-4 w-4 animate-spin" /> Loading licensed music…</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sounds.map((s) => (
+                        <div key={s.id} className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
+                          <div className="flex items-start gap-2">
+                            {s.image ? <img src={s.image} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" /> : <div className="h-10 w-10 shrink-0 rounded-md bg-white/10" />}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold">{s.title}</p>
+                              <p className="mt-0.5 truncate text-[10px] text-white/45">{s.artist} · {fmt(s.duration_seconds)} · Licensed</p>
+                            </div>
+                            <button type="button" onClick={() => addSoundTrack({ title: s.title, url: s.url, duration_seconds: s.duration_seconds, provider: s.provider, providerId: s.providerId, sourceUrl: s.source, license: s.license, creator: s.artist }, 'music')} className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold">Add</button>
+                          </div>
+                          <SoundPreviewPlayer sound={s} playing={previewingSoundId === s.id} currentTime={previewingSoundId === s.id ? previewSoundTime : 0} onToggle={() => toggleSoundPreview(s)} onSeek={(time) => { if (previewingSoundId !== s.id) toggleSoundPreview(s); window.setTimeout(() => seekSoundPreview(time), 0); }} />
+                        </div>
+                      ))}
+                      {!soundBusy && sounds.length === 0 && <div className="rounded-lg border border-dashed border-white/15 px-3 py-5 text-center text-xs text-white/50">No licensed clips are available for the configured collections/territory.</div>}
+                      {soundPage < soundPages && <button type="button" onClick={() => void searchFeedMusic(soundQuery, soundPage + 1, true)} disabled={soundBusy} className="w-full rounded-lg border border-white/15 py-2.5 text-[10px] font-semibold disabled:opacity-40">{soundBusy ? 'Loading…' : 'Load more music'}</button>}
+                    </div>
+                  )}
+                  <p className="text-center text-[9px] leading-4 text-white/30">Licensed clips are provider-controlled and may have territory, sharing, download, and export restrictions. enotes never scrapes Spotify or CapCut.</p>
+                </div>
+              ) : soundProvider === 'freesound' ? (
                 <div className="space-y-3">
                   <div>
                     <p className="text-sm font-bold">Freesound browser</p>
