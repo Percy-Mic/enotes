@@ -1990,7 +1990,7 @@ export class VideoRenderer {
     canvas: HTMLCanvasElement,
     project: VideoProject,
     time: number,
-    opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean; frameAccurate?: boolean } = {}
+    opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean } = {}
   ) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -2128,9 +2128,9 @@ export class VideoRenderer {
            if (!paintedFromCache) {
              if (video) {
                if (opts.isolatedPreview) {
-                await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing, !opts.previewing || !!opts.frameAccurate, clip.speed, !!clip.reverse);
+                await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
               } else {
-                await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing || !!opts.frameAccurate, clip.speed, !!clip.reverse);
+                await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
               }
               if (!image && (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0)) {
                 return;
@@ -2822,33 +2822,68 @@ export class VideoRenderer {
       });
       recorder.start(250);
 
-      /* Deterministic export: render exact timeline frame positions instead of
-         wall-clock elapsed time. Keyframes, motion presets, transitions and text
-         animations are all functions of project time; rAF timing can otherwise
-         sample a different edit than the one shown in the editor.
-         frameAccurate forces the decoder to seek to the exact source position
-         before each captured draw. It is slower, but it is the correctness path. */
-      const frameCount = Math.max(1, Math.ceil(duration * settings.fps));
-      const watchdogMs = Math.max(120_000, duration * 12_000);
+      /* Realtime export with deterministic timeline sampling. The recorder must
+         run in real time, but keyframes/motion/transitions/text animation should
+         be sampled on the exact output FPS grid rather than arbitrary rAF times.
+         This keeps the exported edit aligned with the timeline without turning
+         a 30-second export into a multi-minute sequence of decoder seeks. */
+      const startedAt = performance.now();
+      const frameDuration = 1 / settings.fps;
+      const watchdogMs = Math.max(120_000, duration * 8_000);
+      let lastFrameIndex = -1;
       let lastFrameAt = performance.now();
-      for (let frameIndex = 0; frameIndex < frameCount; frameIndex++) {
-        if (this.exportCancelled) throw new ExportCancelledError();
-        const frameTime = Math.min(duration - 0.0001, frameIndex / settings.fps);
-        if (performance.now() - lastFrameAt > watchdogMs) {
-          throw new Error('Rendering stalled — a source video stopped responding. Check your connection and try again.');
-        }
-        await this.drawFrame(canvas, scaled, frameTime, {
-          previewing: true,
-          playing: false,
-          frameAccurate: true,
-        });
-        lastFrameAt = performance.now();
-        onProgress?.({
-          phase: 'rendering',
-          percent: Math.min(99, 10 + Math.round(((frameIndex + 1) / frameCount) * 88)),
-          message: `Rendering ${(frameIndex / settings.fps).toFixed(2)}s / ${duration.toFixed(2)}s`,
-        });
-      }
+      await new Promise<void>((resolve, reject) => {
+        let stopped = false;
+        const finishResolve = () => {
+          if (stopped) return;
+          stopped = true;
+          resolve();
+        };
+        const finishReject = (err: Error) => {
+          if (stopped) return;
+          stopped = true;
+          reject(err);
+        };
+        const step = async () => {
+          if (stopped) return;
+          if (this.exportCancelled) {
+            finishReject(new ExportCancelledError());
+            return;
+          }
+          const now = performance.now();
+          if (now - lastFrameAt > watchdogMs) {
+            finishReject(new Error('Rendering stalled — a source video stopped responding. Check your connection and try again.'));
+            return;
+          }
+          const elapsed = (now - startedAt) / 1000;
+          if (elapsed >= duration) {
+            finishResolve();
+            return;
+          }
+          const frameIndex = Math.min(
+            Math.max(0, Math.floor(elapsed / frameDuration)),
+            Math.max(0, Math.ceil(duration / frameDuration) - 1),
+          );
+          if (frameIndex !== lastFrameIndex) {
+            const frameTime = Math.min(duration - 0.0001, frameIndex * frameDuration);
+            try {
+              await this.drawFrame(canvas, scaled, frameTime, { previewing: true, playing: true });
+            } catch (e) {
+              finishReject(e instanceof Error ? e : new Error('A frame failed to render.'));
+              return;
+            }
+            lastFrameIndex = frameIndex;
+            lastFrameAt = performance.now();
+            onProgress?.({
+              phase: 'rendering',
+              percent: Math.min(99, 10 + Math.round((frameTime / duration) * 88)),
+              message: `Rendering ${frameTime.toFixed(2)}s / ${duration.toFixed(2)}s`,
+            });
+          }
+          requestAnimationFrame(() => void step());
+        };
+        void step();
+      });
 
       recorder.stop();
       const blob = await done;
