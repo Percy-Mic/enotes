@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
+import SocialAuthButtons from '@/components/auth/SocialAuthButtons';
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('');
@@ -183,6 +184,10 @@ export default function SignUpPage() {
         </div>
 
         {error && <div className="p-3 bg-red-50 text-red-600 text-sm rounded">{error}</div>}
+
+        <SocialAuthButtons next="/dashboard" />
+
+        <div className="flex items-center gap-3 text-xs text-[#9B9B9B]"><span className="h-px flex-1 bg-[#E8E2E4]" /><span>or sign up with email</span><span className="h-px flex-1 bg-[#E8E2E4]" /></div>
 
         <form onSubmit={handleSignUp} className="space-y-4">
           <div>
