@@ -1,0 +1,21 @@
+name: Temporary final production playtest
+on:
+  push:
+    branches:
+      - playtest/full-app
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm install --no-save @playwright/test@1.51.0
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test .playtest/final.spec.js --reporter=line
