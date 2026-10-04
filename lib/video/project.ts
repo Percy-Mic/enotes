@@ -543,6 +543,8 @@ export interface AudioTrack {
   fadeIn: number;       // seconds
   fadeOut: number;      // seconds
   kind: 'music' | 'voiceover';
+  /** Template sound slot. When present, src is a placeholder until the user replaces it. */
+  template_slot?: number;
 }
 
 export interface VideoProject {
@@ -1058,6 +1060,14 @@ export interface TemplatePlaceholder {
 /** A template project uses `placeholder://slot/N` srcs that the user fills. */
 export function placeholderSrc(slot: number) {
   return `placeholder://slot/${slot}`;
+}
+
+export function audioPlaceholderSrc(slot: number) {
+  return `placeholder://audio/${slot}`;
+}
+
+export function isAudioPlaceholder(src: string | null | undefined) {
+  return !!src && src.startsWith('placeholder://audio/');
 }
 
 export function isPlaceholder(src: string | null | undefined) {
