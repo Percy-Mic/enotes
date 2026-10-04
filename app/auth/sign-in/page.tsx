@@ -118,13 +118,13 @@ function SignInForm() {
       asideTitle="Your journal is waiting for you."
       footer={
         <>
-          <p className="text-[13px] leading-5 text-black/55">
+          <p className="text-[13px] leading-5 auth-muted">
             Don&apos;t have a journal desk yet?{' '}
-            <Link href="/auth/sign-up" className="font-semibold text-[#1E90FF] hover:underline">
+            <Link href="/auth/sign-up" className="font-semibold auth-accent hover:underline">
               Create an account
             </Link>
           </p>
-          <p className="mt-2.5 text-[11px] leading-4 text-black/40">
+          <p className="mt-2.5 text-[11px] leading-4 auth-subtle">
             <Link href="/privacy" className="underline underline-offset-2">Privacy</Link>
             <span className="mx-2">·</span>
             <Link href="/terms" className="underline underline-offset-2">Terms</Link>
@@ -146,25 +146,25 @@ function SignInForm() {
             <button
               type="button"
               onClick={resendConfirmation}
-              className="min-h-11 w-full rounded-xl border border-[#E8E2E4] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#111] transition hover:bg-gray-50 focus:outline-none focus:ring-4 focus:ring-[#1E90FF]/10"
+              className="min-h-11 w-full rounded-xl auth-border auth-surface border px-4 py-2.5 text-[13px] font-semibold auth-ink transition hover:bg-[var(--auth-input-hover)] focus:outline-none focus:ring-4 focus:ring-[#1E90FF]/10"
             >
               Resend confirmation email
             </button>
-            {resendStatus && <p className="text-[11px] leading-4 font-medium text-[#6B6B6B]">{resendStatus}</p>}
+            {resendStatus && <p className="text-[11px] leading-4 font-medium auth-muted">{resendStatus}</p>}
           </div>
         )}
 
         <SocialAuthButtons next="/dashboard" />
 
-        <div className="flex items-center gap-3 text-[9px] font-semibold uppercase tracking-[0.18em] text-black/35 sm:text-[10px]">
-          <span className="h-px min-w-0 flex-1 bg-black/10" />
+        <div className="flex items-center gap-3 auth-divider text-[9px] font-semibold uppercase tracking-[0.18em] sm:text-[10px]">
+          <span className="h-px min-w-0 flex-1 auth-divider-line" />
           <span className="shrink-0">or email</span>
           <span className="h-px min-w-0 flex-1 bg-black/10" />
         </div>
 
         <form onSubmit={handleSignIn} className="space-y-5">
           <div className="space-y-1.5">
-            <label htmlFor="signin-email" className="block text-[13px] font-semibold leading-4 text-[#252525]">
+            <label htmlFor="signin-email" className="block auth-ink text-[13px] font-semibold leading-4">
               Email
             </label>
             <input
@@ -176,7 +176,7 @@ function SignInForm() {
               autoComplete="email"
               inputMode="email"
               placeholder="you@example.com"
-              className="min-h-[52px] w-full rounded-[14px] border border-black/10 bg-[#FCFCFC] px-4 py-3.5 text-[15px] leading-5 text-[#111] outline-none transition placeholder:text-black/30 focus:border-[#1E90FF] focus:bg-white focus:ring-4 focus:ring-[#1E90FF]/10"
+              className="min-h-[52px] w-full rounded-[14px] auth-border auth-input border px-4 py-3.5 auth-ink text-[15px] leading-5 outline-none transition placeholder:text-[var(--auth-placeholder)] focus:border-[#1E90FF] focus:bg-[var(--auth-input-focus)] focus:ring-4 focus:ring-[#1E90FF]/10"
             />
           </div>
 
@@ -206,7 +206,7 @@ function SignInForm() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[14px] text-black/40 transition hover:text-black/70 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#1E90FF]/20"
+                className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-[14px] auth-control-icon transition focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[#1E90FF]/20"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? (
@@ -235,7 +235,7 @@ function SignInForm() {
           <button
             type="submit"
             disabled={loading || !turnstileSiteKey || !captchaToken}
-            className="min-h-[52px] w-full rounded-[14px] bg-black px-4 py-3.5 text-[15px] font-semibold leading-5 text-[#FFB6C1] shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] focus:outline-none focus:ring-4 focus:ring-black/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+            className="min-h-[52px] w-full rounded-[14px] auth-primary-button px-4 py-3.5 text-[15px] font-semibold leading-5 shadow-[0_8px_24px_rgba(0,0,0,.12)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(0,0,0,.16)] focus:outline-none focus:ring-4 focus:ring-black/10 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
@@ -247,7 +247,7 @@ function SignInForm() {
 
 export default function SignInPage() {
   return (
-    <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center bg-[#FFF7F8] px-4 text-center text-sm text-black/45">Loading...</div>}>
+    <Suspense fallback={<div className="grid min-h-[100dvh] place-items-center auth-page px-4 text-center text-sm auth-muted">Loading...</div>}>
       <SignInForm />
     </Suspense>
   );
