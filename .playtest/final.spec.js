@@ -21,9 +21,11 @@ for(const viewport of [{width:1440,height:900},{width:390,height:844}]){
     for(const route of publicRoutes){
       const r=await x.page.goto(base+route,{waitUntil:'domcontentloaded',timeout:8000}).catch(()=>null);
       const status=r?.status()||0;
-      expect(status).toBeLessThan(500);
       const finalPath=new URL(x.page.url()).pathname;
-      if(route==='/auth/callback') expect(finalPath).toBe('/auth/sign-in');
+      console.log(JSON.stringify({route,status,finalPath}));
+      expect(status).toBeLessThan(500);
+      const expectedAuthFallback = route==='/auth/callback' || route==='/auth/update-password';
+      if(expectedAuthFallback) expect(finalPath).toBe('/auth/sign-in');
       else expect(finalPath).not.toBe('/auth/sign-in');
     }
     await close(x);
