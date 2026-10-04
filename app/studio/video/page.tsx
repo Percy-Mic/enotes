@@ -1836,10 +1836,33 @@ function VideoEditor() {
           setLoadError('Project not found.');
           return;
         }
-        history.reset(
-          { title: data.title, project: normalizeProject({ ...emptyProject(data.aspect_ratio as AspectRatio), ...(data.project as object) }) },
-          'Loaded project'
-        );
+        const loadedProject = normalizeProject({ ...emptyProject(data.aspect_ratio as AspectRatio), ...(data.project as object) });
+        /*
+         * Media recovery: source files are public Supabase objects, but the
+         * project recipe may have an older/optimized URL or a stale URL.
+         * storage_path is the durable source of truth. Rebuild the public URL
+         * on every project load so a refresh can never turn a real upload into
+         * a broken image/video reference.
+         */
+        const recoveredProject = {
+          ...loadedProject,
+          clips: loadedProject.clips.map((clip) => {
+            if (!clip.storage_path) return clip;
+            const { data: publicData } = supabase.storage.from('studio-media').getPublicUrl(clip.storage_path);
+            return publicData?.publicUrl ? { ...clip, src: publicData.publicUrl } : clip;
+          }),
+          elements: loadedProject.elements.map((element) => {
+            if (!element.storage_path) return element;
+            const { data: publicData } = supabase.storage.from('studio-media').getPublicUrl(element.storage_path);
+            return publicData?.publicUrl ? { ...element, src: publicData.publicUrl } : element;
+          }),
+          audio: loadedProject.audio.map((track) => {
+            if (!track.storage_path) return track;
+            const { data: publicData } = supabase.storage.from('studio-media').getPublicUrl(track.storage_path);
+            return publicData?.publicUrl ? { ...track, src: publicData.publicUrl } : track;
+          }),
+        };
+        history.reset({ title: data.title, project: recoveredProject }, 'Loaded project');
         setSavedProjectId(data.id);
         setTemplateOriginId((data as { template_id?: string | null }).template_id || null);
       } else if (templateId) {
@@ -2159,22 +2182,21 @@ function VideoEditor() {
                 mediaUrl = cloudinary.url;
               }
             } catch {
-              /* Cloudinary is optional; the Supabase studio-media URL is durable. */
+              /* Cloudinary is optional; the Supabase source remains durable. */
             }
-            if (!/^https?:\/\//i.test(mediaUrl)) {
-              throw new Error('The media upload completed without a durable URL.');
-            }
-            return mediaUrl;
+            if (!/^https?:\/\//i.test(mediaUrl)) throw new Error('The media upload completed without a durable URL.');
+            return { url: mediaUrl, path: up.path };
           };
 
           try {
             setImporting({ name: file.name, percent: 55 });
-            const mediaUrl = await uploadDurableUrl(isImage ? 'image' : 'video');
+            const durable = await uploadDurableUrl(isImage ? 'image' : 'video');
+            const mediaUrl = durable.url;
             setImporting({ name: file.name, percent: 90 });
 
             if (isImage) {
               const clip: VideoClip = {
-                id: makeVideoId('clip'), src: mediaUrl, name: file.name,
+                id: makeVideoId('clip'), src: mediaUrl, storage_path: durable.path, name: file.name,
                 sourceDuration: 4, trimStart: 0, trimEnd: 4, speed: 1, volume: 0, muted: true,
                 media_type: 'image', source_width: meta.w || undefined, source_height: meta.h || undefined,
                 transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
@@ -2189,7 +2211,7 @@ function VideoEditor() {
               updateProject((p) => ({
                 ...p,
                 clips: p.clips.map((c) => c.id === replacement.id ? {
-                  ...c, src: mediaUrl, name: file.name, sourceDuration: meta.duration,
+                  ...c, src: mediaUrl, storage_path: durable.path, name: file.name, sourceDuration: meta.duration,
                   trimStart: 0, trimEnd: meta.duration, source_width: meta.w || undefined, source_height: meta.h || undefined,
                 } : c),
               }), 'Replace clip');
@@ -2198,7 +2220,7 @@ function VideoEditor() {
             } else {
               const firstMainVideo = !docRef.current.project.clips.some((c) => c.media_type !== 'image');
               const clip: VideoClip = {
-                id: makeVideoId('clip'), src: mediaUrl, name: file.name,
+                id: makeVideoId('clip'), src: mediaUrl, storage_path: durable.path, name: file.name,
                 sourceDuration: meta.duration, trimStart: 0, trimEnd: meta.duration, speed: 1, volume: 1, muted: false,
                 media_type: 'video', source_width: meta.w || undefined, source_height: meta.h || undefined,
                 transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS },
