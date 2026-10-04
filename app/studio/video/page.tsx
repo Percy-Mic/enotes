@@ -1931,6 +1931,7 @@ function VideoEditor() {
       project: docRef.current.project,
       aspect_ratio: docRef.current.project.aspect,
       duration_seconds: projectDuration(docRef.current.project),
+      template_id: templateOriginId || null,
     };
     try {
       if (savedProjectId) {
@@ -1962,7 +1963,7 @@ function VideoEditor() {
     } finally {
       setSaving(false);
     }
-  }, [meId, savedProjectId, history, notify]);
+  }, [meId, savedProjectId, templateOriginId, history, notify]);
 
   useEffect(() => {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
@@ -5142,7 +5143,7 @@ function VideoEditor() {
     source?: string;
     tags?: string[];
     description?: string;
-    provider?: 'library' | 'freesound' | 'jamendo';
+    provider?: 'library' | 'freesound' | 'jamendo' | 'coverr';
     image?: string;
     licenseUrl?: string;
     audiodownload_allowed?: boolean;
@@ -5153,7 +5154,7 @@ function VideoEditor() {
   const [soundCategory, setSoundCategory] = useState('Cinematic');
   const [jamendoSearchMode, setJamendoSearchMode] = useState<'all' | 'title' | 'artist' | 'album' | 'genre'>('all');
   const [jamendoFeed, setJamendoFeed] = useState<'search' | 'latest' | 'trending'>('search');
-  const [soundProvider, setSoundProvider] = useState<'library' | 'freesound' | 'jamendo'>('library');
+  const [soundProvider, setSoundProvider] = useState<'library' | 'freesound' | 'jamendo' | 'coverr'>('library');
   const [soundPage, setSoundPage] = useState(1);
   const [soundPages, setSoundPages] = useState(1);
   const [soundCount, setSoundCount] = useState(0);
@@ -5300,6 +5301,40 @@ function VideoEditor() {
     }
   };
 
+  const searchCoverr = async (query = soundQuery, page = 1, append = false) => {
+    setSoundBusy(true);
+    try {
+      const params = new URLSearchParams({ q: query.trim(), page: String(page), sort: 'popular' });
+      const res = await fetch('/api/studio/coverr-audio?' + params.toString(), { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not load Coverr music.');
+
+      const mapped: SoundBrowserItem[] = (json.results || []).map((item: any) => ({
+        id: 'coverr-' + item.id,
+        title: item.title,
+        artist: item.artist || 'Coverr',
+        url: item.url || '',
+        duration_seconds: Number(item.duration_seconds || 15),
+        category: item.category || 'Music',
+        license: item.license || 'Coverr royalty-free music',
+        source: item.source,
+        tags: Array.isArray(item.tags) ? item.tags : [],
+        description: item.description || '',
+        provider: 'coverr',
+        licenseUrl: item.licenseUrl,
+      }));
+
+      setSounds((prev) => append ? [...prev, ...mapped] : mapped);
+      setSoundPage(Number(json.page) || page);
+      setSoundPages(Number(json.pages) || 1);
+      setSoundCount(Number(json.count) || mapped.length);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Could not load Coverr music.');
+    } finally {
+      setSoundBusy(false);
+    }
+  };
+
   const searchJamendo = async (
     query = soundQuery,
     page = 1,
@@ -5361,6 +5396,9 @@ function VideoEditor() {
     if (tool === 'audio' && soundProvider === 'library') void loadSounds();
     if (tool === 'audio' && soundProvider === 'freesound' && sounds.length === 0) {
       void searchFreesound('', 1, false, soundCategory);
+    }
+    if (tool === 'audio' && soundProvider === 'coverr' && sounds.length === 0) {
+      void searchCoverr('', 1, false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool, soundProvider]);
@@ -7238,6 +7276,53 @@ function VideoEditor() {
                 ))}
               </div>
             </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/[0.035] p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white/70">Canvas background</p>
+                  <p className="text-[9px] text-white/35">Shows behind clips when the media does not fill the canvas.</p>
+                </div>
+                <span className="h-5 w-5 rounded-md border border-white/15" style={{ background: project.background?.color || '#000000' }} />
+              </div>
+              <div className="mb-2 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), type: 'color' } }), 'Canvas background color')}
+                  className={`rounded-lg border px-2 py-2 text-[10px] font-semibold ${project.background?.type !== 'gradient' ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
+                >Color</button>
+                <button
+                  type="button"
+                  onClick={() => updateProject((p) => ({ ...p, background: { type: 'gradient', color: p.background?.color || '#000000', color2: p.background?.color2 || '#E5798F', angle: p.background?.angle ?? 0 } }), 'Canvas gradient')}
+                  className={`rounded-lg border px-2 py-2 text-[10px] font-semibold ${project.background?.type === 'gradient' ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
+                >Gradient</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <MobileColorField
+                  label="Background"
+                  value={project.background?.color || '#000000'}
+                  onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color' }), color: value } }), 'Canvas background color')}
+                />
+                {project.background?.type === 'gradient' ? (
+                  <MobileColorField
+                    label="Second color"
+                    value={project.background?.color2 || '#E5798F'}
+                    onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000' }), type: 'gradient', color2: value } }), 'Canvas gradient color')}
+                  />
+                ) : (
+                  <div className="grid grid-cols-4 gap-1.5 pt-5">
+                    {['#000000','#FFFFFF','#FFB6C1','#E5798F','#1E90FF','#FFD166','#06D6A0','#7C3AED'].map((color) => (
+                      <button key={color} type="button" onClick={() => updateProject((p) => ({ ...p, background: { type: 'color', color } }), 'Canvas background color')} className="h-8 rounded-lg border border-white/10" style={{ background: color }} aria-label={`Use ${color} canvas background`} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {project.background?.type === 'gradient' && (
+                <div className="mt-2">
+                  <Slider label="Gradient angle" min={-180} max={180} value={project.background.angle ?? 0} onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000', color2: '#E5798F' }), type: 'gradient', angle: value } }), 'Canvas gradient angle', 'canvas-gradient-angle')} />
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -7595,6 +7680,18 @@ function VideoEditor() {
                 <button
                   type="button"
                   onClick={() => {
+                    setSoundProvider('coverr');
+                    setSoundCategory('All');
+                    setSoundQuery('');
+                    void searchCoverr('', 1, false);
+                  }}
+                  className={`flex-1 rounded-md px-2 py-1.5 text-[10px] font-semibold ${soundProvider === 'coverr' ? 'bg-white/15 text-white' : 'text-white/45'}`}
+                >
+                  Coverr
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
                     setSoundProvider('jamendo');
                     setSoundCategory('All');
                     setJamendoFeed('trending');
@@ -7751,6 +7848,125 @@ function VideoEditor() {
                   <p className="text-center text-[9px] leading-4 text-white/30">
                     Freesound results here are filtered to Creative Commons 0. Preview files are used directly; the original Freesound file is not downloaded.
                   </p>
+                </div>
+              ) : soundProvider === 'coverr' ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-bold">Coverr Music</p>
+                    <p className="mt-0.5 text-[10px] leading-4 text-white/45">
+                      Royalty-free background music for your edits. Search by mood, genre, instrument or theme, preview it, then add it directly to the timeline.
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void searchCoverr(soundQuery, 1, false);
+                    }}
+                    className="flex gap-2"
+                  >
+                    <div className="relative min-w-0 flex-1">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+                      <input
+                        value={soundQuery}
+                        onChange={(e) => setSoundQuery(e.target.value)}
+                        placeholder="Search cinematic, chill, piano, dreamy…"
+                        aria-label="Search Coverr music"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]"
+                      />
+                    </div>
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
+                      Search
+                    </button>
+                  </form>
+
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    {['Trending', 'Cinematic', 'Chill', 'Dreamy', 'Piano', 'Guitar', 'Pop', 'Electronic', 'Romantic', 'Lo-fi'].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setSoundQuery(tag);
+                          void searchCoverr(tag, 1, false);
+                        }}
+                        className="shrink-0 rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[9px] font-semibold text-white/55 hover:text-white"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[9px] text-white/35">
+                    <span>{soundCount ? `${soundCount.toLocaleString()} Coverr tracks` : 'Coverr music'}</span>
+                    {soundPage > 1 && <span>Page {soundPage} / {soundPages}</span>}
+                  </div>
+
+                  {soundBusy && sounds.length === 0 ? (
+                    <div className="flex items-center justify-center gap-2 py-8 text-xs text-white/45">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Loading Coverr music…
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {sounds.map((sound) => (
+                        <div key={sound.id} className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
+                          <div className="flex items-start gap-2">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#E5798F]/15 text-[#FFB6C1]">
+                              <Music className="h-4 w-4" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-xs font-semibold">{sound.title}</p>
+                              <p className="mt-0.5 truncate text-[10px] text-white/45">{sound.artist} · {fmt(sound.duration_seconds)}</p>
+                              <p className="mt-0.5 truncate text-[9px] text-white/30">{sound.tags?.slice(0, 4).join(' · ') || 'Coverr music'}</p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={!sound.url}
+                              onClick={() => addSoundTrack({
+                                title: sound.title,
+                                url: sound.url,
+                                duration_seconds: sound.duration_seconds,
+                                provider: 'coverr',
+                                sourceUrl: sound.source,
+                                license: sound.license,
+                                creator: sound.artist,
+                              }, 'music')}
+                              className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-40"
+                            >
+                              Add
+                            </button>
+                          </div>
+                          {sound.url && (
+                            <SoundPreviewPlayer
+                              sound={sound}
+                              playing={previewingSoundId === sound.id}
+                              currentTime={previewingSoundId === sound.id ? previewSoundTime : 0}
+                              onToggle={() => toggleSoundPreview(sound)}
+                              onSeek={(time) => {
+                                if (previewingSoundId !== sound.id) toggleSoundPreview(sound);
+                                window.setTimeout(() => seekSoundPreview(time), 0);
+                              }}
+                            />
+                          )}
+                        </div>
+                      ))}
+                      {!soundBusy && sounds.length === 0 && (
+                        <div className="rounded-lg border border-dashed border-white/15 px-3 py-5 text-center text-xs text-white/50">
+                          No Coverr music found. Try another search.
+                        </div>
+                      )}
+                      {soundPage < soundPages && (
+                        <button
+                          type="button"
+                          onClick={() => void searchCoverr(soundQuery, soundPage + 1, true)}
+                          disabled={soundBusy}
+                          className="w-full rounded-lg border border-white/15 py-2.5 text-[10px] font-semibold disabled:opacity-40"
+                        >
+                          {soundBusy ? 'Loading…' : 'Load more music'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-center text-[9px] leading-4 text-white/30">Coverr music is provided through the Coverr API. Keep the provider metadata with the track when publishing/exporting.</p>
                 </div>
               ) : soundProvider === 'jamendo' ? (
                 <div className="space-y-3">
