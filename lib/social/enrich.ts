@@ -49,7 +49,7 @@ export async function enrichPosts(
     supabase.from('saved_posts').select('post_id, user_id').in('post_id', postIds),
     supabase
       .from('reposts')
-      .select('post_id, user_id, username:profiles!reposts_user_id_fkey(username)')
+      .select('post_id, user_id')
       .in('post_id', postIds),
   ]);
 
@@ -63,21 +63,8 @@ export async function enrichPosts(
   );
   const reactionRows = (reactions.data || []) as { post_id: string; emoji: string; user_id: string }[];
   const saveRows = (saves.data || []) as { post_id: string; user_id: string }[];
-  /* PostgREST returns the embedded profile as an OBJECT ({ username: … }),
-     not a string — flatten it or the repost banner renders href="/u/[object
-     Object]" and crashes the whole list (dir-dynamic-href error). */
-  const repostRows = ((reposts.data || []) as unknown as {
-    post_id: string;
-    user_id: string;
-    username: string | { username?: string } | null;
-  }[]).map((r) => ({
-    post_id: r.post_id,
-    user_id: r.user_id,
-    username:
-      typeof r.username === 'string'
-        ? r.username
-        : ((r.username as { username?: string } | null)?.username ?? null),
-  }));
+  const repostRows = ((reposts.data || []) as { post_id: string; user_id: string }[]);
+
 
   return list.map((p) => {
     const reactions: Record<string, { count: number; mine: boolean }> = {};
@@ -88,7 +75,7 @@ export async function enrichPosts(
       if (r.user_id === myId) e.mine = true;
       reactions[r.emoji] = e;
     }
-    const mine = repostRows.find((r) => r.post_id === p.id && r.user_id === myId)?.username || null;
+
     return {
       ...p,
       journal_title: p.journal_id ? journalMap.get(p.journal_id)?.title : null,
@@ -99,11 +86,8 @@ export async function enrichPosts(
       reactions,
       saved_by_me: myId ? saveRows.some((s) => s.post_id === p.id && s.user_id === myId) : false,
       repost_count: repostRows.filter((r) => r.post_id === p.id).length,
-      reposted_by_me: !!mine,
-      reposted_by:
-        mine ||
-        repostRows.find((r) => r.post_id === p.id)?.username ||
-        null,
+      reposted_by_me: myId ? repostRows.some((r) => r.post_id === p.id && r.user_id === myId) : false,
+      reposted_by: null,
     };
   });
 }
