@@ -29,6 +29,8 @@ export default function ShareJournalModal({
 }: ShareJournalModalProps) {
   const [tab, setTab] = useState<Tab>('link');
   const [visibility, setVisibility] = useState<string>('private');
+  const [isOwner, setIsOwner] = useState(false);
+  const [accessChecked, setAccessChecked] = useState(false);
   const [copied, setCopied] = useState(false);
   const [postContent, setPostContent] = useState('');
   const [posting, setPosting] = useState(false);
@@ -79,31 +81,52 @@ export default function ShareJournalModal({
   useEffect(() => {
     if (!isOpen) return;
     (async () => {
+      setAccessChecked(false);
+      const { data: { user } } = await supabase.auth.getUser();
       const { data } = await supabase
         .from('journals')
-        .select('visibility')
+        .select('visibility, owner_id')
         .eq('id', journalId)
         .maybeSingle();
+      const owner = !!user?.id && !!data?.owner_id && user.id === data.owner_id;
+      setIsOwner(owner);
       setVisibility(data?.visibility || 'private');
 
-      if (pageId) {
+      if (pageId && owner) {
         const { data: rpcData } = await supabase.rpc('get_page_lock', { p_page_id: pageId });
         setLocked(!!(rpcData && rpcData.length > 0 && (rpcData[0] as any).locked));
       }
+      setAccessChecked(true);
     })();
   }, [isOpen, journalId, pageId]);
 
   if (!isOpen) return null;
 
+  if (!accessChecked) {
+    return (
+      <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+        <div className="rounded-[20px] bg-white px-6 py-8 shadow-2xl">
+          <Loader2 className="mx-auto h-6 w-6 animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
   const shareUrl =
     typeof window !== 'undefined' ? `${window.location.origin}/journals/${journalId}` : '';
 
   const copyLink = async () => {
-    const next = visibility === 'private' ? 'link' : visibility;
-    if (visibility === 'private') {
-      const { error } = await supabase.from('journals').update({ visibility: 'link' }).eq('id', journalId);
+    if (visibility === 'private' && !isOwner) {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      return;
+    }
+    if (visibility === 'private' && isOwner) {
+      const { error } = await supabase
+        .from('journals').update({ visibility: 'link' })
+        .eq('id', journalId).eq('owner_id', myIdRef.current);
       if (!error) setVisibility('link');
-      void next;
     }
     await navigator.clipboard.writeText(shareUrl);
     setCopied(true);
@@ -112,6 +135,10 @@ export default function ShareJournalModal({
 
   const shareToFeed = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isOwner) {
+      setUserStatus('Only the journal owner can share this journal to the feed.');
+      return;
+    }
     setPosting(true);
 
     const {
@@ -166,6 +193,10 @@ export default function ShareJournalModal({
   const shareWithUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setUserStatus(null);
+    if (!isOwner) {
+      setUserStatus('Only the journal owner can share this journal with other users.');
+      return;
+    }
 
     /* recipient comes from the picker — a real profile row, not a typed string */
     if (!selectedUser) {
@@ -212,6 +243,10 @@ export default function ShareJournalModal({
 
   const toggleLock = async (next: boolean) => {
     setLockStatus(null);
+    if (!isOwner) {
+      setLockStatus('Only the journal owner can change page locks.');
+      return;
+    }
 
     if (!pageId) {
       setLockStatus('Open a page in the book first, then lock it here.');
@@ -234,12 +269,14 @@ export default function ShareJournalModal({
     setLockStatus(next ? `Page ${pageNumber ?? ''} locked 🔒` : 'Page unlocked');
   };
 
-  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: 'link', label: 'Link', icon: <Link2 className="h-4 w-4" /> },
-    { id: 'feed', label: 'Feed', icon: <Sparkles className="h-4 w-4" /> },
-    { id: 'user', label: 'User', icon: <UserPlus className="h-4 w-4" /> },
-    { id: 'lock', label: 'Lock', icon: <Lock className="h-4 w-4" /> },
-  ];
+  const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = isOwner
+    ? [
+        { id: 'link', label: 'Link', icon: <Link2 className="h-4 w-4" /> },
+        { id: 'feed', label: 'Feed', icon: <Sparkles className="h-4 w-4" /> },
+        { id: 'user', label: 'User', icon: <UserPlus className="h-4 w-4" /> },
+        { id: 'lock', label: 'Lock', icon: <Lock className="h-4 w-4" /> },
+      ]
+    : [{ id: 'link', label: 'Share', icon: <Link2 className="h-4 w-4" /> }];
 
   return (
     <div
@@ -284,7 +321,7 @@ export default function ShareJournalModal({
           {tab === 'link' && (
             <>
               <p className="text-sm text-[#6B6B6B]">
-                Anyone with this link can open your journal in view-only mode.
+                {isOwner ? 'Share your journal with a link. Link access is view-only.' : 'Share this journal with someone using your device’s share options or copy the link.'}
               </p>
               <div className="flex items-center gap-2">
                 <input
