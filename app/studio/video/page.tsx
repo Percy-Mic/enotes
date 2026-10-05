@@ -6869,14 +6869,12 @@ function VideoEditor() {
                 style={{ width: previewSize?.width, height: previewSize?.height, maxWidth: '100%', maxHeight: '100%', touchAction: 'none' }}
                 aria-label="Video preview — tap to select; drag inside to move; drag outward near an edge to resize; move tangentially near an edge to rotate"
               />
-              {/* Minimal CapCut-style direct-manipulation controller.
-                  The artwork itself remains the move surface. One compact
-                  multifunction handle provides the discoverable resize/rotate
-                  affordance; its gesture direction is classified by the same
-                  canvas gesture engine used for the invisible touch zones.
-                  This avoids four competing corner buttons while keeping the
-                  powerful editor controls available in the inspector. */}
-              {clipFrame && previewScale > 0 && selectedClip && !cropMode && !playing && (
+              {/* Selection outlines only. The canvas itself is the controller:
+                  touch/cursor movement is classified into move, resize, or rotate
+                  from the pointer's path relative to the selected object's center
+                  and edges. No transparent or visible transform buttons sit over
+                  the artwork, so every part of the object remains draggable. */}
+              {clipFrame && previewScale > 0 && selectedClip && !cropMode && (
                 <div
                   className="pointer-events-none absolute"
                   style={{
@@ -6888,20 +6886,10 @@ function VideoEditor() {
                     outline: '2px solid rgba(34,211,238,0.95)',
                     outlineOffset: 0,
                   }}
-                >
-                  <button
-                    type="button"
-                    aria-label="Transform video — drag to resize or rotate"
-                    title="Drag this control outward to resize or around the edge to rotate"
-                    className="pointer-events-auto absolute -bottom-2.5 -right-2.5 flex h-6 w-6 touch-none select-none items-center justify-center rounded-full border-2 border-white bg-cyan-400 text-[11px] font-black text-black shadow-[0_2px_10px_rgba(0,0,0,.45)] transition-transform active:scale-90"
-                    onPointerDown={(e) => beginClipGesture(selectedClip, 'auto', e)}
-                  >
-                    <span aria-hidden="true">↗</span>
-                  </button>
-                </div>
+                />
               )}
 
-              {selectedElement && previewScale > 0 && !cropMode && !playing && (() => {
+              {selectedElement && previewScale > 0 && !cropMode && (() => {
                 const g = elementVisualGeometry(selectedElement);
                 return (
                   <div
@@ -6915,19 +6903,7 @@ function VideoEditor() {
                       transform: 'rotate(' + g.rotation + 'deg)',
                       outline: '2px solid rgba(229,121,143,0.98)',
                     }}
-                  >
-                    <button
-                      type="button"
-                      aria-label={selectedElement.kind === 'text'
-                        ? 'Transform text — drag to resize or rotate'
-                        : 'Transform overlay — drag to resize or rotate'}
-                      title="Drag this control outward to resize or around the edge to rotate"
-                      className="pointer-events-auto absolute -bottom-2.5 -right-2.5 flex h-6 w-6 touch-none select-none items-center justify-center rounded-full border-2 border-white bg-[#E5798F] text-[11px] font-black text-white shadow-[0_2px_10px_rgba(0,0,0,.45)] transition-transform active:scale-90"
-                      onPointerDown={(e) => beginElementGesture(selectedElement, 'auto', e)}
-                    >
-                      <span aria-hidden="true">↗</span>
-                    </button>
-                  </div>
+                  />
                 );
               })()}
 
