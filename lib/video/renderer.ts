@@ -1185,7 +1185,8 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     ? (availableHeight / (lineHeightRequested * lines.length))
     : 1;
   const fitScale = Math.min(1, widthFit, heightFit);
-  const fontSize = Math.max(1, Math.min(240, requestedFontSize * fitScale));
+  /* There is intentionally no hard font-size ceiling. fitScale only prevents glyphs from overflowing the element box; the element itself may be larger than the canvas. */
+  const fontSize = Math.max(1, requestedFontSize * fitScale);
   ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   const lineHeight = fontSize * (el.line_height || 1.25);
   const totalHeight = lines.length * lineHeight;
