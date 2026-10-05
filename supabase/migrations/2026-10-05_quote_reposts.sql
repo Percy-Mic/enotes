@@ -167,7 +167,7 @@ begin
     end,
     'repost:' || new.post_id::text || ':' || new.user_id::text
   )
-  on conflict (dedupe_key) do update
+  on conflict (dedupe_key) where dedupe_key is not null do update
     set message = excluded.message,
         actor_id = excluded.actor_id,
         created_at = timezone('utc', now()),
