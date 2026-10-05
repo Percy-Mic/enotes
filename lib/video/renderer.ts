@@ -1198,7 +1198,7 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
    * large, and the user can resize the container when they want more room.
    */
   const fontSize = Math.max(1, requestedFontSize);
-  ctx.font = ${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'};
+  ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   const lineHeight = fontSize * (el.line_height || 1.25);
   const totalHeight = lines.length * lineHeight;
 
