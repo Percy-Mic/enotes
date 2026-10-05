@@ -4790,7 +4790,6 @@ function VideoEditor() {
       }
       if (!gestureMoved) {
         gestureMoved = true;
-        const intent = activeGesture === 'rotate' ? 'rotate' : activeGesture?.startsWith('resize') ? 'resize' : 'move';
       }
 
       if (activeGesture === 'move') {
@@ -5016,7 +5015,6 @@ function VideoEditor() {
       }
       if (!gestureMoved) {
         gestureMoved = true;
-        const intent = activeGesture === 'rotate' ? 'rotate' : activeGesture?.startsWith('resize') ? 'resize' : 'move';
       }
 
       if (activeGesture === 'move') {
