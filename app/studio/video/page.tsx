@@ -4837,8 +4837,8 @@ function VideoEditor() {
         const d0 = Math.hypot(startX - centerX, startY - centerY);
         const d1 = Math.hypot(p.x - centerX, p.y - centerY);
         const factor = clampNum(d1 / Math.max(8, d0), 0.05, 8);
-        const nw = clampNum(startGeometry.width * factor, minSize, 1400);
-        const nh = clampNum(startGeometry.height * factor, minSize, 1400);
+        const nw = startEl.kind === 'text' ? Math.max(minSize, startGeometry.width * factor) : clampNum(startGeometry.width * factor, minSize, 1400);
+        const nh = startEl.kind === 'text' ? Math.max(minSize, startGeometry.height * factor) : clampNum(startGeometry.height * factor, minSize, 1400);
         const nextFont = scaledTextSize(nw, nh);
         let nextX = centerX - (nw / Math.max(0.001, startGeometry.scale)) / 2;
         let nextY = centerY - (nh / Math.max(0.001, startGeometry.scale)) / 2;
@@ -5248,8 +5248,8 @@ function VideoEditor() {
         const element = activeElement;
         const centerX = element.x + element.width / 2;
         const centerY = element.y + element.height / 2;
-        const width = clampNum(element.width * factor, 24, 1400);
-        const height = clampNum(element.height * factor, 24, 1400);
+        const width = element.kind === 'text' ? Math.max(24, element.width * factor) : clampNum(element.width * factor, 24, 1400);
+        const height = element.kind === 'text' ? Math.max(24, element.height * factor) : clampNum(element.height * factor, 24, 1400);
         updateElement(
           element.id,
           {
