@@ -5019,16 +5019,11 @@ function VideoEditor() {
       const ay = Math.abs(ly);
       const hw = box.w / 2;
       const hh = box.h / 2;
-      const mx = p.x - startX;
-      const my = p.y - startY;
-      const movement = Math.max(GESTURE_SLOP, Math.hypot(mx, my));
-      const radius = Math.max(1, Math.hypot(dx0, dy0));
-      const radial = (mx * dx0 + my * dy0) / (movement * radius);
-      const nearX = Math.abs(ax - hw) <= Math.max(16, hw * TRANSFORM_EDGE_BAND);
-      const nearY = Math.abs(ay - hh) <= Math.max(16, hh * TRANSFORM_EDGE_BAND);
+      const nearX = Math.abs(ax - hw) <= Math.max(24, hw * TRANSFORM_EDGE_BAND);
+      const nearY = Math.abs(ay - hh) <= Math.max(24, hh * TRANSFORM_EDGE_BAND);
       const outside = ax > hw || ay > hh;
-      if ((outside || nearX || nearY) && radial < 0.25) return 'rotate';
-      if ((nearX || nearY) && radial > 0.25) {
+      if (outside) return 'rotate';
+      if (nearX || nearY) {
         if (nearX && nearY) {
           if (Math.abs(mx) >= Math.abs(my)) return lx < 0 ? 'resize-nw' : 'resize-ne';
           return ly < 0 ? 'resize-nw' : 'resize-sw';
