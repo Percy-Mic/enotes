@@ -3872,6 +3872,7 @@ function VideoEditor() {
   const startTrim = (e: React.PointerEvent, clip: VideoClip, edge: 'start' | 'end') => {
     e.preventDefault();
     e.stopPropagation();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
     setPlaying(false);
     setSelectedClipId(clip.id);
     const startX = e.clientX;
@@ -4786,13 +4787,8 @@ function VideoEditor() {
       const ay = Math.abs(ly);
       const hw = startGeometry.width / 2;
       const hh = startGeometry.height / 2;
-      const mx = p.x - startX;
-      const my = p.y - startY;
-      const movement = Math.max(GESTURE_SLOP, Math.hypot(mx, my));
-      const radius = Math.max(1, Math.hypot(dx0, dy0));
-      const radial = (mx * dx0 + my * dy0) / (movement * radius);
-      const nearX = Math.abs(ax - hw) <= Math.max(16, hw * TRANSFORM_EDGE_BAND);
-      const nearY = Math.abs(ay - hh) <= Math.max(16, hh * TRANSFORM_EDGE_BAND);
+      const nearX = Math.abs(ax - hw) <= Math.max(24, hw * TRANSFORM_EDGE_BAND);
+      const nearY = Math.abs(ay - hh) <= Math.max(24, hh * TRANSFORM_EDGE_BAND);
       const outside = ax > hw || ay > hh;
       /*
        * No handle is selected here. The point where the gesture starts gives
@@ -4800,8 +4796,8 @@ function VideoEditor() {
        * outward/away from the centre = resize, tangential/around the centre
        * = rotate, everything else = move. Once chosen it stays locked.
        */
-      if ((outside || nearX || nearY) && radial < 0.25) return 'rotate';
-      if ((nearX || nearY) && radial > 0.25) {
+      if (outside) return 'rotate';
+      if (nearX || nearY) {
         /* Corner/edge direction comes from the pointer's actual local position,
            not from the drag vector. This makes every corner predictable. */
         if (nearX && nearY) {
