@@ -33,6 +33,7 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
+  const [followStates, setFollowStates] = useState<Record<string, 'none' | 'following' | 'requested'>>({});
 
   useEffect(() => {
     (async () => {
@@ -68,6 +69,52 @@ export default function SearchPage() {
       .limit(6);
     setCommunities(comms || []);
   }, [myId]);
+
+  useEffect(() => {
+    if (!myId || people.length === 0) {
+      setFollowStates({});
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const ids = people.map((person) => person.id).filter((id) => id !== myId);
+      if (ids.length === 0) {
+        setFollowStates({});
+        return;
+      }
+
+      const [{ data: follows }, { data: requests }] = await Promise.all([
+        supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', myId)
+          .in('following_id', ids),
+        supabase
+          .from('follow_requests')
+          .select('target_id')
+          .eq('requester_id', myId)
+          .eq('status', 'pending')
+          .in('target_id', ids),
+      ]);
+
+      if (cancelled) return;
+      const states: Record<string, 'none' | 'following' | 'requested'> = {};
+      for (const row of follows || []) {
+        states[row.following_id as string] = 'following';
+      }
+      /* A real follow wins over a stale pending request. */
+      for (const row of requests || []) {
+        const id = row.target_id as string;
+        if (!states[id]) states[id] = 'requested';
+      }
+      setFollowStates(states);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [people, myId]);
 
   useEffect(() => {
     if (!myId) return;
@@ -215,7 +262,10 @@ export default function SearchPage() {
                     <FollowButton
                       targetId={person.id}
                       isPrivate={!!person.is_private}
-                      initialState="none"
+                      initialState={followStates[person.id] || 'none'}
+                      onChange={(state) =>
+                        setFollowStates((current) => ({ ...current, [person.id]: state }))
+                      }
                     />
                   )}
                 </li>
