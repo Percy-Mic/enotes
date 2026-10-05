@@ -4768,10 +4768,13 @@ function VideoEditor() {
     const scaledTextSize = (width: number, height: number) => {
       if (startEl.kind !== 'text' || !startEl.font_size) return undefined;
       const areaScale = Math.sqrt(
-        Math.max(0.05, (width / Math.max(1, startGeometry.width)) *
+        Math.max(0.01, (width / Math.max(1, startGeometry.width)) *
           (height / Math.max(1, startGeometry.height)))
       );
-      return Math.max(8, Math.min(240, startEl.font_size * areaScale));
+      /* Do not impose an editor-side 240px ceiling. The canvas is an output
+         frame, not a boundary on typography; oversized text may intentionally
+         extend beyond it for motion/composition. */
+      return Math.max(1, startEl.font_size * areaScale);
     };
 
     let activeGesture: Gesture | null = gesture === 'auto' ? null : gesture;
@@ -4863,11 +4866,7 @@ function VideoEditor() {
         const nextFont = scaledTextSize(nw, nh);
         let nextX = centerX - (nw / Math.max(0.001, startGeometry.scale)) / 2;
         let nextY = centerY - (nh / Math.max(0.001, startGeometry.scale)) / 2;
-        if (startEl.kind === 'text') {
-          const constrained = constrainTextBox(startEl, nextX, nextY, nw, nh, startGeometry.rotation);
-          nextX = constrained.x;
-          nextY = constrained.y;
-        }
+        /* Text is allowed to extend beyond the canvas just like media. */
         updateElement(
           el.id,
           {
@@ -4918,7 +4917,7 @@ function VideoEditor() {
         let nh = startGeometry.height;
         let ncx = centerX;
         let ncy = centerY;
-        if (gesture === 'resize-e' || gesture === 'resize-w') {
+        if (activeGesture === 'resize-e' || activeGesture === 'resize-w') {
           nw = Math.max(minSize, startGeometry.width + lx);
           ncx = centerX + lx / 2;
           if (keepAspect) nh = nw / startAspect;
@@ -5291,7 +5290,7 @@ function VideoEditor() {
             x: Math.round(centerX - width / 2),
             y: Math.round(centerY - height / 2),
             ...(element.kind === 'text' && element.font_size
-              ? { font_size: Math.max(8, Math.min(240, element.font_size * factor)) }
+              ? { font_size: Math.max(1, element.font_size * factor) }
               : {}),
           },
           'Pinch resize overlay',
@@ -10564,7 +10563,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Slider label="Size" min={16} max={140} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
+                  <Slider label="Size" min={1} max={1000} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
                   <div>
                     <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.1em] text-white/35">Align</span>
                     <div className="grid h-[28px] grid-cols-3 overflow-hidden rounded-lg border border-white/10 bg-black/25">
