@@ -93,6 +93,11 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
   const [repostCount, setRepostCount] = useState(post.repost_count || 0);
   const [repostBusy, setRepostBusy] = useState(false);
   const [repostNote, setRepostNote] = useState<string | null>(null);
+  const [repostMenuOpen, setRepostMenuOpen] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const [quoteDraft, setQuoteDraft] = useState(post.repost_quote || '');
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  const [displayQuote, setDisplayQuote] = useState(post.repost_quote || null);
   const [expanded, setExpanded] = useState(false);
   const [myId, setMyId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -106,6 +111,11 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [sharingToCommunity, setSharingToCommunity] = useState(false);
   const likeBusyRef = useRef(false);
+
+  useEffect(() => {
+    setDisplayQuote(post.repost_quote || null);
+    setQuoteDraft(post.repost_quote || '');
+  }, [post.id, post.repost_id, post.repost_quote]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -262,7 +272,7 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
     setRepostMenuOpen(false);
     setQuoteBusy(true);
     const { data } = await supabase.from('reposts').select('id, quote').eq('post_id', post.id).eq('user_id', myId).maybeSingle();
-    setQuoteDraft(data?.quote || post.repost_quote || '');
+    setQuoteDraft(data?.quote || displayQuote || '');
     setQuoteOpen(true);
     setQuoteBusy(false);
   };
@@ -282,7 +292,8 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
       return;
     }
     setReposted(true);
-    if (!post.reposted_by_me) setRepostCount((count) => count + 1);
+    if (!reposted) setRepostCount((count) => count + 1);
+    setDisplayQuote(quote || null);
     setQuoteOpen(false);
     setQuoteDraft(quote);
   };
@@ -374,9 +385,9 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
           {post.reposted_at && <span>· {timeAgo(post.reposted_at)}</span>}
         </div>
       )}
-      {post.repost_id && post.repost_quote && (
+      {post.repost_id && displayQuote && (
         <div className="mx-4 mb-3 rounded-xl bg-[#FFF7F8] px-3.5 py-3 text-sm leading-relaxed text-[#111111]">
-          <RichText text={post.repost_quote} />
+          <RichText text={displayQuote} />
         </div>
       )}
 
@@ -613,7 +624,7 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
                 <Repeat2 className="h-4 w-4" /> {reposted ? 'Undo repost' : 'Repost'}
               </button>
               <button onClick={openQuoteComposer} disabled={quoteBusy} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs font-semibold hover:bg-gray-50 disabled:opacity-50">
-                <MessageCircle className="h-4 w-4" /> {reposted && post.repost_quote ? 'Edit quote' : 'Quote repost'}
+                <MessageCircle className="h-4 w-4" /> {reposted && displayQuote ? 'Edit quote' : 'Quote repost'}
               </button>
             </div>
           )}
