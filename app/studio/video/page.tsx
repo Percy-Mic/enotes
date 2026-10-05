@@ -5372,15 +5372,11 @@ function VideoEditor() {
       if (element) {
         const rawX = element.x + delta.x * scaleX;
         const rawY = element.y + delta.y * scaleY;
-        const visual = elementVisualGeometry(element);
-        const constrained = element.kind === 'text'
-          ? constrainTextBox(element, rawX, rawY, visual.width, visual.height, visual.rotation)
-          : { x: rawX, y: rawY };
         updateElement(
           element.id,
           {
-            x: Math.round(constrained.x),
-            y: Math.round(constrained.y),
+            x: Math.round(rawX),
+            y: Math.round(rawY),
           },
           'Two-finger move overlay',
           `pinch-pan-${element.id}`,
