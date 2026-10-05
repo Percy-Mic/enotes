@@ -240,25 +240,71 @@ export default function FeedPage() {
 
     let list = (data || []) as unknown as Post[];
 
-    /* enrich: journal titles + like/comment counts + liked_by_me */
     const myId = user?.id;
-
-    const journalIds = Array.from(new Set(list.map((p) => p.journal_id).filter(Boolean))) as string[];
-    let journalMap = new Map<string, { title: string; background_color: string }>();
-    if (journalIds.length) {
-      const { data: jd } = await supabase
-        .from('journals')
-        .select('id, title, background_color')
-        .in('id', journalIds);
-      journalMap = new Map((jd || []).map((j: any) => [j.id, j]));
-    }
-
-    /*
-     * Enrichment contains account-specific interaction state. Keep it for
-     * signed-in users; anonymous visitors only need the public post rows.
-     */
     if (user) {
+      /* Pull reposts from people I follow (plus my own), then fetch any
+         original posts that are older than the normal feed window. */
+      const { data: followRows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id);
+      const actorIds = Array.from(new Set([user.id, ...(followRows || []).map((r: any) => r.following_id)]));
+      const { data: repostRows } = await supabase
+        .from('reposts')
+        .select(`id, user_id, post_id, quote, created_at, updated_at,
+                 reposter:profiles!reposts_user_id_fkey(id, full_text_name, username, avatar_url)`)
+        .in('user_id', actorIds)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      const reposts = (repostRows || []) as any[];
+      const missingIds = reposts
+        .map((r) => r.post_id)
+        .filter((id) => !list.some((p) => p.id === id));
+
+      if (missingIds.length) {
+        const { data: olderPosts } = await supabase
+          .from('posts')
+          .select(
+            `id, author_id, journal_id, page_id, content, media_url, media_type, media_size, post_type, link_url, visibility, created_at, edited_at,
+             author:profiles!posts_author_id_fkey(id, full_text_name, username, avatar_url)`,
+          )
+          .in('id', missingIds);
+        list = [...list, ...((olderPosts || []) as unknown as Post[])];
+      }
+
       list = await enrichPosts(list, myId);
+
+      const byPostId = new Map(list.map((post) => [post.id, post]));
+      const repostItems: Post[] = [];
+      for (const repost of reposts) {
+        const original = byPostId.get(repost.post_id);
+        if (!original) continue;
+        const reposter = Array.isArray(repost.reposter) ? repost.reposter[0] : repost.reposter;
+        repostItems.push({
+          ...original,
+          repost_id: repost.id,
+          repost_quote: repost.quote || null,
+          reposted_at: repost.created_at,
+          reposter: reposter || null,
+          reposted_by_me: repost.user_id === myId,
+        });
+      }
+
+      /* Originals and reposts are separate feed items. Reposts are ordered
+         by when the repost happened, while the original keeps its own date. */
+      const originalItems = list.map((post) => ({
+        ...post,
+        repost_id: null,
+        repost_quote: null,
+        reposted_at: null,
+        reposter: null,
+      }));
+      list = [...originalItems, ...repostItems].sort((x, y) => {
+        const xTime = new Date(x.reposted_at || x.created_at).getTime();
+        const yTime = new Date(y.reposted_at || y.created_at).getTime();
+        return yTime - xTime;
+      });
     }
     setPosts(list);
     setLoading(false);
