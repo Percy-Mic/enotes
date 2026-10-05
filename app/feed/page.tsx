@@ -287,7 +287,7 @@ export default function FeedPage() {
           repost_quote: repost.quote || null,
           reposted_at: repost.created_at,
           reposter: reposter || null,
-          reposted_by_me: repost.user_id === myId,
+          reposted_by_me: !!original.reposted_by_me,
         });
       }
 
