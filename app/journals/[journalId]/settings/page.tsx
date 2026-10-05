@@ -83,6 +83,8 @@ export default function JournalSettingsPage() {
     setDeleting,
   ] = useState(false);
 
+  const [accessDenied, setAccessDenied] = useState(false);
+
   /*
    * LOAD
    */
@@ -111,6 +113,14 @@ export default function JournalSettingsPage() {
         console.error(
           error,
         );
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (data && (!user?.id || user.id !== data.owner_id)) {
+        setAccessDenied(true);
+        setLoading(false);
+        return;
       }
 
       if (data) {
@@ -150,6 +160,8 @@ export default function JournalSettingsPage() {
     event: React.FormEvent,
   ) {
     event.preventDefault();
+
+    if (accessDenied) return;
 
     setSaving(true);
     setSaved(false);
@@ -198,6 +210,8 @@ export default function JournalSettingsPage() {
    */
 
   async function handleDeleteJournal() {
+    if (accessDenied) return;
+
     let confirmed = false;
     await alert({
       title: 'Delete this journal?',
@@ -234,6 +248,21 @@ export default function JournalSettingsPage() {
 
     router.push(
       '/journals',
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#B88C5A] px-6 text-center font-serif text-[#3C2819]">
+        <div className="text-3xl">🔒</div>
+        <h1 className="text-xl font-bold">Owner access required</h1>
+        <p className="max-w-md text-sm opacity-80">
+          Journal settings are private to the owner. Shared editors can edit journal content but cannot change owner settings or delete the journal.
+        </p>
+        <Link href={journalId ? `/journals/${journalId}` : '/journals'} className="rounded-xl bg-white px-5 py-2.5 text-sm font-bold shadow">
+          Back to journal
+        </Link>
+      </div>
     );
   }
 
