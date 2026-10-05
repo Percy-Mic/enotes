@@ -91,10 +91,6 @@ with check (
       and p.deleted_at is null
       and p.author_id is not null
       and (
-        p.author_id <> auth.uid()
-        or p.author_id = auth.uid()
-      )
-      and (
         p.visibility = 'public'
         or p.author_id = auth.uid()
         or (
