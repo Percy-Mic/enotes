@@ -125,7 +125,8 @@ export type NotificationType =
   | 'journal_edit'
   | 'reaction'
   | 'chat_theme'
-  | 'live_started';
+  | 'live_started'
+  | 'repost';
 
 export interface Notification {
   id: string;
