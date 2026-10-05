@@ -61,6 +61,7 @@ function target(n: Notification): string {
     case 'like':
     case 'reaction':
     case 'mention':
+    case 'repost':
       return n.entity_id ? `/posts/${n.entity_id}` : '/feed';
     case 'call_missed':
     case 'call_declined':
