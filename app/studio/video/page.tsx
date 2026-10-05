@@ -5034,7 +5034,7 @@ function VideoEditor() {
         );
         updateClip(
           clip.id,
-          { transform: nextTransform },
+          clipTransformPatchAtTime(clip, nextTransform, clipLocalTime),
           'Scale video',
           `cscale-${clip.id}`
         );
