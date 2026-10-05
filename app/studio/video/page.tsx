@@ -911,6 +911,33 @@ function clipTransformPatchAtTime(
   return patch;
 }
 
+/**
+ * Apply direct-manipulation changes to the same animated properties used by
+ * the renderer. If an overlay is already keyframed, the current gesture edits
+ * the curve at the playhead instead of leaving the visible controller and
+ * rendered frame out of sync.
+ */
+function elementTransformPatchAtTime(
+  element: TimelineElement,
+  patch: Partial<TimelineElement>,
+  timeIn: number,
+): Partial<TimelineElement> {
+  const pairs: Array<[KeyframeProperty, number | undefined]> = [
+    ['pos_x_kf', patch.x],
+    ['pos_y_kf', patch.y],
+    ['rotation_kf', patch.rotation],
+  ];
+  const animated = pairs.filter(([prop, value]) => value != null && (element.keyframes?.[prop]?.length || 0) > 0);
+  if (!animated.length) return patch;
+
+  let keyframes = { ...(element.keyframes || {}) };
+  const t = Math.max(0, Math.min(Math.max(0.2, element.end - element.start), Number.isFinite(timeIn) ? timeIn : 0));
+  for (const [prop, value] of animated) {
+    keyframes = upsertKeyframe({ ...element, keyframes }, prop, t, Number(value));
+  }
+  return { ...patch, keyframes };
+}
+
 type TimelineKeyframeRef = {
   owner: 'clip' | 'element';
   ownerId: string;
@@ -4777,7 +4804,7 @@ function VideoEditor() {
         const baseY = ny + startEl.height * startGeometry.scale / 2 - startEl.height / 2;
         updateElement(
           el.id,
-          { x: Math.round(baseX), y: Math.round(baseY) },
+          elementTransformPatchAtTime(el, { x: Math.round(baseX), y: Math.round(baseY) }, Math.max(0, playheadRef.current - el.start)),
           'Move overlay',
           `move-${el.id}`
         );
@@ -4890,9 +4917,9 @@ function VideoEditor() {
         );
         const baseX = constrained.x + startEl.width * startGeometry.scale / 2 - startEl.width / 2;
         const baseY = constrained.y + startEl.height * startGeometry.scale / 2 - startEl.height / 2;
-        updateElement(el.id, { rotation: nextRotation, x: Math.round(baseX), y: Math.round(baseY) }, 'Rotate text', `rot-${el.id}`);
+        updateElement(el.id, elementTransformPatchAtTime(el, { rotation: nextRotation, x: Math.round(baseX), y: Math.round(baseY) }, Math.max(0, playheadRef.current - el.start)), 'Rotate text', `rot-${el.id}`);
       } else {
-        updateElement(el.id, { rotation: nextRotation }, 'Rotate overlay', `rot-${el.id}`);
+        updateElement(el.id, elementTransformPatchAtTime(el, { rotation: nextRotation }, Math.max(0, playheadRef.current - el.start)), 'Rotate overlay', `rot-${el.id}`);
       }
     };
 
