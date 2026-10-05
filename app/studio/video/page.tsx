@@ -3795,7 +3795,6 @@ function VideoEditor() {
     seekTo(timeAtClientX(e.clientX));
     const onMove = (ev: PointerEvent) => seekTo(timeAtClientX(ev.clientX));
     const onUp = () => {
-      if (!gestureMoved) openTool(startEl.kind === 'text' ? 'text' : 'overlays');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -3885,7 +3884,6 @@ function VideoEditor() {
       updateClip(clip.id, edge === 'start' ? { trimStart: next } : { trimEnd: next }, 'Trim clip', `trim-${clip.id}`);
     };
     const onUp = () => {
-      if (!gestureMoved) openTool('motion');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -4973,6 +4971,7 @@ function VideoEditor() {
     };
 
     const onUp = () => {
+      if (!gestureMoved) openTool(startEl.kind === 'text' ? 'text' : 'overlays');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -4981,7 +4980,6 @@ function VideoEditor() {
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   };
-
   /* ---------- main-clip gestures on the canvas ----------
      Main media may intentionally travel beyond the canvas for keyframed
      entrance/exit animations. The clip is represented by its rendered box;
@@ -5160,6 +5158,7 @@ function VideoEditor() {
     };
 
     const onUp = () => {
+      if (!gestureMoved) openTool('motion');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -5168,7 +5167,6 @@ function VideoEditor() {
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onUp);
   };
-
   const canvasPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
