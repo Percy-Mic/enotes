@@ -2468,6 +2468,80 @@ function VideoEditor() {
     setSelectedClipId(copy.id);
   };
 
+  /* ---------- high-frequency transform actions ---------- */
+  const resetSelectedClipTransform = useCallback(() => {
+    const clip = selectedClip;
+    if (!clip) return;
+    const transform = { ...DEFAULT_TRANSFORM };
+    updateClip(clip.id, { transform }, 'Reset transform');
+  }, [selectedClip, updateClip]);
+
+  const fitSelectedClip = useCallback((mode: 'contain' | 'cover') => {
+    const clip = selectedClip;
+    if (!clip) return;
+    const sourceAspect = clip.source_width && clip.source_height
+      ? clip.source_width / clip.source_height
+      : project.canvas.width / Math.max(1, project.canvas.height);
+    const effectiveAspect = croppedAspect(sourceAspect, clip.transform.crop);
+    const fit = mode === 'contain'
+      ? containFit(project.canvas.width, project.canvas.height, effectiveAspect)
+      : coverFit(project.canvas.width, project.canvas.height, effectiveAspect);
+    const baseFit = containFit(project.canvas.width, project.canvas.height, effectiveAspect);
+    const scale = mode === 'cover'
+      ? Math.max(0.05, Math.min(4, Math.max(
+          project.canvas.width / Math.max(1, baseFit.w),
+          project.canvas.height / Math.max(1, baseFit.h),
+        )))
+      : 1;
+    void fit;
+    updateClip(clip.id, {
+      transform: {
+        ...clip.transform,
+        scale,
+        scale_x: 1,
+        scale_y: 1,
+        offset_x: 0,
+        offset_y: 0,
+      },
+    }, mode === 'cover' ? 'Fill canvas' : 'Fit canvas');
+  }, [project.canvas.height, project.canvas.width, selectedClip, updateClip]);
+
+  const flipSelectedClip = useCallback((axis: 'horizontal' | 'vertical') => {
+    const clip = selectedClip;
+    if (!clip) return;
+    updateClip(clip.id, {
+      transform: {
+        ...clip.transform,
+        flip_h: axis === 'horizontal' ? !clip.transform.flip_h : clip.transform.flip_h,
+        flip_v: axis === 'vertical' ? !clip.transform.flip_v : clip.transform.flip_v,
+      },
+    }, axis === 'horizontal' ? 'Flip horizontal' : 'Flip vertical');
+  }, [selectedClip, updateClip]);
+
+  const centerSelectedElement = useCallback(() => {
+    const el = selectedElement;
+    if (!el) return;
+    updateElement(el.id, {
+      x: Math.round((project.canvas.width - el.width) / 2),
+      y: Math.round((project.canvas.height - el.height) / 2),
+    }, 'Center overlay');
+  }, [project.canvas.height, project.canvas.width, selectedElement, updateElement]);
+
+  const fitSelectedElement = useCallback(() => {
+    const el = selectedElement;
+    if (!el || (el.kind !== 'image' && el.kind !== 'video')) return;
+    const maxW = project.canvas.width * 0.92;
+    const maxH = project.canvas.height * 0.92;
+    const sourceAspect = el.width / Math.max(1, el.height);
+    const fit = containFit(maxW, maxH, sourceAspect);
+    updateElement(el.id, {
+      x: Math.round((project.canvas.width - fit.w) / 2),
+      y: Math.round((project.canvas.height - fit.h) / 2),
+      width: Math.round(fit.w),
+      height: Math.round(fit.h),
+    }, 'Fit overlay');
+  }, [project.canvas.height, project.canvas.width, selectedElement, updateElement]);
+
   /* Narration timing guard — the placement window of an AI narration
      must never sit on top of an on-screen caption cue (speech competes
      with reading) and should land inside a music bed rather than across
@@ -7653,6 +7727,10 @@ function VideoEditor() {
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
                     <button onClick={() => setClipSpeedMenuOpen((v) => !v)} className={EDITOR_ACTION_PILL} aria-label="Change clip speed"><SkipForward className="h-4 w-4" />Speed</button>
                     <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL} aria-label="Toggle clip audio">{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Volume'}</button>
+                    <button onClick={() => fitSelectedClip('contain')} className={EDITOR_ACTION_PILL} aria-label="Fit clip to canvas">Fit</button>
+                    <button onClick={() => fitSelectedClip('cover')} className={EDITOR_ACTION_PILL} aria-label="Fill canvas with clip">Fill</button>
+                    <button onClick={() => flipSelectedClip('horizontal')} className={EDITOR_ACTION_PILL} aria-label="Flip clip horizontally"><FlipHorizontal className="h-4 w-4" />Flip</button>
+                    <button onClick={resetSelectedClipTransform} className={EDITOR_ACTION_PILL} aria-label="Reset clip transform">Reset</button>
                     <button onClick={() => deleteClip(selectedClip.id)} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Delete clip"><Trash2 className="h-4 w-4" />Delete</button>
                   </>
                 )}
@@ -7661,7 +7739,9 @@ function VideoEditor() {
                     <button onClick={() => openTool(inspectorTool)} className={EDITOR_ACTION_PILL} aria-label="Edit selected overlay"><Type className="h-4 w-4" />Edit</button>
                     {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button onClick={startElementCrop} className={EDITOR_ACTION_PILL} aria-label="Crop selected overlay"><Crop className="h-4 w-4" />Crop</button>}
                     <button onClick={() => duplicateElement(selectedElement)} className={EDITOR_ACTION_PILL} aria-label="Duplicate selected overlay"><Copy className="h-4 w-4" />Duplicate</button>
-                    <button onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')} className={EDITOR_ACTION_PILL} aria-label="Rotate selected overlay"><RotateCcw className="h-4 w-4" />Rotate</button>
+                    <button onClick={centerSelectedElement} className={EDITOR_ACTION_PILL} aria-label="Center selected overlay">Center</button>
+                    {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button onClick={fitSelectedElement} className={EDITOR_ACTION_PILL} aria-label="Fit selected overlay">Fit</button>}
+                    {(selectedElement.kind === 'image' || selectedElement.kind === 'video' || selectedElement.kind === 'sticker') && <button onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate counterclockwise')} className={EDITOR_ACTION_PILL} aria-label="Rotate selected overlay"><RotateCcw className="h-4 w-4" />Rotate</button>}
                     <button onClick={() => deleteElement(selectedElement.id)} className={EDITOR_ACTION_PILL + ' text-red-300'} aria-label="Delete selected overlay"><Trash2 className="h-4 w-4" />Delete</button>
                   </>
                 )}
@@ -7726,6 +7806,10 @@ function VideoEditor() {
                       {clipSpeedMenuOpen && <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-[#181818] p-1">{SPEED_OPTIONS.map((speed) => <button key={speed} onClick={() => { updateClip(selectedClip.id, { speed }, 'Change speed', `speed-${selectedClip.id}`); setClipSpeedMenuOpen(false); }} className={`rounded-lg px-2.5 py-2 text-[10px] font-bold ${selectedClip.speed === speed ? 'bg-[#E5798F] text-white' : 'text-white/60 hover:bg-white/10'}`}>{speed}×</button>)}</div>}
                       <button onClick={startClipCrop} className={EDITOR_ACTION_PILL}><Crop className="h-4 w-4" />Crop</button>
                       <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL}>{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Mute'}</button>
+                      <button onClick={() => fitSelectedClip('contain')} className={EDITOR_ACTION_PILL}>Fit</button>
+                      <button onClick={() => fitSelectedClip('cover')} className={EDITOR_ACTION_PILL}>Fill</button>
+                      <button onClick={() => flipSelectedClip('horizontal')} className={EDITOR_ACTION_PILL}><FlipHorizontal className="h-4 w-4" />Flip</button>
+                      <button onClick={resetSelectedClipTransform} className={EDITOR_ACTION_PILL}>Reset</button>
                       <button onClick={() => duplicateClip(selectedClip)} className={EDITOR_ACTION_PILL}><Copy className="h-4 w-4" />Duplicate</button>
                       <button onClick={() => void reverseSelectedClip()} disabled={preparingReverse === selectedClip.id} className={EDITOR_ACTION_PILL + ' disabled:opacity-40'}>{preparingReverse === selectedClip.id ? 'Preparing…' : 'Reverse'}</button>
                     </div>
