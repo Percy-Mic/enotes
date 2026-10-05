@@ -381,3 +381,5 @@ Supabase for what the policies allow.
 9. **Blocking:** block the second user → their posts vanish from your feed
    and your profile is hidden from them (enforced by RLS, not just UI).
 10. **Mobile:** repeat 2/4/7 on a phone (or devtools mobile emulation).
+
+   10. `supabase/migrations/2026-10-05_quote_reposts.sql` ← adds quote text, feed-item repost support, repost RLS, and repost notifications
