@@ -83,6 +83,11 @@ export interface Post {
   reposted_by_me?: boolean;
   /** username of someone I follow (or me) who reposted this — shown above the card */
   reposted_by?: string | null;
+  /** First-class feed metadata when this card represents a repost. */
+  repost_id?: string | null;
+  repost_quote?: string | null;
+  reposted_at?: string | null;
+  reposter?: Pick<Profile, 'id' | 'full_text_name' | 'username' | 'avatar_url'> | null;
   /* embedded count aggregates — Supabase `relation(count)` shape */
   likes?: { count: number }[];
   comments?: { count: number }[];
