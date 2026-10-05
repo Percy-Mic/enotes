@@ -49,13 +49,21 @@ create index if not exists reposts_user_created_at_idx
 
 alter table public.reposts enable row level security;
 
-drop policy if exists "reposts_select_authenticated" on public.reposts;
-drop policy if exists "reposts_select" on public.reposts;
-drop policy if exists "reposts_insert_own" on public.reposts;
-drop policy if exists "reposts_insert" on public.reposts;
-drop policy if exists "reposts_update_own" on public.reposts;
-drop policy if exists "reposts_delete_own" on public.reposts;
-drop policy if exists "reposts_delete" on public.reposts;
+-- Replace every pre-existing repost policy so permissive OR-combination
+-- cannot bypass the access rules below.
+do $
+declare
+  policy_name text;
+begin
+  for policy_name in
+    select policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'reposts'
+  loop
+    execute format('drop policy if exists %I on public.reposts', policy_name);
+  end loop;
+end $;
 
 create policy "reposts_select"
 on public.reposts for select
