@@ -257,6 +257,36 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
     }
   };
 
+  const openQuoteComposer = async () => {
+    if (!myId) return;
+    setRepostMenuOpen(false);
+    setQuoteBusy(true);
+    const { data } = await supabase.from('reposts').select('id, quote').eq('post_id', post.id).eq('user_id', myId).maybeSingle();
+    setQuoteDraft(data?.quote || post.repost_quote || '');
+    setQuoteOpen(true);
+    setQuoteBusy(false);
+  };
+
+  const submitQuoteRepost = async () => {
+    if (!myId || quoteBusy) return;
+    const quote = quoteDraft.trim();
+    setQuoteBusy(true);
+    const { data: existing } = await supabase.from('reposts').select('id').eq('post_id', post.id).eq('user_id', myId).maybeSingle();
+    const result = existing?.id
+      ? await supabase.from('reposts').update({ quote: quote || null, updated_at: new Date().toISOString() }).eq('id', existing.id)
+      : await supabase.from('reposts').insert({ post_id: post.id, user_id: myId, quote: quote || null });
+    setQuoteBusy(false);
+    if (result.error) {
+      setRepostNote(result.error.message || 'Could not create quote repost');
+      setTimeout(() => setRepostNote(null), 3000);
+      return;
+    }
+    setReposted(true);
+    if (!post.reposted_by_me) setRepostCount((count) => count + 1);
+    setQuoteOpen(false);
+    setQuoteDraft(quote);
+  };
+
   const sharePost = async () => {
     const url = `${window.location.origin}/posts/${post.id}`;
     if (navigator.share) {
@@ -334,6 +364,22 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
           reposted
         </p>
       )}
+      {post.repost_id && post.reposter && (
+        <div className="mx-4 mb-2 mt-1 flex items-center gap-2 text-xs text-[#6B6B6B]">
+          <Repeat2 className="h-3.5 w-3.5 shrink-0" />
+          <Link href={post.reposter.username ? `/u/${post.reposter.username}` : '/search'} className="font-semibold hover:underline">
+            {post.reposter.full_text_name || post.reposter.username || 'Someone'}
+          </Link>
+          <span>reposted</span>
+          {post.reposted_at && <span>· {timeAgo(post.reposted_at)}</span>}
+        </div>
+      )}
+      {post.repost_id && post.repost_quote && (
+        <div className="mx-4 mb-3 rounded-xl bg-[#FFF7F8] px-3.5 py-3 text-sm leading-relaxed text-[#111111]">
+          <RichText text={post.repost_quote} />
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3 p-4 pb-3">
         <Link href={post.author?.username ? `/u/${post.author.username}` : '/search'}>
@@ -554,18 +600,24 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
           )}
         </div>
 
-        <button
-          onClick={toggleRepost}
-          disabled={!myId || repostBusy}
-          title={reposted ? 'Undo repost' : 'Repost to your feed'}
-          className={`flex min-h-[40px] flex-1 items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition ${
+        <div className="relative flex-1">
+          <button onClick={() => setRepostMenuOpen((open) => !open)} disabled={!myId || repostBusy} title="Repost options" className={`flex min-h-[40px] w-full items-center justify-center gap-1.5 rounded-xl text-sm font-semibold transition ${
             reposted ? 'text-[#17BF63]' : 'text-[#6B6B6B] hover:bg-gray-50'
-          } disabled:opacity-40`}
-          aria-pressed={reposted}
-        >
-          <Repeat2 className={`h-5 w-5 ${reposted ? 'fill-current' : ''}`} />
-          {repostCount > 0 ? repostCount : ''}
-        </button>
+          } disabled:opacity-40`} aria-pressed={reposted} aria-expanded={repostMenuOpen}>
+            <Repeat2 className={`h-5 w-5 ${reposted ? 'fill-current' : ''}`} />
+            {repostCount > 0 ? repostCount : ''}
+          </button>
+          {repostMenuOpen && (
+            <div className="absolute bottom-11 left-1/2 z-40 w-48 -translate-x-1/2 overflow-hidden rounded-xl border border-[#E8E2E4] bg-white p-1 shadow-xl">
+              <button onClick={() => { setRepostMenuOpen(false); toggleRepost(); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs font-semibold hover:bg-gray-50">
+                <Repeat2 className="h-4 w-4" /> {reposted ? 'Undo repost' : 'Repost'}
+              </button>
+              <button onClick={openQuoteComposer} disabled={quoteBusy} className="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-xs font-semibold hover:bg-gray-50 disabled:opacity-50">
+                <MessageCircle className="h-4 w-4" /> {reposted && post.repost_quote ? 'Edit quote' : 'Quote repost'}
+              </button>
+            </div>
+          )}
+        </div>
 
         <button
           onClick={sharePost}
@@ -579,6 +631,16 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
       {/* transient repost error/status */}
       {repostNote && (
         <p className="px-4 pb-2 text-xs font-medium text-red-500" role="status">{repostNote}</p>
+      )}
+
+      {quoteOpen && (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/30 p-3 sm:items-center">
+          <div className="w-full max-w-lg rounded-2xl border border-[#E8E2E4] bg-white p-4 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between"><div><h3 className="text-sm font-bold">Quote repost</h3><p className="text-xs text-[#9B9B9B]">Add your thought above the original post.</p></div><button onClick={() => setQuoteOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100" aria-label="Close"><X className="h-4 w-4" /></button></div>
+            <textarea value={quoteDraft} onChange={(e) => setQuoteDraft(e.target.value)} maxLength={20000} autoFocus rows={5} placeholder="What do you think about this?" className="w-full resize-none rounded-xl border border-[#E8E2E4] p-3 text-sm focus:border-[#1E90FF] focus:outline-none" />
+            <div className="mt-2 flex items-center justify-between"><span className="text-[11px] text-[#9B9B9B]">{quoteDraft.length.toLocaleString()} / 20,000</span><div className="flex gap-2"><button onClick={() => setQuoteOpen(false)} className="rounded-xl border border-[#E8E2E4] px-4 py-2 text-xs font-semibold">Cancel</button><button onClick={submitQuoteRepost} disabled={quoteBusy} className="rounded-xl bg-black px-4 py-2 text-xs font-semibold text-[#FFB6C1] disabled:opacity-50">{quoteBusy ? 'Saving…' : 'Save quote'}</button></div></div>
+          </div>
+        </div>
       )}
 
       <ReportDialog open={reporting} onClose={() => setReporting(false)} targetType="post" targetId={post.id} />
