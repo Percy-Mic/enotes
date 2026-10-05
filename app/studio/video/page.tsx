@@ -4759,37 +4759,57 @@ function VideoEditor() {
     let gestureMoved = false;
 
     const classifyGesture = (p: { x: number; y: number }): Gesture => {
-      const dx0 = p.x - centerX;
-      const dy0 = p.y - centerY;
       const rad = -(startGeometry.rotation * Math.PI) / 180;
-      const lx = dx0 * Math.cos(rad) - dy0 * Math.sin(rad);
-      const ly = dx0 * Math.sin(rad) + dy0 * Math.cos(rad);
-      const ax = Math.abs(lx);
-      const ay = Math.abs(ly);
+      const toLocal = (point: { x: number; y: number }) => {
+        const dx = point.x - centerX;
+        const dy = point.y - centerY;
+        return {
+          x: dx * Math.cos(rad) - dy * Math.sin(rad),
+          y: dx * Math.sin(rad) + dy * Math.cos(rad),
+        };
+      };
+      const startLocal = toLocal({ x: startX, y: startY });
+      const currentLocal = toLocal(p);
+      const ax = Math.abs(startLocal.x);
+      const ay = Math.abs(startLocal.y);
       const hw = startGeometry.width / 2;
       const hh = startGeometry.height / 2;
-      const nearX = Math.abs(ax - hw) <= Math.max(24, hw * TRANSFORM_EDGE_BAND);
-      const nearY = Math.abs(ay - hh) <= Math.max(24, hh * TRANSFORM_EDGE_BAND);
+      const edgeBandX = Math.max(28, hw * TRANSFORM_EDGE_BAND);
+      const edgeBandY = Math.max(28, hh * TRANSFORM_EDGE_BAND);
+      const nearX = Math.abs(ax - hw) <= edgeBandX;
+      const nearY = Math.abs(ay - hh) <= edgeBandY;
       const outside = ax > hw || ay > hh;
+      const moveX = currentLocal.x - startLocal.x;
+      const moveY = currentLocal.y - startLocal.y;
+      const radial = startLocal.x * moveX + startLocal.y * moveY;
+      const tangent = Math.abs(startLocal.x * moveY - startLocal.y * moveX);
+
       /*
-       * No handle is selected here. The point where the gesture starts gives
-       * us the candidate region, then the first movement vector decides:
-       * outward/away from the centre = resize, tangential/around the centre
-       * = rotate, everything else = move. Once chosen it stays locked.
+       * There are no visible handles. Intent comes from the actual gesture:
+       * - start outside the frame + move around it => rotate
+       * - start near an edge/corner + pull away from the centre => resize
+       * - start near an edge/corner + move around the frame => rotate
+       * - everything else => move
+       *
+       * This gives the user a much larger, forgiving resize/rotate target while
+       * preventing a normal drag through the middle of the text from resizing it.
        */
       if (outside) return 'rotate';
+
       if (nearX || nearY) {
-        /* Corner/edge direction comes from the pointer's actual local position,
-           not from the drag vector. This makes every corner predictable. */
-        if (nearX && nearY) {
-          if (lx < 0 && ly < 0) return 'resize-nw';
-          if (lx >= 0 && ly < 0) return 'resize-ne';
-          if (lx < 0 && ly >= 0) return 'resize-sw';
-          return 'resize-se';
+        if (radial > Math.max(10, tangent * 0.65)) {
+          if (nearX && nearY) {
+            if (startLocal.x < 0 && startLocal.y < 0) return 'resize-nw';
+            if (startLocal.x >= 0 && startLocal.y < 0) return 'resize-ne';
+            if (startLocal.x < 0 && startLocal.y >= 0) return 'resize-sw';
+            return 'resize-se';
+          }
+          if (nearX) return startLocal.x < 0 ? 'resize-w' : 'resize-e';
+          return startLocal.y < 0 ? 'resize-n' : 'resize-s';
         }
-        if (nearX) return lx < 0 ? 'resize-w' : 'resize-e';
-        return ly < 0 ? 'resize-n' : 'resize-s';
+        if (tangent > Math.max(10, Math.abs(radial) * 1.15)) return 'rotate';
       }
+
       return 'move';
     };
 
@@ -4977,27 +4997,47 @@ function VideoEditor() {
     let activeGesture: Gesture | null = gesture === 'auto' ? null : gesture;
     let gestureMoved = false;
     const classifyClipGesture = (p: { x: number; y: number }): Gesture => {
-      const dx0 = p.x - box.cx;
-      const dy0 = p.y - box.cy;
       const localRad = -(startClip.transform.rotation * Math.PI) / 180;
-      const lx = dx0 * Math.cos(localRad) - dy0 * Math.sin(localRad);
-      const ly = dx0 * Math.sin(localRad) + dy0 * Math.cos(localRad);
-      const ax = Math.abs(lx);
-      const ay = Math.abs(ly);
+      const toLocal = (point: { x: number; y: number }) => {
+        const dx = point.x - box.cx;
+        const dy = point.y - box.cy;
+        return {
+          x: dx * Math.cos(localRad) - dy * Math.sin(localRad),
+          y: dx * Math.sin(localRad) + dy * Math.cos(localRad),
+        };
+      };
+      const startLocal = toLocal({ x: startX, y: startY });
+      const currentLocal = toLocal(p);
+      const ax = Math.abs(startLocal.x);
+      const ay = Math.abs(startLocal.y);
       const hw = box.w / 2;
       const hh = box.h / 2;
-      const nearX = Math.abs(ax - hw) <= Math.max(24, hw * TRANSFORM_EDGE_BAND);
-      const nearY = Math.abs(ay - hh) <= Math.max(24, hh * TRANSFORM_EDGE_BAND);
+      const edgeBandX = Math.max(28, hw * TRANSFORM_EDGE_BAND);
+      const edgeBandY = Math.max(28, hh * TRANSFORM_EDGE_BAND);
+      const nearX = Math.abs(ax - hw) <= edgeBandX;
+      const nearY = Math.abs(ay - hh) <= edgeBandY;
       const outside = ax > hw || ay > hh;
+      const moveX = currentLocal.x - startLocal.x;
+      const moveY = currentLocal.y - startLocal.y;
+      const radial = startLocal.x * moveX + startLocal.y * moveY;
+      const tangent = Math.abs(startLocal.x * moveY - startLocal.y * moveX);
+
       if (outside) return 'rotate';
+
       if (nearX || nearY) {
-        if (nearX && nearY) {
-          if (Math.abs(mx) >= Math.abs(my)) return lx < 0 ? 'resize-nw' : 'resize-ne';
-          return ly < 0 ? 'resize-nw' : 'resize-sw';
+        if (radial > Math.max(10, tangent * 0.65)) {
+          if (nearX && nearY) {
+            if (startLocal.x < 0 && startLocal.y < 0) return 'resize-nw';
+            if (startLocal.x >= 0 && startLocal.y < 0) return 'resize-ne';
+            if (startLocal.x < 0 && startLocal.y >= 0) return 'resize-sw';
+            return 'resize-se';
+          }
+          if (nearX) return startLocal.x < 0 ? 'resize-w' : 'resize-e';
+          return startLocal.y < 0 ? 'resize-n' : 'resize-s';
         }
-        if (nearX) return lx < 0 ? 'resize-w' : 'resize-e';
-        return ly < 0 ? 'resize-n' : 'resize-s';
+        if (tangent > Math.max(10, Math.abs(radial) * 1.15)) return 'rotate';
       }
+
       return 'move';
     };
 
@@ -5332,15 +5372,11 @@ function VideoEditor() {
       if (element) {
         const rawX = element.x + delta.x * scaleX;
         const rawY = element.y + delta.y * scaleY;
-        const visual = elementVisualGeometry(element);
-        const constrained = element.kind === 'text'
-          ? constrainTextBox(element, rawX, rawY, visual.width, visual.height, visual.rotation)
-          : { x: rawX, y: rawY };
         updateElement(
           element.id,
           {
-            x: Math.round(constrained.x),
-            y: Math.round(constrained.y),
+            x: Math.round(rawX),
+            y: Math.round(rawY),
           },
           'Two-finger move overlay',
           `pinch-pan-${element.id}`,
@@ -10531,7 +10567,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Slider label="Size" min={1} max={1000} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
+                  <Slider label="Size" min={1} max={10000} value={el.font_size || 48} onChange={(v) => onChange({ font_size: v }, 'Text size', `fs-${el.id}`)} />
                   <div>
                     <span className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.1em] text-white/35">Align</span>
                     <div className="grid h-[28px] grid-cols-3 overflow-hidden rounded-lg border border-white/10 bg-black/25">

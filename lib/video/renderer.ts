@@ -1155,38 +1155,49 @@ function drawTextElement(ctx: CanvasRenderingContext2D, el: TimelineElement, can
     const words = paragraph.split(/\s+/);
     const wrapped: string[] = [];
     let line = '';
+
     for (const word of words) {
       const candidate = line ? line + ' ' + word : word;
-      if (line && ctx.measureText(candidate).width > wrapWidth) {
-        wrapped.push(line);
-        line = word;
-      } else {
+      if (!line || ctx.measureText(candidate).width <= wrapWidth) {
         line = candidate;
+        continue;
       }
+
+      wrapped.push(line);
+      line = '';
+
+      /* Break a single long word by glyphs instead of letting it escape the
+         selection box. The requested font size is never reduced to make it fit. */
+      let chunk = '';
+      for (const char of word) {
+        const candidateChunk = chunk + char;
+        if (chunk && ctx.measureText(candidateChunk).width > wrapWidth) {
+          wrapped.push(chunk);
+          chunk = char;
+        } else {
+          chunk = candidateChunk;
+        }
+      }
+      line = chunk;
     }
-    wrapped.push(line);
+
+    if (line || wrapped.length === 0) wrapped.push(line);
     return wrapped;
   });
 
-  /* Typography is container-aware: the requested size is the design size,
-     but the renderer automatically fits it inside the element box. This
-     keeps long captions from escaping their handles and makes resize,
-     preview and export agree on the same text bounds. */
-  const longestLine = lines.reduce((max, line) => Math.max(max, ctx.measureText(line).width), 0);
-  const lineHeightRequested = requestedFontSize * (el.line_height || 1.25);
-  /* Never invent a larger layout box than the actual container. The old
-     24px/20px minimums meant a tiny text container could still calculate a
-     font from a larger virtual box, making glyphs appear outside the handles. */
-  /* Keep only a small breathing room inside the selection box. */
-  const availableWidth = Math.max(1, el.width);
-  const availableHeight = Math.max(1, el.height);
-  const widthFit = longestLine > 0 ? (availableWidth / longestLine) : 1;
-  const heightFit = lineHeightRequested * lines.length > 0
-    ? (availableHeight / (lineHeightRequested * lines.length))
-    : 1;
-  const fitScale = Math.min(1, widthFit, heightFit);
-  /* There is intentionally no hard font-size ceiling. fitScale only prevents glyphs from overflowing the element box; the element itself may be larger than the canvas. */
-  const fontSize = Math.max(1, requestedFontSize * fitScale);
+  /*
+   * The font size is the user's actual design value.
+   *
+   * The previous renderer calculated a fitScale from the element box and
+   * silently shrank the font whenever the box was smaller than the text.
+   * That made the Size control appear capped and made canvas manipulation
+   * disagree with what the user asked for.
+   *
+   * The element box is now the wrapping/clipping boundary; it never changes
+   * the requested font size. Large typography can therefore be genuinely
+   * large, and the user can resize the container when they want more room.
+   */
+  const fontSize = Math.max(1, requestedFontSize);
   ctx.font = `${weight} ${fontSize}px ${el.font_family || 'Poppins, sans-serif'}`;
   const lineHeight = fontSize * (el.line_height || 1.25);
   const totalHeight = lines.length * lineHeight;
