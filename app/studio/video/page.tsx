@@ -1009,6 +1009,8 @@ function VideoEditor() {
   const [rippleEnabled, setRippleEnabled] = useState(false);
   const [tool, setTool] = useState<Tool>('media');
   const [toolDrawerOpen, setToolDrawerOpen] = useState(false);
+  const [contextDrawerLabel, setContextDrawerLabel] = useState<string | null>(null);
+  const contextDrawerTimerRef = useRef<number | null>(null);
   const [lookPreviewEffect, setLookPreviewEffect] = useState<VideoClip['effect'] | null>(null);
   const [lookPreviewFilter, setLookPreviewFilter] = useState<string | null>(null);
   const [clipSoundMenuOpen, setClipSoundMenuOpen] = useState(false);
@@ -1017,8 +1019,47 @@ function VideoEditor() {
   const [beatBusy, setBeatBusy] = useState(false);
   const [aiQuickBusy, setAiQuickBusy] = useState<string | null>(null);
   const openTool = useCallback((next: Tool) => {
+    if (contextDrawerTimerRef.current !== null) {
+      window.clearTimeout(contextDrawerTimerRef.current);
+      contextDrawerTimerRef.current = null;
+    }
+    setContextDrawerLabel(null);
     setTool(next);
     setToolDrawerOpen(true);
+  }, []);
+
+  /* The canvas gesture is the trigger. A tap opens the selected object's
+     inspector; deliberate move/resize/rotate intent opens a floating drawer
+     for that intent. The drawer is fixed so it never pushes or resizes the
+     preview/timeline. */
+  const openGestureDrawer = useCallback((intent: 'move' | 'resize' | 'rotate', kind: 'clip' | 'element' | 'audio') => {
+    if (contextDrawerTimerRef.current !== null) window.clearTimeout(contextDrawerTimerRef.current);
+    const nextTool: Tool = kind === 'audio'
+      ? 'audio'
+      : intent === 'rotate' || intent === 'resize'
+        ? 'motion'
+        : kind === 'element' ? 'text' : 'motion';
+    const label = intent === 'rotate'
+      ? 'Rotate controls'
+      : intent === 'resize'
+        ? 'Resize controls'
+        : kind === 'audio'
+          ? 'Audio controls'
+          : kind === 'element'
+            ? 'Overlay controls'
+            : 'Motion controls';
+    setTool(nextTool);
+    setToolDrawerOpen(true);
+    setContextDrawerLabel(label);
+    contextDrawerTimerRef.current = window.setTimeout(() => {
+      setContextDrawerLabel(null);
+      setToolDrawerOpen(false);
+      contextDrawerTimerRef.current = null;
+    }, 4200);
+  }, []);
+
+  useEffect(() => () => {
+    if (contextDrawerTimerRef.current !== null) window.clearTimeout(contextDrawerTimerRef.current);
   }, []);
   const [stockQuery, setStockQuery] = useState('nature');
   const [stockProvider, setStockProvider] = useState<'all' | 'pexels' | 'pixabay'>('all');
@@ -3754,6 +3795,7 @@ function VideoEditor() {
     seekTo(timeAtClientX(e.clientX));
     const onMove = (ev: PointerEvent) => seekTo(timeAtClientX(ev.clientX));
     const onUp = () => {
+      if (!gestureMoved) openTool(startEl.kind === 'text' ? 'text' : 'overlays');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -3843,6 +3885,7 @@ function VideoEditor() {
       updateClip(clip.id, edge === 'start' ? { trimStart: next } : { trimEnd: next }, 'Trim clip', `trim-${clip.id}`);
     };
     const onUp = () => {
+      if (!gestureMoved) openTool('motion');
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -4733,6 +4776,7 @@ function VideoEditor() {
     };
 
     let activeGesture: Gesture | null = gesture === 'auto' ? null : gesture;
+    let gestureMoved = false;
 
     const classifyGesture = (p: { x: number; y: number }): Gesture => {
       const dx0 = p.x - centerX;
@@ -4786,6 +4830,11 @@ function VideoEditor() {
       if (!activeGesture) {
         if (Math.hypot(dx, dy) < TAP_SLOP) return;
         activeGesture = classifyGesture(p);
+      }
+      if (!gestureMoved) {
+        gestureMoved = true;
+        const intent = activeGesture === 'rotate' ? 'rotate' : activeGesture?.startsWith('resize') ? 'resize' : 'move';
+        openGestureDrawer(intent, 'element');
       }
 
       if (activeGesture === 'move') {
@@ -4965,6 +5014,7 @@ function VideoEditor() {
     const startAngle = Math.atan2(startY - box.cy, startX - box.cx);
 
     let activeGesture: Gesture | null = gesture === 'auto' ? null : gesture;
+    let gestureMoved = false;
     const classifyClipGesture = (p: { x: number; y: number }): Gesture => {
       const dx0 = p.x - box.cx;
       const dy0 = p.y - box.cy;
@@ -5007,6 +5057,11 @@ function VideoEditor() {
       if (!activeGesture) {
         if (Math.hypot(dx, dy) < GESTURE_SLOP) return;
         activeGesture = classifyClipGesture(p);
+      }
+      if (!gestureMoved) {
+        gestureMoved = true;
+        const intent = activeGesture === 'rotate' ? 'rotate' : activeGesture?.startsWith('resize') ? 'resize' : 'move';
+        openGestureDrawer(intent, 'clip');
       }
 
       if (activeGesture === 'move') {
@@ -7757,23 +7812,29 @@ function VideoEditor() {
           <button
             type="button"
             aria-label="Close editor tools"
-            onClick={() => setToolDrawerOpen(false)}
+            onClick={() => { setContextDrawerLabel(null); setToolDrawerOpen(false); }}
             className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] md:hidden"
           />
           <section
             className={`fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515]/98 shadow-2xl backdrop-blur-xl md:bottom-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:left-[74px] md:right-auto md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0`}
             style={{ contain: 'layout paint' }}
+            onPointerDown={() => {
+              if (contextDrawerTimerRef.current !== null) {
+                window.clearTimeout(contextDrawerTimerRef.current);
+                contextDrawerTimerRef.current = null;
+              }
+            }}
             aria-label={TOOL_LABELS[tool] + ' tools'}
           >
             <div className="flex h-11 shrink-0 items-center gap-2 border-b border-white/10 px-3">
               <div className="h-1 w-10 rounded-full bg-white/20 md:hidden" aria-hidden="true" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-bold">{TOOL_LABELS[tool]}</p>
-                <p className="text-[9px] text-white/35">Live controls · changes stay visible in the canvas</p>
+                <p className="truncate text-xs font-bold">{contextDrawerLabel || TOOL_LABELS[tool]}</p>
+                <p className="text-[9px] text-white/35">{contextDrawerLabel ? 'Triggered by your touch · keep manipulating on the canvas' : 'Live controls · changes stay visible in the canvas'}</p>
               </div>
               <button
                 type="button"
-                onClick={() => setToolDrawerOpen(false)}
+                onClick={() => { setContextDrawerLabel(null); setToolDrawerOpen(false); }}
                 className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
                 aria-label="Close tools"
                 title="Close"
