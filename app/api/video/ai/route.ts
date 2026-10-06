@@ -122,7 +122,41 @@ export async function POST(request: Request) {
   } catch (error) {
     if (jobId) await finishAIJob(jobId, { status: 'failed', error: error instanceof Error ? error.message : 'AI request failed.' });
     const message = error instanceof Error ? error.message : 'AI request failed.';
-    const status = /required|not configured|signed in|operation is required|Select an imported/i.test(message) ? 400 : 502;
+    const isClientError = /required|not configured|signed in|operation is required|Select an imported/i.test(message);
+    const isProviderFailure = /(?:gemini|groq|provider|quota|rate.?limit|tokens?.*minute|temporar|high demand|overloaded|upstream|429|500|502|503|504)/i.test(message);
+
+    /*
+     * A third-party model outage must not become a hard editor failure.
+     * Vercel reports uncaught/failed function invocations as 500/502-class
+     * errors; the editor can continue with a degraded, no-op response while
+     * the provider recovers. Never pretend an edit happened: actions=[].
+     */
+    if (!isClientError && isProviderFailure) {
+      if (jobId) {
+        await finishAIJob(jobId, {
+          status: 'completed',
+          output: {
+            message: 'The AI provider is temporarily unavailable. No changes were applied. Please try again.',
+            summary: 'No edit was applied because the model service is temporarily unavailable.',
+            actions: [],
+            degraded: true,
+          },
+        });
+      }
+      return NextResponse.json({
+        operation: body.operation,
+        provider: 'fallback',
+        output: {
+          message: 'The AI provider is temporarily unavailable. No changes were applied. Please try again.',
+          summary: 'No edit was applied because the model service is temporarily unavailable.',
+          actions: [],
+          degraded: true,
+        },
+        jobId,
+      }, { status: 200 });
+    }
+
+    const status = isClientError ? 400 : 500;
     return NextResponse.json(
       { error: message, jobId },
       { status },
