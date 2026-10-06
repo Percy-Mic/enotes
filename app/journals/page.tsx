@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BookOpen, LogOut, Plus, Sparkles, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
+import { refreshStoredMediaUrl } from '@/lib/storage/upload';
 import { CreateJournalModal } from '@/components/dashboard/CreateJournalModal';
 import ThemeToggle from '@/components/ThemeToggle';
 
@@ -73,7 +74,17 @@ export default function JournalsPage() {
     if (fetchError) {
       setError(fetchError.message);
     } else {
-      setJournals((data || []) as Journal[]);
+      const rows = (data || []) as Journal[];
+      const refreshed = await Promise.all(rows.map(async (journal) => {
+        const media = await refreshStoredMediaUrl(
+          'journal-media',
+          journal.cover_media_url || journal.cover_url,
+        );
+        return media.url
+          ? { ...journal, cover_media_url: media.url, cover_url: media.url }
+          : journal;
+      }));
+      setJournals(refreshed);
     }
 
     /* Journals shared with me directly */
@@ -84,13 +95,21 @@ export default function JournalsPage() {
       )
       .eq('shared_with', user.id);
 
-    setSharedWithMe(
-      ((shareRows || []) as any[]).map((row) => ({
-        ...(row.journals || {}),
-        can_edit: row.can_edit,
-        owner: row.journals?.profiles || null,
-      })) as SharedJournal[],
-    );
+    const sharedRows = ((shareRows || []) as any[]).map((row) => ({
+      ...(row.journals || {}),
+      can_edit: row.can_edit,
+      owner: row.journals?.profiles || null,
+    })) as SharedJournal[];
+    const refreshedShared = await Promise.all(sharedRows.map(async (journal) => {
+      const media = await refreshStoredMediaUrl(
+        'journal-media',
+        journal.cover_media_url || journal.cover_url,
+      );
+      return media.url
+        ? { ...journal, cover_media_url: media.url, cover_url: media.url }
+        : journal;
+    }));
+    setSharedWithMe(refreshedShared);
 
     const { data: profileData } = await supabase
       .from('profiles')
