@@ -1016,6 +1016,16 @@ function VideoEditor() {
   const [frameMode, setFrameMode] = useState<'motion' | 'layer' | 'ai-drawing' | 'ai-portrait'>('motion');
   const [beatBusy, setBeatBusy] = useState(false);
   const [aiQuickBusy, setAiQuickBusy] = useState<string | null>(null);
+  const clearSelection = useCallback(() => {
+    setSelectedClipId(null);
+    setSelectedElementId(null);
+    setSelectedAudioId(null);
+    setSelectedIds([]);
+    setContextDrawerLabel(null);
+    setClipSoundMenuOpen(false);
+    setClipSpeedMenuOpen(false);
+  }, []);
+
   const openTool = useCallback((next: Tool) => {
     if (contextDrawerTimerRef.current !== null) {
       window.clearTimeout(contextDrawerTimerRef.current);
@@ -5232,6 +5242,21 @@ function VideoEditor() {
   };
 
   const canvasPointerUp = (_e: React.PointerEvent<HTMLCanvasElement>) => {};
+
+  /* Escape is a non-destructive way out of contextual focus. */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || cropMode) return;
+      if (toolDrawerOpen) {
+        setContextDrawerLabel(null);
+        setToolDrawerOpen(false);
+      } else {
+        clearSelection();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [clearSelection, cropMode, toolDrawerOpen]);
 
   /* Mobile direct-manipulation gestures.
      One finger stays on the existing move/resize/rotate path.
@@ -9897,6 +9922,7 @@ function VideoEditor() {
       >
         {selectedClip ? (
           <>
+            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#FFB6C1]/30 bg-[#FFB6C1]/10 px-2 py-1.5 text-[9px] font-bold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
             <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Scissors className="h-5 w-5" />Edit</button>
             <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Music className="h-5 w-5" />Audio</button>
             <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Effects</button>
@@ -9908,6 +9934,7 @@ function VideoEditor() {
           </>
         ) : selectedElement ? (
           <>
+            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#FFB6C1]/30 bg-[#FFB6C1]/10 px-2 py-1.5 text-[9px] font-bold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
             <button type="button" onClick={() => openTool(selectedElement.kind === 'text' ? 'text' : 'overlays')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Type className="h-5 w-5" />Edit</button>
             {selectedElement.kind === 'text' ? (
               <>
@@ -9927,6 +9954,7 @@ function VideoEditor() {
           </>
         ) : selectedAudio ? (
           <>
+            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#FFB6C1]/30 bg-[#FFB6C1]/10 px-2 py-1.5 text-[9px] font-bold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
             <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Music className="h-5 w-5" />Edit</button>
             <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Volume2 className="h-5 w-5" />Volume</button>
             <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Effects</button>
