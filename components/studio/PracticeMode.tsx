@@ -66,6 +66,7 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
   const [aiBrief, setAiBrief] = useState<{ message: string; concept?: string; deliverables?: string[]; direction?: string; hook?: string } | null>(null);
   const [aiBriefLoading, setAiBriefLoading] = useState(false);
   const [aiBriefError, setAiBriefError] = useState<string | null>(null);
+  const [aiBriefNonce, setAiBriefNonce] = useState(0);
 
   useEffect(() => {
     if (!open || !userId) return;
@@ -199,7 +200,7 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
       }
     })();
     return () => { cancelled = true; };
-  }, [selected, media]);
+  }, [selected, media, aiBriefNonce]);
   
   const start = async () => {
     if (!selected || !media.length) {
@@ -362,7 +363,7 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
                       <div className="flex items-start gap-3">
                         <p className="flex-1 text-xs leading-5 text-amber-100/80">{aiBriefError}</p>
                         <button type="button" onClick={() => {
-                          setSelected((current) => current ? { ...current } : current);
+                          setAiBriefNonce((value) => value + 1);
                         }} className="rounded-lg border border-white/10 p-2 text-white/50 hover:bg-white/10" title="Regenerate AI brief">
                           <RefreshCw className="h-3.5 w-3.5" />
                         </button>
