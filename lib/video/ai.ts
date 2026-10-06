@@ -146,6 +146,8 @@ async function uploadGeminiFileFromUrl(
   }
 
   const bytes = await source.arrayBuffer();
+  const detectedMime = String(source.headers.get('content-type') || '').split(';')[0].trim();
+  const uploadMimeType = /^(video|audio|image)\//i.test(detectedMime) ? detectedMime : mimeType;
 
 
   const start = await fetch(
@@ -158,7 +160,7 @@ async function uploadGeminiFileFromUrl(
         'x-goog-upload-protocol': 'resumable',
         'x-goog-upload-command': 'start',
         'x-goog-upload-header-content-length': String(bytes.byteLength),
-        'x-goog-upload-header-content-type': mimeType,
+        'x-goog-upload-header-content-type': uploadMimeType,
       },
       body: JSON.stringify({
         file: {
