@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     headers.set('Cache-Control', 'private, no-store, max-age=0');
     const length = upstream.headers.get('content-length');
     if (length) headers.set('Content-Length', length);
-    // Keep request Range and response Accept-Ranges names distinct for the build and proxy path.
+    // Response header naming is intentionally distinct from the incoming Range request.
     const acceptRanges = upstream.headers.get('accept-ranges');
     if (acceptRanges) headers.set('Accept-Ranges', acceptRanges);
     const contentRange = upstream.headers.get('content-range');
