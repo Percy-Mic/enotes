@@ -39,13 +39,14 @@ export async function GET(request: Request) {
     const contentType = upstream.headers.get('content-type') || 'video/mp4';
     headers.set('Content-Type', contentType);
     headers.set('Cache-Control', 'private, no-store, max-age=0');
-    const length = upstream.headers.get('content-length');
-    if (length) headers.set('Content-Length', length);
-    // Response header naming is intentionally distinct from the incoming Range request.
-    const acceptRanges = upstream.headers.get('accept-ranges');
-    if (acceptRanges) headers.set('Accept-Ranges', acceptRanges);
-    const contentRange = upstream.headers.get('content-range');
-    if (contentRange) headers.set('Content-Range', contentRange);
+    const contentLength = upstream.headers.get('content-length');
+    if (contentLength) headers.set('Content-Length', contentLength);
+
+    const upstreamAcceptRanges = upstream.headers.get('accept-ranges');
+    if (upstreamAcceptRanges) headers.set('Accept-Ranges', upstreamAcceptRanges);
+
+    const upstreamContentRange = upstream.headers.get('content-range');
+    if (upstreamContentRange) headers.set('Content-Range', upstreamContentRange);
 
     return new NextResponse(upstream.body, { status: upstream.status, headers });
   } catch (error) {
