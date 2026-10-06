@@ -17,6 +17,7 @@ import { uploadFile } from '@/lib/storage/upload';
 import { audioPlaceholderSrc, isAudioPlaceholder } from '@/lib/video/project';
 import { normalizeVideoDuration, ExportCancelledError } from '@/lib/video/renderer';
 import SharePostPicker from '@/components/community/SharePostPicker';
+import ElevenLabsAudioTools from '@/components/studio/ElevenLabsAudioTools';
 import VideoAIStudio, { type VideoAIEditAction } from '@/components/studio/VideoAIStudio';
 import { AUDIO_EFFECT_PRESETS, audioEffectName, connectAudioEffects } from '@/lib/video/audio-effects';
 import {
