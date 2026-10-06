@@ -927,14 +927,19 @@ function elementResizePatchAtTime(
   if (!hasScaleCurve) return patch;
   const current = resolveElementValues(element, timeIn);
   const safeFactor = Math.max(0.05, Math.min(8, factor));
+  let next = elementTransformPatchAtTime(element, {
+    ...patch,
+    width: element.width,
+    height: element.height,
+  }, timeIn);
   const map = upsertKeyframe(
-    element,
+    { ...element, keyframes: next.keyframes || element.keyframes },
     'scale_kf',
     Math.max(0, Math.min(Math.max(0.2, element.end - element.start), timeIn)),
     current.scale * safeFactor,
   );
   return {
-    ...patch,
+    ...next,
     width: element.width,
     height: element.height,
     keyframes: map,
