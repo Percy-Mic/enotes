@@ -24,9 +24,9 @@ export async function GET(request: Request) {
   if (!allowed(target)) return NextResponse.json({ error: 'Video source is not allowed.' }, { status: 403 });
 
   try {
-    const range = request.headers.get('range');
+    const requestRange = request.headers.get('range');
     const upstreamHeaders = new Headers({ Accept: 'video/*,*/*;q=0.8' });
-    if (range) upstreamHeaders.set('Range', range);
+    if (requestRange) upstreamHeaders.set('Range', requestRange);
     const upstream = await fetch(target.toString(), {
       cache: 'no-store',
       headers: upstreamHeaders,
@@ -41,8 +41,8 @@ export async function GET(request: Request) {
     headers.set('Cache-Control', 'private, no-store, max-age=0');
     const length = upstream.headers.get('content-length');
     if (length) headers.set('Content-Length', length);
-    const range = upstream.headers.get('accept-ranges');
-    if (range) headers.set('Accept-Ranges', range);
+    const acceptRanges = upstream.headers.get('accept-ranges');
+    if (acceptRanges) headers.set('Accept-Ranges', acceptRanges);
     const contentRange = upstream.headers.get('content-range');
     if (contentRange) headers.set('Content-Range', contentRange);
 
