@@ -334,7 +334,10 @@ export default function VideosPage() {
       <button
         onClick={() => scrollBy(1)}
         aria-label="Next video"
-        className="fixed right-5 top-1/2 z-40 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 lg:flex"
+        /* Keep the desktop next-video control outside the action rail. The
+           old right-5 position sat directly on top of the like/avatar/share
+           buttons, making the arrow physically block those controls. */
+        className="fixed right-24 top-1/2 z-40 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 lg:flex"
       >
         <ChevronRight className="h-6 w-6" />
       </button>
