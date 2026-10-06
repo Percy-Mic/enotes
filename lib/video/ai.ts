@@ -1987,6 +1987,45 @@ function speechBlob(base64: string, mime: string): Blob {
   return pcmToWavBlob(bytes.buffer, 24000);
 }
 
+async function elevenLabsSpeech(text: string, voiceId?: string): Promise<Blob> {
+  const key = String(process.env.ELEVENLABS_API_KEY || '').trim();
+  if (!key) throw new Error('ELEVENLABS_API_KEY is not configured.');
+
+  const voice = String(voiceId || process.env.ELEVENLABS_VOICE_ID || '').trim();
+  if (!voice) throw new Error('ELEVENLABS_VOICE_ID is not configured.');
+
+  const model = String(process.env.ELEVENLABS_TTS_MODEL || 'eleven_multilingual_v2').trim();
+  const response = await fetch(
+    'https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(voice) + '?output_format=mp3_44100_128',
+    {
+      method: 'POST',
+      headers: {
+        'xi-api-key': key,
+        'content-type': 'application/json',
+        accept: 'audio/mpeg',
+      },
+      body: JSON.stringify({
+        text: String(text || '').trim().slice(0, 5000),
+        model_id: model,
+        voice_settings: {
+          stability: 0.5,
+          similarity_boost: 0.75,
+          style: 0,
+          use_speaker_boost: true,
+        },
+      }),
+      cache: 'no-store',
+    },
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(detail || `ElevenLabs voice synthesis failed (${response.status}).`);
+  }
+
+  return response.blob();
+}
+
 async function geminiSpeech(text: string, voice: string, style?: string): Promise<Blob> {
   const key = GEMINI_KEY();
   if (!key) throw new Error('Gemini is not configured. Add GEMINI_API_KEY to Vercel.');
@@ -2245,10 +2284,33 @@ export async function runVideoAI(
     };
     const text = String(request.text || '').trim().slice(0, 600);
     if (!text) throw new Error('Narration text is empty.');
-    const blob = await geminiSpeech(text, String(request.voice || '_puck'), request.style ? String(request.style) : undefined);
+    const elevenKey = String(process.env.ELEVENLABS_API_KEY || '').trim();
+    const elevenVoice = String(process.env.ELEVENLABS_VOICE_ID || '').trim();
+    let blob: Blob;
+    let provider = 'gemini-tts';
+
+    /*
+     * Prefer the direct ElevenLabs integration for Studio narration.
+     * The AI editor therefore uses the same ElevenLabs service exposed by
+     * the dedicated AI Audio tool instead of routing narration through fal.ai.
+     * Gemini remains a safe fallback for installations that have not configured
+     * ElevenLabs yet.
+     */
+    if (elevenKey && elevenVoice) {
+      try {
+        blob = await elevenLabsSpeech(text, elevenVoice);
+        provider = 'elevenlabs';
+      } catch (error) {
+        console.error('[video-ai] ElevenLabs narration failed; falling back to Gemini:', error);
+        blob = await geminiSpeech(text, String(request.voice || '_puck'), request.style ? String(request.style) : undefined);
+      }
+    } else {
+      blob = await geminiSpeech(text, String(request.voice || '_puck'), request.style ? String(request.style) : undefined);
+    }
+
     return {
       operation,
-      provider: 'gemini-tts',
+      provider,
       output: {
         text,
         start: Number.isFinite(Number(request.start)) ? Number(request.start) : 0,
@@ -2642,7 +2704,7 @@ export async function runVideoAI(
       '- Prefer combinations when the requested reference style clearly uses multiple layers (for example zoom + glow + film-grain, or handheld + rgb-split + motion-blur). For retro looks, combine old-film/vhs/crt/film-grain/light-leak/flicker/film-burn only when visually appropriate. These are local deterministic effects, not generative AI. Do not claim an effect was applied unless it appears in the action list.',
       '- For masks, use set_clip_mask with object {shape:"split"|"shutter"|"ellipse"|"rectangle"|"none",amount,feather,invert,rotation}. Use masks for split-screen, wipe/reveal, iris and geometric compositions; masks are editable manually after AI applies them.',
             '',
-    ].join('\\n') + `
+    ].join('\n') + `
 You are the professional editing agent inside enotes Studio.
 
 You are NOT a generic chatbot.
