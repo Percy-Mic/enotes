@@ -19,7 +19,8 @@ export type VideoAIOperation =
   | 'relight'
   | 'generate-music'
   | 'auto-edit'
-  | 'recommend-effects';
+  | 'recommend-effects'
+  | 'practice-brief';
 
 export interface AIJobInput {
   operation: VideoAIOperation;
@@ -2099,6 +2100,46 @@ export async function runVideoAI(
 
   const operation =
     input.operation;
+
+  if (operation === 'practice-brief') {
+    const assignment = input.project && typeof input.project === 'object'
+      ? (input.project as Record<string, unknown>).practiceAssignment
+      : null;
+    if (!assignment || typeof assignment !== 'object') {
+      throw new Error('A practice assignment is required to generate the creative brief.');
+    }
+
+    const briefSchema = {
+      type: 'object',
+      properties: {
+        message: { type: 'string' },
+        concept: { type: 'string' },
+        hook: { type: 'string' },
+        direction: { type: 'string' },
+        deliverables: { type: 'array', items: { type: 'string' } },
+      },
+      required: ['message', 'concept', 'hook', 'direction', 'deliverables'],
+    };
+
+    const prompt = [
+      'You are enotes Practice Mode AI Creative Director.',
+      'Turn the supplied practice assignment into a realistic client-style editing brief for a video editor.',
+      'The editor already has the supplied client media. Do not invent assets, brands, facts, footage, dialogue, or requirements that are not supported by the assignment.',
+      'Explain the concept of the video they need to CREATE, not how to use the editor.',
+      'Make the brief specific enough that a professional editor can make creative decisions without asking what the assignment means.',
+      'Cover the intended audience/reaction, story or sequence, opening hook, pacing, visual treatment, text/caption approach, audio approach, and final delivery goal.',
+      'Return only the requested JSON object. message should be a natural client-facing message, not an AI/system disclaimer.',
+      '',
+      'PRACTICE ASSIGNMENT:',
+      JSON.stringify(assignment),
+    ].join('\n');
+
+    const model = normalizeGeminiModel(
+      process.env.GEMINI_PLANNER_MODEL || process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+    );
+    const output = await geminiPlannerStructured(prompt, briefSchema, model);
+    return { operation, provider: 'gemini', output };
+  }
 
   if (
     operation ===
