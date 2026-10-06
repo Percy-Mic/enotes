@@ -2306,6 +2306,14 @@ function VideoEditor() {
                 ? 'Video uploaded and added — canvas matched its orientation.'
                 : 'Video uploaded and safely added to the timeline.');
             }
+
+            /*
+             * Media imports are durable immediately. Do not wait for the
+             * normal debounce here: an accidental refresh right after an
+             * upload must still reopen the project with its storage_path.
+             */
+            await new Promise<void>((resolve) => window.setTimeout(resolve, 60));
+            await saveNow();
           } catch (uploadError) {
             notify(`Upload failed for "${file.name}". Nothing was added or replaced in the saved project.`);
           } finally {
@@ -2318,7 +2326,7 @@ function VideoEditor() {
         }
       }
     },
-    [meId, notify, playheadRef, project.canvas.width, project.canvas.height, project.elements.length, project.tracks, updateProject]
+    [meId, notify, playheadRef, project.canvas.width, project.canvas.height, project.elements.length, project.tracks, saveNow, updateProject]
   );
 
   /* ---------- stock footage + GIF libraries ---------- */
