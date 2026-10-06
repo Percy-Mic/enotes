@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import Link from 'next/link';
 import AuthThemeSelector from '@/components/auth/AuthThemeSelector';
 
@@ -28,12 +28,59 @@ export default function AuthShell({
   showThemeSelector = false,
   unstyled = false,
 }: AuthShellProps) {
+  useEffect(() => {
+    if (!unstyled) return;
+
+    const root = document.documentElement;
+    root.dataset.authUnstyled = 'true';
+
+    return () => {
+      delete root.dataset.authUnstyled;
+    };
+  }, [unstyled]);
+
+  if (unstyled) {
+    return (
+      <>
+        <style>{`
+          html[data-auth-unstyled],
+          html[data-auth-unstyled] body {
+            margin: 0 !important;
+            padding: 0 !important;
+            min-height: 100% !important;
+            background: white !important;
+            color: black !important;
+            font-family: initial !important;
+          }
+
+          html[data-auth-unstyled] body,
+          html[data-auth-unstyled] body > *,
+          html[data-auth-unstyled] body > * *,
+          html[data-auth-unstyled] body > * *::before,
+          html[data-auth-unstyled] body > * *::after {
+            all: revert !important;
+          }
+
+          html[data-auth-unstyled] body,
+          html[data-auth-unstyled] body > * {
+            display: block !important;
+          }
+        `}</style>
+
+        <main>
+          <h1>{title}</h1>
+          <p>{description}</p>
+
+          <div>{children}</div>
+
+          {footer && <footer>{footer}</footer>}
+        </main>
+      </>
+    );
+  }
+
   return (
-    <>
-      {unstyled && (
-        <style>{`.auth-css-disabled, .auth-css-disabled * { all: revert !important; } .auth-css-disabled { display: block !important; }`}</style>
-      )}
-      <main className={unstyled ? 'auth-css-disabled' : 'auth-page min-h-[100dvh] w-full overflow-x-hidden'}>
+    <main className="auth-page min-h-[100dvh] w-full overflow-x-hidden">
       <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1440px] grid-cols-1 lg:grid-cols-[minmax(0,1.06fr)_minmax(420px,.94fr)]">
         <section className="auth-brand-panel relative hidden overflow-hidden p-8 lg:flex lg:flex-col lg:justify-between lg:p-10 xl:p-14">
           <div className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full border-[48px] border-white/25" />
@@ -41,7 +88,7 @@ export default function AuthShell({
 
           <div className="relative z-10 flex items-center justify-between gap-4">
             <Link href="/" className="inline-flex w-fit items-center gap-2 text-[17px] font-bold tracking-[-0.02em]">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--auth-primary-bg)] text-[19px] leading-none text-[var(--auth-primary-ink)]">e</span>
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--auth-primary-bg)] text-[19px] leading-none text-[var(--auth-primary-ink)]">e</span>
               <span>enotes</span>
             </Link>
             {showThemeSelector && <AuthThemeSelector />}
@@ -95,7 +142,6 @@ export default function AuthShell({
           </div>
         </section>
       </div>
-      </main>
-    </>
+    </main>
   );
 }
