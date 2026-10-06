@@ -411,6 +411,58 @@ function actionLabel(action: VideoAIEditAction) {
   }
 }
 
+function validateAIAction(action: VideoAIEditAction): string | null {
+  const obj = action.object && typeof action.object === 'object' ? action.object : {};
+  const finite = (value: unknown) => Number.isFinite(Number(value));
+
+  switch (action.type) {
+    case 'set_clip_speed':
+    case 'set_clip_volume':
+      return finite(action.value) ? null : 'requires a numeric value';
+    case 'set_clip_filter':
+    case 'set_clip_effect':
+    case 'set_clip_transition':
+      return typeof action.value === 'string' && action.value.trim() ? null : 'requires a named value';
+    case 'set_clip_mask':
+      return obj && ['none', 'split', 'shutter', 'ellipse', 'rectangle'].includes(String(obj.shape || ''))
+        ? null : 'requires a supported mask shape';
+    case 'trim_clip':
+      return finite(action.value) && finite(action.value2) ? null : 'requires numeric trim start and end';
+    case 'transform_clip':
+    case 'set_clip_adjustments':
+      return Object.keys(obj).length ? null : 'requires transform/adjustment values';
+    case 'fit_clip':
+      return action.value === 'contain' || action.value === 'cover' ? null : 'requires contain or cover';
+    case 'set_aspect':
+      return ['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'].includes(String(action.value))
+        ? null : 'requires a supported aspect ratio';
+    case 'transform_element':
+      return action.elementId && Object.keys(obj).length ? null : 'requires an overlay target and transform values';
+    case 'set_element_opacity':
+      return finite(action.value) ? null : 'requires a numeric opacity';
+    case 'retime_element':
+      return action.elementId && (finite(obj.start) || finite(obj.end)) ? null : 'requires an overlay target and timing';
+    case 'set_keyframe':
+      return action.object &&
+        typeof obj.property === 'string' &&
+        finite(obj.t) &&
+        finite(obj.value)
+        ? null : 'requires property, time, and value';
+    case 'add_text_element':
+      return typeof obj.text === 'string' && obj.text.trim() ? null : 'requires non-empty text';
+    case 'split_clip':
+      return finite(action.value) ? null : 'requires a numeric timeline position';
+    case 'reorder_clip':
+      return finite(obj.fromIndex) && finite(obj.toIndex) ? null : 'requires source and destination indexes';
+    case 'add_audio_clip':
+      return typeof obj.url === 'string' && /^https?:\/\//i.test(obj.url) ? null : 'requires a resolvable audio URL';
+    case 'cut_on_beats':
+      return Object.keys(obj).length ? null : 'requires beat-edit settings';
+    default:
+      return null;
+  }
+}
+
 export default function VideoAIStudio({
   projectId,
   project,
@@ -565,14 +617,27 @@ export default function VideoAIStudio({
       /* Never invent placeholder copy on the client. If the server somehow
          returns an empty text action, discard that action rather than silently
          turning it into a generic "YOUR STORY" overlay. */
-      actions = actions.filter((action) => {
-        if (action.type !== 'add_text_element') return true;
-        const obj = action.object && typeof action.object === 'object' ? action.object : {};
-        const text = typeof obj.text === 'string' ? obj.text.trim() : '';
-        return Boolean(text) && !/^your message$/i.test(text) && !/^your story$/i.test(text);
-      });
-
       const failedNotes: string[] = [];
+      const invalidActionNotes: string[] = [];
+      actions = actions.filter((action) => {
+        if (action.type === 'add_text_element') {
+          const obj = action.object && typeof action.object === 'object' ? action.object : {};
+          const textValue = typeof obj.text === 'string' ? obj.text.trim() : '';
+          if (!textValue || /^your message$/i.test(textValue) || /^your story$/i.test(textValue)) {
+            invalidActionNotes.push('Text action had no usable copy');
+            return false;
+          }
+        }
+        const reason = validateAIAction(action);
+        if (reason) {
+          invalidActionNotes.push(`${actionLabel(action)}: ${reason}`);
+          return false;
+        }
+        return true;
+      });
+      if (invalidActionNotes.length) {
+        failedNotes.push(...invalidActionNotes.map((note) => `AI action rejected — ${note}`));
+      }
       const narrationNotes: string[] = [];
       let applicationNote = '';
       const narrationActions = actions.filter((action) => action.type === 'speak_narration');
@@ -602,9 +667,15 @@ export default function VideoAIStudio({
                 },
               }]));
               if (result && typeof result === 'object') {
-                narrationNotes.push(`✓ Narration added to the timeline.${result.failed?.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`);
+                if (Number(result.applied) > 0 && !result.failed?.length) {
+                  narrationNotes.push('✓ Narration added to the timeline.');
+                } else if (Number(result.applied) > 0) {
+                  narrationNotes.push(`✓ Narration added to the timeline. ⚠️ ${result.failed.join(' · ')}`);
+                } else {
+                  failedNotes.push(`Voiceover was synthesized but the editor applied 0 changes${result.failed?.length ? ` (${result.failed.join(' · ')})` : ''}.`);
+                }
               } else {
-                narrationNotes.push('✓ Narration added to the timeline.');
+                failedNotes.push('Voiceover was synthesized, but the editor did not confirm a timeline change.');
               }
             } catch (applyError) {
               failedNotes.push('Voiceover was synthesized but could not be placed on the timeline' + (applyError instanceof Error ? ` (${applyError.message.slice(0, 120)})` : ''));
@@ -624,7 +695,14 @@ export default function VideoAIStudio({
       const libraryAudioActions = actions.filter((action) => action.type === 'add_library_audio');
       for (const action of libraryAudioActions) {
         const soundId = typeof action.object?.soundId === 'string' ? action.object.soundId : '';
-        if (!soundId || !onAddLibraryAudio) continue;
+        if (!soundId) {
+          failedNotes.push('A library-audio action did not specify a sound.');
+          continue;
+        }
+        if (!onAddLibraryAudio) {
+          failedNotes.push(`Library audio “${soundId}” could not be placed because the audio tool is unavailable.`);
+          continue;
+        }
         try {
           await onAddLibraryAudio(soundId);
         } catch {
@@ -638,7 +716,10 @@ export default function VideoAIStudio({
         /* A missing query must not silently void the action — search with
            the user's own request text instead of skipping it. */
         const query = (typeof action.object?.query === 'string' ? action.object.query.trim() : '') || text.trim().slice(0, 80) || 'cinematic b-roll';
-        if (!onAddStockVideo) continue;
+        if (!onAddStockVideo) {
+          failedNotes.push(`Stock footage “${query}” could not be added because the media tool is unavailable.`);
+          continue;
+        }
         try {
           const params = new URLSearchParams({
             query,
@@ -700,7 +781,7 @@ export default function VideoAIStudio({
               const result = await Promise.resolve(onApplyActions(applicable.filter((action) => !DESTRUCTIVE_ACTIONS.has(action.type))));
               if (result && typeof result === 'object') {
                 if (Number(result.applied) > 0 || result.failed?.length) {
-                  applicationNote = `\n\n✓ Applied ${result.applied} change${result.applied === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+                  applicationNote += `\n\n✓ Applied ${result.applied} change${result.applied === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
                 } else {
                   throw new Error('The editor accepted the AI plan but applied 0 changes. No changes were made.');
                 }
@@ -714,7 +795,7 @@ export default function VideoAIStudio({
             const result = await Promise.resolve(onApplyActions(applicable));
             if (result && typeof result === 'object') {
               if (Number(result.applied) > 0 || result.failed?.length) {
-                applicationNote = `\n\n✓ Applied ${result.applied} of ${applicable.length} requested timeline change${applicable.length === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+                applicationNote += `\n\n✓ Applied ${result.applied} of ${applicable.length} requested timeline change${applicable.length === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
               } else {
                 throw new Error('The editor accepted the AI plan but applied 0 changes. No changes were made.');
               }
