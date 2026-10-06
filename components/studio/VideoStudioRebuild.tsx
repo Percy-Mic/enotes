@@ -171,6 +171,11 @@ export default function VideoStudioRebuild() {
   const rendererRef = useRef<VideoRenderer | null>(null);
   const rafRef = useRef<number | null>(null);
   const lastUiTickRef = useRef(0);
+
+  // Video decoding/seeking is asynchronous. Serialize preview renders so
+  // multiple frames cannot race on the same canvas while a source is loading.
+  const previewRenderBusyRef = useRef(false);
+  const queuedPreviewRef = useRef<{ time: number; playing: boolean } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -228,23 +233,42 @@ export default function VideoStudioRebuild() {
   }, [projectId, isNew, replaceWithoutHistory, router]);
 
   const render = useCallback(async (time = playheadRef.current, isPlaying = playingRef.current) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    if (!rendererRef.current) rendererRef.current = new VideoRenderer();
-    const sourceMap = localSources;
-    const renderProject: VideoProject = {
-      ...projectRef.current,
-      clips: projectRef.current.clips.map((clip) => sourceMap[clip.src] ? { ...clip, src: sourceMap[clip.src] } : clip),
-      audio: projectRef.current.audio.map((audio) => sourceMap[audio.src] ? { ...audio, src: sourceMap[audio.src] } : audio),
-      elements: projectRef.current.elements.map((el) => sourceMap[el.src || ''] ? { ...el, src: sourceMap[el.src || ''] } : el),
-    };
+    queuedPreviewRef.current = { time: Math.max(0, time), playing: isPlaying };
+    if (previewRenderBusyRef.current) return;
+
+    previewRenderBusyRef.current = true;
     try {
-      await rendererRef.current.drawFrame(canvas, renderProject, Math.max(0, time), {
-        previewing: !isPlaying,
-        playing: isPlaying,
-      });
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : 'Preview rendering failed.');
+      while (queuedPreviewRef.current) {
+        const next = queuedPreviewRef.current;
+        queuedPreviewRef.current = null;
+
+        const canvas = canvasRef.current;
+        if (!canvas) continue;
+        if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+
+        const sourceMap = localSources;
+        const current = projectRef.current;
+        const renderProject: VideoProject = {
+          ...current,
+          clips: current.clips.map((clip) => sourceMap[clip.src] ? { ...clip, src: sourceMap[clip.src] } : clip),
+          audio: current.audio.map((audio) => sourceMap[audio.src] ? { ...audio, src: sourceMap[audio.src] } : audio),
+          elements: current.elements.map((el) => sourceMap[el.src || ''] ? { ...el, src: sourceMap[el.src || ''] } : el),
+        };
+
+        try {
+          await rendererRef.current.drawFrame(
+            canvas,
+            renderProject,
+            next.time,
+            { previewing: !next.playing, playing: next.playing },
+          );
+        } catch (e) {
+          setMessage(e instanceof Error ? e.message : 'Preview rendering failed.');
+        }
+      }
+    } finally {
+      previewRenderBusyRef.current = false;
+      if (queuedPreviewRef.current) queueMicrotask(() => { void render(); });
     }
   }, [localSources]);
 
@@ -722,9 +746,28 @@ export default function VideoStudioRebuild() {
           <div className="relative flex min-h-0 flex-1 overflow-hidden">
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-[#080808] p-3 sm:p-6">
-                <div className="relative max-h-full max-w-full" style={{ aspectRatio: `${project.canvas.width}/${project.canvas.height}`, width: 'min(100%, 980px)', height: 'auto' }}>
-                  <div className="relative h-full w-full overflow-visible rounded-md bg-black shadow-2xl" onPointerDown={onCanvasPointer}>
-                    <canvas ref={canvasRef} className="block h-full w-full rounded-md object-contain" />
+                <div
+                  className="relative flex max-h-full max-w-full items-center justify-center"
+                  style={{
+                    aspectRatio: `${project.canvas.width}/${project.canvas.height}`,
+                    width: 'min(100%, 980px)',
+                    height: 'auto',
+                    minWidth: 1,
+                    minHeight: 1,
+                  }}
+                >
+                  <div
+                    className="relative h-full w-full overflow-visible rounded-md bg-black shadow-2xl"
+                    style={{ aspectRatio: `${project.canvas.width}/${project.canvas.height}` }}
+                    onPointerDown={onCanvasPointer}
+                  >
+                    <canvas
+                      ref={canvasRef}
+                      width={project.canvas.width}
+                      height={project.canvas.height}
+                      className="block h-full w-full rounded-md"
+                      style={{ display: 'block' }}
+                    />
                     {renderSelectionBox()}
                     {!project.clips.length && !project.elements.length && (
                       <button type="button" onClick={() => setPanel('media')} className="absolute inset-0 grid place-items-center text-white/45">
