@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Film, Loader2, Play, X } from 'lucide-react';
+import { Check, Film, Loader2, Play, X, Sparkles, RefreshCw } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 
 export type PracticeAssignment = {
@@ -63,6 +63,9 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
   const [loading, setLoading] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiBrief, setAiBrief] = useState<{ message: string; concept?: string; deliverables?: string[]; direction?: string; hook?: string } | null>(null);
+  const [aiBriefLoading, setAiBriefLoading] = useState(false);
+  const [aiBriefError, setAiBriefError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !userId) return;
@@ -124,6 +127,80 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
 
   if (!open) return null;
 
+  useEffect(() => {
+    if (!selected) {
+      setAiBrief(null);
+      setAiBriefError(null);
+      return;
+    }
+    let cancelled = false;
+    setAiBriefLoading(true);
+    setAiBriefError(null);
+    setAiBrief(null);
+    void (async () => {
+      try {
+        const response = await fetch('/api/video/ai', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            operation: 'assistant',
+            prompt: [
+              'You are the senior creative director assigning a real video-editing job in enotes Practice Mode.',
+              'Create a concise client-facing creative brief for the editor based ONLY on the supplied assignment and media metadata.',
+              'Do not invent media that is not supplied. Do not ask the editor to buy assets.',
+              'This is an assignment brief, NOT an instruction to execute edits and NOT a request for code.',
+              'Return a natural, specific message that explains WHAT video the editor must create, WHO it is for, the intended viewer reaction, the story/concept, pacing, visual direction, text/caption direction, audio direction, and what a successful final export should accomplish.',
+              'Return JSON with exactly these keys: message, concept, deliverables, direction, hook. deliverables must be an array of 2-5 concrete outcomes.',
+              '',
+              'ASSIGNMENT:',
+              JSON.stringify({
+                title: selected.title,
+                client_name: selected.client_name,
+                topic: selected.topic,
+                existing_brief: selected.brief,
+                editing_goal: selected.editing_goal,
+                required_style: selected.required_style,
+                target_platform: selected.target_platform,
+                difficulty: selected.difficulty,
+                orientation: selected.orientation,
+                target_duration_seconds: selected.target_duration_seconds,
+                requirements: selected.requirements,
+                allowed_features: selected.allowed_features,
+                media: media.map((item) => ({
+                  type: item.media_type,
+                  file_name: item.file_name,
+                  role: item.role,
+                  description: item.description,
+                  duration_seconds: item.duration_seconds,
+                  width: item.width,
+                  height: item.height,
+                })),
+              }),
+            ].join('\n'),
+            project: { practiceAssignment: selected },
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data?.error || 'The AI creative director could not prepare the brief.');
+        const output = data?.output || {};
+        if (!cancelled) {
+          setAiBrief({
+            message: String(output.message || output.brief || '').trim(),
+            concept: typeof output.concept === 'string' ? output.concept : undefined,
+            deliverables: Array.isArray(output.deliverables) ? output.deliverables.map(String).filter(Boolean).slice(0, 5) : undefined,
+            direction: typeof output.direction === 'string' ? output.direction : undefined,
+            hook: typeof output.hook === 'string' ? output.hook : undefined,
+          });
+        }
+      } catch (e) {
+        if (!cancelled) setAiBriefError(e instanceof Error ? e.message : 'The AI creative director is unavailable.');
+      } finally {
+        if (!cancelled) setAiBriefLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selected, media]);
+  
   const start = async () => {
     if (!selected || !media.length) {
       setError('This practice assignment does not have any media yet.');
@@ -262,6 +339,56 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
                     </div>
                   </div>
                   <div className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm leading-6 text-white/80 whitespace-pre-wrap">{selected.brief}</div>
+
+                <div className="mt-3 overflow-hidden rounded-2xl border border-[#FFB6C1]/20 bg-gradient-to-br from-[#FFB6C1]/10 via-white/[0.03] to-transparent">
+                  <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FFB6C1]/15">
+                      <Sparkles className="h-4 w-4 text-[#FFB6C1]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-black uppercase tracking-[0.18em] text-[#FFB6C1]">AI creative director</p>
+                      <p className="text-xs font-bold text-white">What you need to create</p>
+                    </div>
+                    {aiBriefLoading && <Loader2 className="h-4 w-4 animate-spin text-[#FFB6C1]" />}
+                  </div>
+                  <div className="p-4">
+                    {aiBriefLoading ? (
+                      <div className="space-y-2">
+                        <div className="h-3 animate-pulse rounded bg-white/10" />
+                        <div className="h-3 w-11/12 animate-pulse rounded bg-white/10" />
+                        <div className="h-3 w-4/5 animate-pulse rounded bg-white/10" />
+                      </div>
+                    ) : aiBriefError ? (
+                      <div className="flex items-start gap-3">
+                        <p className="flex-1 text-xs leading-5 text-amber-100/80">{aiBriefError}</p>
+                        <button type="button" onClick={() => {
+                          setSelected((current) => current ? { ...current } : current);
+                        }} className="rounded-lg border border-white/10 p-2 text-white/50 hover:bg-white/10" title="Regenerate AI brief">
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : aiBrief?.message ? (
+                      <div className="space-y-3">
+                        <p className="text-sm leading-6 text-white/85">{aiBrief.message}</p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {aiBrief.concept && <div className="rounded-xl bg-black/20 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-white/35">Concept</p><p className="mt-1 text-xs leading-5 text-white/70">{aiBrief.concept}</p></div>}
+                          {aiBrief.hook && <div className="rounded-xl bg-black/20 p-3"><p className="text-[9px] font-black uppercase tracking-wider text-white/35">Opening hook</p><p className="mt-1 text-xs leading-5 text-white/70">{aiBrief.hook}</p></div>}
+                          {aiBrief.direction && <div className="rounded-xl bg-black/20 p-3 sm:col-span-2"><p className="text-[9px] font-black uppercase tracking-wider text-white/35">Creative direction</p><p className="mt-1 text-xs leading-5 text-white/70">{aiBrief.direction}</p></div>}
+                        </div>
+                        {aiBrief.deliverables?.length ? (
+                          <div>
+                            <p className="mb-2 text-[9px] font-black uppercase tracking-wider text-white/35">Deliverables</p>
+                            <div className="space-y-1.5">
+                              {aiBrief.deliverables.map((item, index) => <div key={index} className="flex items-start gap-2 text-xs text-white/65"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-300" /><span>{item}</span></div>)}
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-white/40">The AI creative director did not return a brief.</p>
+                    )}
+                  </div>
+                </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-3">
