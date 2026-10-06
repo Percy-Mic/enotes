@@ -699,7 +699,11 @@ export default function VideoAIStudio({
             try {
               const result = await Promise.resolve(onApplyActions(applicable.filter((action) => !DESTRUCTIVE_ACTIONS.has(action.type))));
               if (result && typeof result === 'object') {
-                applicationNote = `\n\n✓ Applied ${result.applied} change${result.applied === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+                if (Number(result.applied) > 0 || result.failed?.length) {
+                  applicationNote = `\n\n✓ Applied ${result.applied} change${result.applied === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+                } else {
+                  throw new Error('The editor accepted the AI plan but applied 0 changes. No changes were made.');
+                }
               }
             } catch (e) {
               applicationNote = `\n\n⚠️ The editor could not apply the requested changes: ${e instanceof Error ? e.message : 'unknown editor error'}`;
@@ -709,7 +713,11 @@ export default function VideoAIStudio({
           try {
             const result = await Promise.resolve(onApplyActions(applicable));
             if (result && typeof result === 'object') {
-              applicationNote = `\n\n✓ Applied ${result.applied} of ${applicable.length} requested timeline change${applicable.length === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+              if (Number(result.applied) > 0 || result.failed?.length) {
+                applicationNote = `\n\n✓ Applied ${result.applied} of ${applicable.length} requested timeline change${applicable.length === 1 ? '' : 's'}.${result.failed.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+              } else {
+                throw new Error('The editor accepted the AI plan but applied 0 changes. No changes were made.');
+              }
             }
           } catch (e) {
             applicationNote = `\n\n⚠️ The editor could not apply the requested changes: ${e instanceof Error ? e.message : 'unknown editor error'}`;
