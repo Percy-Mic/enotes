@@ -66,6 +66,14 @@ function keyframesForClip(clip: VideoClip) {
   });
 }
 
+function transitionFor(clip: VideoClip): { style: string; duration: number } | undefined {
+  const type = clip.transitionIn?.type;
+  const duration = Math.max(0.05, clip.transitionIn?.duration || 0);
+  if (!type || type === 'none' || duration <= 0) return undefined;
+  const style: Record<string, string> = { fade: 'fade', crossfade: 'fade', 'dip-black': 'fade', slide: 'slide', push: 'slide', 'whip-pan': 'slide', zoom: 'zoom', 'zoom-blur': 'zoom', spin: 'zoom', wipe: 'wipe', 'luma-wipe': 'wipe', 'glitch-cut': 'wipe', 'film-burn': 'fade', blur: 'fade' };
+  return { style: style[type] || 'fade', duration };
+}
+
 function clipElement(project: VideoProject, clip: VideoClip, src: string, start: number): any {
   const duration = Math.max(0.05, clipDuration(clip));
   const v = resolveClipValues(clip, 0);
@@ -179,45 +187,38 @@ function audioElement(audio: AudioTrack, src: string): any {
 }
 
 export function projectToJson2Video(
-  project: VideoProject,
-  sources: Record<string, string>,
-  resolutionHeight: CloudRenderResolution = 1080,
-  bitrate = 6000000,
+  project: VideoProject, sources: Record<string, string>, resolutionHeight: CloudRenderResolution = 1080, bitrate = 6000000,
 ): Json2VideoMovie {
-  const elements: any[] = [];
+  const scenes: Json2VideoMovie['scenes'] = [];
   let timeline = 0;
-
   for (const clip of project.clips) {
-    const src = sources[clip.src] || clip.src;
-    if (!(src.startsWith('http://') || src.startsWith('https://'))) continue;
-    elements.push(clipElement(project, clip, src, timeline));
-    timeline += clipDuration(clip);
-  }
-
-  for (const el of project.elements) {
-    const src = el.src ? (sources[el.src] || el.src) : null;
-    if (el.kind === 'text') elements.push(textElement(el));
-    else if (src && (src.startsWith('http://') || src.startsWith('https://')) && ['image', 'video', 'gif'].includes(el.kind)) {
-      elements.push(overlayElement(el, src));
+    const src = sources[clip.src] || clip.src, duration = Math.max(0.05, clipDuration(clip));
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      const sceneElements: any[] = [clipElement(project, clip, src, 0)];
+      const sceneStart = timeline, sceneEnd = timeline + duration;
+      for (const el of project.elements) {
+        const overlapStart = Math.max(el.start, sceneStart), overlapEnd = Math.min(el.end, sceneEnd);
+        if (overlapEnd <= overlapStart) continue;
+        const localStart = overlapStart - sceneStart, localDuration = overlapEnd - overlapStart;
+        const source = el.src ? (sources[el.src] || el.src) : null;
+        if (el.kind === 'text') sceneElements.push(textElement({ ...el, start: localStart, end: localStart + localDuration }));
+        else if (source && (source.startsWith('http://') || source.startsWith('https://')) && ['image','video','gif'].includes(el.kind)) sceneElements.push(overlayElement({ ...el, start: localStart, end: localStart + localDuration }, source));
+      }
+      const scene: Json2VideoMovie['scenes'][number] = { duration, 'background-color': '#000000', elements: sceneElements };
+      const transition = transitionFor(clip);
+      if (scenes.length && transition) scene.transition = transition;
+      scenes.push(scene);
     }
+    timeline += duration;
   }
-
+  const movieAudio: any[] = [];
   for (const audio of project.audio) {
     const src = sources[audio.src] || audio.src;
-    if (src.startsWith('http://') || src.startsWith('https://')) elements.push(audioElement(audio, src));
+    if (src.startsWith('http://') || src.startsWith('https://')) movieAudio.push(audioElement(audio, src));
   }
-
-  return {
-    resolution: (project.canvas.width / Math.max(1, project.canvas.height) === 16 / 9 && resolutionHeight <= 1080) ? resolutionFor(project, resolutionHeight) : `${Math.round(resolutionHeight * project.canvas.width / Math.max(1, project.canvas.height))}x${resolutionHeight}`,
-    quality: qualityFor(bitrate),
-    scenes: [{
-      duration: Math.max(0.1, projectDurationForCloud(project)),
-      'background-color': '#000000',
-      elements,
-    }],
-  };
+  const ratio = project.canvas.width / Math.max(1, project.canvas.height);
+  return { resolution: ratio === 16 / 9 && resolutionHeight <= 1080 ? resolutionFor(project, resolutionHeight) : `${Math.round(resolutionHeight * ratio)}x${resolutionHeight}`, quality: qualityFor(bitrate), elements: movieAudio, scenes };
 }
-
 function projectDurationForCloud(project: VideoProject) {
   const clips = project.clips.reduce((sum, clip) => sum + clipDuration(clip), 0);
   const layers = project.elements.reduce((max, el) => Math.max(max, el.end), 0);
