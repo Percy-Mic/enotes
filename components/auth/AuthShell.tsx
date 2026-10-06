@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import AuthThemeSelector from '@/components/auth/AuthThemeSelector';
 
 type AuthShellProps = {
   eyebrow?: string;
@@ -11,6 +12,7 @@ type AuthShellProps = {
   footer?: React.ReactNode;
   asideTitle?: string;
   asideDescription?: string;
+  showThemeSelector?: boolean;
 };
 
 export default function AuthShell({
@@ -21,6 +23,7 @@ export default function AuthShell({
   footer,
   asideTitle = 'Your stories deserve a place that feels like yours.',
   asideDescription = 'Write, collect, create, and keep the moments that matter — all in one calm digital space.',
+  showThemeSelector = false,
 }: AuthShellProps) {
   return (
     <main className="auth-page min-h-[100dvh] w-full overflow-x-hidden">
@@ -29,10 +32,13 @@ export default function AuthShell({
           <div className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full border-[48px] border-white/25" />
           <div className="pointer-events-none absolute -bottom-36 -left-24 h-[28rem] w-[28rem] rounded-full border-[64px] auth-brand-ring" />
 
-          <Link href="/" className="relative z-10 inline-flex w-fit items-center gap-2 text-[17px] font-bold tracking-[-0.02em]">
+          <div className="relative z-10 flex items-center justify-between gap-4">
+            <Link href="/" className="inline-flex w-fit items-center gap-2 text-[17px] font-bold tracking-[-0.02em]">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--auth-primary-bg)] text-[19px] leading-none text-[var(--auth-primary-ink)]">e</span>
-            <span>enotes</span>
-          </Link>
+              <span>enotes</span>
+            </Link>
+            {showThemeSelector && <AuthThemeSelector />}
+          </div>
 
           <div className="relative z-10 max-w-xl pb-8">
             <div className="mb-5 inline-flex items-center rounded-full auth-brand-soft border px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.17em] auth-ink">
@@ -56,9 +62,12 @@ export default function AuthShell({
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[var(--auth-primary-bg)] text-[19px] leading-none text-[var(--auth-primary-ink)]">e</span>
                 <span>enotes</span>
               </Link>
-              <span className="shrink-0 rounded-full auth-brand-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] auth-subtle">
-                {eyebrow}
-              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="rounded-full auth-brand-soft px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.14em] auth-subtle">
+                  {eyebrow}
+                </span>
+                {showThemeSelector && <AuthThemeSelector />}
+              </div>
             </div>
 
             <div className="auth-surface auth-border w-full rounded-[24px] border px-4 py-5 shadow-[0_20px_60px_rgba(17,17,17,0.08)] sm:rounded-[28px] sm:px-8 sm:py-8">
