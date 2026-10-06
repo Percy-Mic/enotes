@@ -1025,34 +1025,12 @@ function VideoEditor() {
     setToolDrawerOpen(true);
   }, []);
 
-  /* The canvas gesture is the trigger. A tap opens the selected object's
-     inspector; deliberate move/resize/rotate intent opens a floating drawer
-     for that intent. The drawer is fixed so it never pushes or resizes the
-     preview/timeline. */
-  const openGestureDrawer = useCallback((intent: 'move' | 'resize' | 'rotate', kind: 'clip' | 'element' | 'audio') => {
-    if (contextDrawerTimerRef.current !== null) window.clearTimeout(contextDrawerTimerRef.current);
-    const nextTool: Tool = kind === 'audio'
-      ? 'audio'
-      : intent === 'rotate' || intent === 'resize'
-        ? 'motion'
-        : kind === 'element' ? 'text' : 'motion';
-    const label = intent === 'rotate'
-      ? 'Rotate controls'
-      : intent === 'resize'
-        ? 'Resize controls'
-        : kind === 'audio'
-          ? 'Audio controls'
-          : kind === 'element'
-            ? 'Overlay controls'
-            : 'Motion controls';
-    setTool(nextTool);
-    setToolDrawerOpen(true);
-    setContextDrawerLabel(label);
-    contextDrawerTimerRef.current = window.setTimeout(() => {
-      setContextDrawerLabel(null);
-      setToolDrawerOpen(false);
-      contextDrawerTimerRef.current = null;
-    }, 4200);
+  /* Selection is deliberately non-modal. A canvas gesture must never open a
+     drawer by itself: the selected item changes the contextual navigation below
+     the timeline, and the user explicitly taps a navigation action to open a
+     full tool panel. This keeps the canvas unobstructed while dragging. */
+  const openGestureDrawer = useCallback((_intent: 'move' | 'resize' | 'rotate', _kind: 'clip' | 'element' | 'audio') => {
+    /* Intentionally empty. Kept as a compatibility hook for the gesture code. */
   }, []);
 
   useEffect(() => () => {
@@ -4951,7 +4929,7 @@ function VideoEditor() {
     };
 
     const onUp = () => {
-      if (!gestureMoved) openTool(startEl.kind === 'text' ? 'text' : 'overlays');
+      /* Selection alone never opens a tool drawer. */
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -5153,7 +5131,7 @@ function VideoEditor() {
     };
 
     const onUp = () => {
-      if (!gestureMoved) openTool('motion');
+      /* Selection alone never opens a tool drawer. */
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -9763,34 +9741,75 @@ function VideoEditor() {
 
       {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-[55] grid grid-cols-8 border-t border-white/10 bg-[#161616]/98 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(0,0,0,.28)] backdrop-blur-xl md:left-0 md:right-auto md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
-        aria-label="Editor tools"
+        className="fixed inset-x-0 bottom-0 z-[55] flex items-stretch gap-1 overflow-x-auto border-t border-white/10 bg-[#161616]/98 px-1 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(0,0,0,.28)] backdrop-blur-xl md:left-0 md:right-auto md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:flex-col md:overflow-x-hidden md:overflow-y-auto md:border-r md:border-t-0 md:px-0 md:py-3"
+        aria-label={selectedClip ? 'Selected video tools' : selectedElement ? (selectedElement.kind === 'text' ? 'Selected text tools' : 'Selected overlay tools') : selectedAudio ? 'Selected audio tools' : 'Editor tools'}
       >
-        {(
-          [
-            ['media', <Film key="f" className="h-5 w-5" />],
-            ['text', <Type key="t" className="h-5 w-5" />],
-            ['overlays', <Layers key="o" className="h-5 w-5" />],
-            ['audio', <Music key="m" className="h-5 w-5" />],
-            ['motion', <Sparkles key="mo" className="h-5 w-5" />],
-            ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
-            ['ai', <Bot key="ai" className="h-5 w-5" />],
-            ['export', <Upload key="e" className="h-5 w-5" />],
-          ] as [Tool, React.ReactNode][]
-        ).map(([id, icon]) => (
-          <button
-            key={id}
-            onClick={() => {
-              if (tool === id && toolDrawerOpen) setToolDrawerOpen(false);
-              else openTool(id);
-            }}
-            className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] ${tool === id ? 'text-[#FFB6C1]' : 'text-white/50'}`}
-            aria-current={tool === id}
-          >
-            {icon}
-            {TOOL_LABELS[id]}
-          </button>
-        ))}
+        {selectedClip ? (
+          <>
+            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Scissors className="h-5 w-5" />Edit</button>
+            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Music className="h-5 w-5" />Audio</button>
+            <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Effects</button>
+            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Move className="h-5 w-5" />Motion</button>
+            <button type="button" onClick={addTextElement} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Type className="h-5 w-5" />Text</button>
+            <button type="button" onClick={startClipCrop} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Crop className="h-5 w-5" />Crop</button>
+            <button type="button" onClick={splitAtPlayhead} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Scissors className="h-5 w-5" />Split</button>
+            <button type="button" onClick={() => deleteClip(selectedClip.id)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Trash2 className="h-5 w-5" />Delete</button>
+          </>
+        ) : selectedElement ? (
+          <>
+            <button type="button" onClick={() => openTool(selectedElement.kind === 'text' ? 'text' : 'overlays')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Type className="h-5 w-5" />Edit</button>
+            {selectedElement.kind === 'text' ? (
+              <>
+                <button type="button" onClick={() => openTool('text')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Type className="h-5 w-5" />Style</button>
+                <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Animate</button>
+              </>
+            ) : (
+              <>
+                <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Motion</button>
+                <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><SlidersHorizontal className="h-5 w-5" />Effects</button>
+                {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button type="button" onClick={startElementCrop} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Crop className="h-5 w-5" />Crop</button>}
+              </>
+            )}
+            <button type="button" onClick={() => duplicateElement(selectedElement)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Copy className="h-5 w-5" />Duplicate</button>
+            <button type="button" onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate selected overlay')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><RotateCcw className="h-5 w-5" />Rotate</button>
+            <button type="button" onClick={() => deleteElement(selectedElement.id)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Trash2 className="h-5 w-5" />Delete</button>
+          </>
+        ) : selectedAudio ? (
+          <>
+            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Music className="h-5 w-5" />Edit</button>
+            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Volume2 className="h-5 w-5" />Volume</button>
+            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Effects</button>
+            <button type="button" onClick={() => audioReplaceInputRef.current?.click()} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Film className="h-5 w-5" />Replace</button>
+            <button type="button" onClick={async () => { if (beatBusy) return; setBeatBusy(true); try { const markers = await detectBeatMarkers(selectedAudio); updateProject((p) => ({ ...p, beatMarkers: markers }), 'Detect audio beats'); notify(markers.length ? 'Detected ' + markers.length + ' beat markers.' : 'No strong beats were detected.'); } catch (error) { notify(error instanceof Error ? error.message : 'Beat detection failed.'); } finally { setBeatBusy(false); } }} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" disabled={beatBusy}>{beatBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}Beats</button>
+            <button type="button" onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Trash2 className="h-5 w-5" />Delete</button>
+          </>
+        ) : (
+          (
+            [
+              ['media', <Film key="f" className="h-5 w-5" />],
+              ['text', <Type key="t" className="h-5 w-5" />],
+              ['overlays', <Layers key="o" className="h-5 w-5" />],
+              ['audio', <Music key="m" className="h-5 w-5" />],
+              ['motion', <Sparkles key="mo" className="h-5 w-5" />],
+              ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
+              ['ai', <Bot key="ai" className="h-5 w-5" />],
+              ['export', <Upload key="e" className="h-5 w-5" />],
+            ] as [Tool, React.ReactNode][]
+          ).map(([id, icon]) => (
+            <button
+              key={id}
+              onClick={() => {
+                if (tool === id && toolDrawerOpen) setToolDrawerOpen(false);
+                else openTool(id);
+              }}
+              className={`relative flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] ${tool === id ? 'text-[#FFB6C1]' : 'text-white/50'} md:min-w-0 md:rounded-none md:px-0 md:py-2 md:text-[10px]`}
+              aria-current={tool === id}
+            >
+              {icon}
+              {TOOL_LABELS[id]}
+            </button>
+          ))
+        )}
       </nav>
 
       {toast && (
