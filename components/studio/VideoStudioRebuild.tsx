@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft, ChevronDown, Download, Film, FolderOpen, Gauge, Image as ImageIcon,
   Keyboard, Layers3, Maximize2, Mic, Minus, Music2, Pause, Play, Plus, Redo2,
-  RotateCcw, Save, Scissors, Settings2, Sparkles, Split, Trash2, Type, Undo2,
+  RotateCcw, Save, Scissors, Settings2, Sparkles, Trash2, Type, Undo2,
   Upload, Volume2, VolumeX, Wand2, X, ZoomIn, ZoomOut,
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -279,7 +279,7 @@ export default function VideoStudioRebuild() {
   useEffect(() => () => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     Object.values(localSources).forEach((url) => { try { URL.revokeObjectURL(url); } catch {} });
-  }, [localSources]);
+  }, []);
 
   const setTime = (value: number) => {
     const next = Math.max(0, Math.min(projectDuration(projectRef.current), value));
@@ -765,6 +765,7 @@ export default function VideoStudioRebuild() {
                   </>}
 
                   {panel === 'audio' && selectedAudio && <><Section title="Audio"><Slider label="Volume" min={0} max={1} step={.01} value={selectedAudio.volume} onChange={(v)=>updateAudio(selectedAudio.id,{volume:v})}/><Slider label="Start" min={0} max={total} step={.1} value={selectedAudio.start} onChange={(v)=>updateAudio(selectedAudio.id,{start:v})}/><Slider label="Fade in" min={0} max={5} step={.1} value={selectedAudio.fadeIn} onChange={(v)=>updateAudio(selectedAudio.id,{fadeIn:v})}/><Slider label="Fade out" min={0} max={5} step={.1} value={selectedAudio.fadeOut} onChange={(v)=>updateAudio(selectedAudio.id,{fadeOut:v})}/></Section></>}
+                  {panel === 'audio' && selectedClip && <><Section title="Original video audio"><Slider label="Volume" min={0} max={1} step={.01} value={selectedClip.volume} onChange={(v)=>updateClip(selectedClip.id,{volume:v})}/><div className="mt-3 flex gap-2"><Button active={selectedClip.muted} onClick={()=>updateClip(selectedClip.id,{muted:!selectedClip.muted})}>{selectedClip.muted ? <VolumeX className="h-4 w-4"/> : <Volume2 className="h-4 w-4"/>}{selectedClip.muted ? 'Muted' : 'Audio on'}</Button></div></Section></>}
 
                   {panel === 'effects' && selectedClip && <><Section title="Filter"><div className="grid grid-cols-3 gap-2">{FILTER_PRESETS.map((f)=><button key={f.id} type="button" onClick={()=>updateClip(selectedClip.id,{filter:f.id})} className={`rounded-lg border p-2 text-left text-[10px] ${selectedClip.filter===f.id?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{f.name}</button>)}</div></Section><Section title="Effect"><div className="grid grid-cols-2 gap-2">{EFFECT_PRESETS.slice(0,24).map((f)=><button key={f.id} type="button" onClick={()=>updateClip(selectedClip.id,{effect:f.id,effects:f.id==='none'?[]:[{type:f.id,intensity:1}]})} className={`rounded-lg border p-2 text-left text-[10px] ${selectedClip.effect===f.id?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{f.name}</button>)}</div></Section></>}
 
