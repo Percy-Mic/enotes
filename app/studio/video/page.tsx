@@ -6875,10 +6875,11 @@ function VideoEditor() {
   // cannot confuse the conditional load-error branch with the editor shell.
   return (
     <main
-      className="flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white"
+      className="enotes-video-editor flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white"
       data-history-scoped="true"
+      data-clean-editor="true"
     >
-      {/* fullscreen preview overlay (renders above everything when active) */}
+<style jsx global>{`\n        main[data-clean-editor="true"] .backdrop-blur, main[data-clean-editor="true"] .backdrop-blur-sm, main[data-clean-editor="true"] .backdrop-blur-md, main[data-clean-editor="true"] .backdrop-blur-lg { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }\n        main[data-clean-editor="true"] .shadow-2xl, main[data-clean-editor="true"] .shadow-xl, main[data-clean-editor="true"] .shadow-lg { box-shadow:none !important; }\n        main[data-clean-editor="true"] [class*="bg-gradient-to-"] { background-image:none !important; }\n        main[data-clean-editor="true"] [class*="bg-violet-"] { background-color:rgba(255,255,255,.055) !important; }\n        main[data-clean-editor="true"] [class*="border-violet-"] { border-color:rgba(255,255,255,.12) !important; }\n        main[data-clean-editor="true"] [class*="text-violet-"] { color:rgba(255,255,255,.72) !important; }\n        main[data-clean-editor="true"] input[type="range"] { accent-color:#E5798F; }\n      `}</style>\n      {/* fullscreen preview overlay (renders above everything when active) */}
       {fullscreen && (
         <FullscreenPreview
           canvasRef={fsCanvasRef}
@@ -9251,7 +9252,7 @@ function VideoEditor() {
                       <p className="text-xs font-semibold">Animation presets</p>
                       <p className="text-[10px] text-white/40">Real keyframes — preview and export use the same animation.</p>
                     </div>
-                    <span className="text-[10px] text-[#FFB6C1]">No API</span>
+                    
                   </div>
                   <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
                     {([
