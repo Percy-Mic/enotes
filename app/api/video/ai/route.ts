@@ -7,8 +7,10 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   let jobId: string | null = null;
+  let operation: AIJobInput['operation'] | undefined;
   try {
     const body = (await request.json()) as AIJobInput;
+    operation = body?.operation;
     if (!body?.operation) return NextResponse.json({ error: 'operation is required' }, { status: 400 });
 
     const job = await createAIJob(body);
@@ -144,7 +146,7 @@ export async function POST(request: Request) {
         });
       }
       return NextResponse.json({
-        operation: body.operation,
+        operation: operation || 'assistant',
         provider: 'fallback',
         output: {
           message: 'The AI provider is temporarily unavailable. No changes were applied. Please try again.',
