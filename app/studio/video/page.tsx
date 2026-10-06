@@ -4171,6 +4171,8 @@ function VideoEditor() {
     setPlaying(false);
     setSelectedClipId(clip.id);
     setSelectedElementId(null);
+    setSelectedAudioId(null);
+    setToolDrawerOpen(false);
     setPointerDragId(clip.id);
     const startX = e.clientX;
     let moved = false;
@@ -4214,6 +4216,8 @@ function VideoEditor() {
     setPlaying(false);
     setSelectedElementId(el.id);
     setSelectedClipId(null);
+    setSelectedAudioId(null);
+    setToolDrawerOpen(false);
     setPointerDragId(el.id);
 
     const startX = e.clientX;
@@ -4389,6 +4393,7 @@ function VideoEditor() {
     setSelectedAudioId(a.id);
     setSelectedClipId(null);
     setSelectedElementId(null);
+    setToolDrawerOpen(false);
     setPointerDragId(a.id);
 
     const startX = e.clientX;
@@ -4482,8 +4487,7 @@ function VideoEditor() {
 
     const onUp = () => {
       setPointerDragId(null);
-      if (!moved) openTool('audio');
-      else if (invalidDrop) restoreOriginal();
+      if (invalidDrop) restoreOriginal();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
@@ -4499,6 +4503,7 @@ function VideoEditor() {
     e.preventDefault();
     e.stopPropagation();
     setSelectedAudioId(a.id);
+    setToolDrawerOpen(false);
     const startX = e.clientX;
     const startTrimS = a.trimStart;
     const startTrimE = a.trimEnd;
@@ -5378,6 +5383,8 @@ function VideoEditor() {
     setPlaying(false);
     setSelectedClipId(clip.id);
     setSelectedElementId(null);
+    setSelectedAudioId(null);
+    setToolDrawerOpen(false);
 
     const start = canvasPoint(e);
     if (!start) return;
@@ -10284,36 +10291,99 @@ function VideoEditor() {
         </>
       )}
 
-      {/* ---------- bottom tool tabs (safe-area aware) ---------- */}
+      {/* ---------- contextual bottom navigation (safe-area aware) ---------- */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-[55] grid grid-cols-8 border-t border-white/10 bg-[#161616]/98 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(0,0,0,.28)] backdrop-blur-xl md:left-0 md:right-auto md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:grid-cols-1 md:border-r md:border-t-0 md:py-3"
-        aria-label="Editor tools"
+        className="fixed inset-x-0 bottom-0 z-[55] border-t border-white/10 bg-[#161616]/98 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_30px_rgba(0,0,0,.28)] backdrop-blur-xl md:left-0 md:right-auto md:top-[57px] md:z-50 md:h-[calc(100dvh-57px)] md:w-[74px] md:border-r md:border-t-0 md:py-3"
+        aria-label="Editor navigation"
       >
-        {(
-          [
-            ['media', <Film key="f" className="h-5 w-5" />],
-            ['text', <Type key="t" className="h-5 w-5" />],
-            ['overlays', <Layers key="o" className="h-5 w-5" />],
-            ['audio', <Music key="m" className="h-5 w-5" />],
-            ['motion', <Sparkles key="mo" className="h-5 w-5" />],
-            ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
-            ['ai', <Bot key="ai" className="h-5 w-5" />],
-            ['export', <Upload key="e" className="h-5 w-5" />],
-          ] as [Tool, React.ReactNode][]
-        ).map(([id, icon]) => (
-          <button
-            key={id}
-            onClick={() => {
-              if (tool === id && toolDrawerOpen) setToolDrawerOpen(false);
-              else openTool(id);
-            }}
-            className={`relative flex min-h-[52px] flex-col items-center justify-center gap-0.5 py-2 text-[10px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] ${tool === id ? 'text-[#FFB6C1]' : 'text-white/50'}`}
-            aria-current={tool === id}
-          >
-            {icon}
-            {TOOL_LABELS[id]}
-          </button>
-        ))}
+        <div className="mx-auto flex min-w-0 max-w-3xl items-stretch justify-center gap-0.5 overflow-x-auto px-1 md:h-full md:flex-col md:overflow-y-auto">
+          {(selectedClip
+            ? [
+                ['motion', <Scissors key="edit" className="h-5 w-5" />, 'Edit'],
+                ['audio', <Volume2 key="sound" className="h-5 w-5" />, 'Sound'],
+                ['look', <Sparkles key="effects" className="h-5 w-5" />, 'Effects'],
+                ['text', <Type key="text" className="h-5 w-5" />, 'Text'],
+                ['export', <Crop key="crop" className="h-5 w-5" />, 'Crop'],
+                ['motion', <SkipForward key="speed" className="h-5 w-5" />, 'Speed'],
+                ['audio', <SlidersHorizontal key="volume" className="h-5 w-5" />, 'Volume'],
+                ['overlays', <MoreHorizontal key="more" className="h-5 w-5" />, 'More'],
+              ]
+            : selectedElement
+              ? [
+                  [inspectorTool, <Type key="edit" className="h-5 w-5" />, selectedElement.kind === 'text' ? 'Text' : 'Edit'],
+                  ['motion', <Sparkles key="motion" className="h-5 w-5" />, 'Animate'],
+                  ['look', <SlidersHorizontal key="look" className="h-5 w-5" />, 'Style'],
+                  ['overlays', <Layers key="layer" className="h-5 w-5" />, 'Layer'],
+                  ['export', <Crop key="crop" className="h-5 w-5" />, 'Crop'],
+                  ['motion', <Diamond key="keyframe" className="h-5 w-5" />, 'Keyframe'],
+                  ['overlays', <Copy key="duplicate" className="h-5 w-5" />, 'Duplicate'],
+                  ['overlays', <Trash2 key="delete" className="h-5 w-5" />, 'Delete'],
+                ]
+              : selectedAudio
+                ? [
+                    ['audio', <Music key="edit" className="h-5 w-5" />, 'Audio'],
+                    ['audio', <Volume2 key="volume" className="h-5 w-5" />, 'Volume'],
+                    ['audio', <Sparkles key="effects" className="h-5 w-5" />, 'Effects'],
+                    ['audio', <Activity key="beats" className="h-5 w-5" />, 'Beats'],
+                    ['audio', <Film key="replace" className="h-5 w-5" />, 'Replace'],
+                    ['audio', <SlidersHorizontal key="adjust" className="h-5 w-5" />, 'Adjust'],
+                    ['export', <Scissors key="split" className="h-5 w-5" />, 'Split'],
+                    ['audio', <Trash2 key="delete" className="h-5 w-5" />, 'Delete'],
+                  ]
+                : [
+                    ['media', <Film key="media" className="h-5 w-5" />, 'Media'],
+                    ['text', <Type key="text" className="h-5 w-5" />, 'Text'],
+                    ['overlays', <Layers key="overlays" className="h-5 w-5" />, 'Overlays'],
+                    ['audio', <Music key="audio" className="h-5 w-5" />, 'Audio'],
+                    ['motion', <Sparkles key="motion" className="h-5 w-5" />, 'Motion'],
+                    ['look', <SlidersHorizontal key="look" className="h-5 w-5" />, 'Effects'],
+                    ['ai', <Bot key="ai" className="h-5 w-5" />, 'AI'],
+                    ['export', <Upload key="export" className="h-5 w-5" />, 'Export'],
+                  ]
+          ).map(([id, icon, label], index) => {
+            const navId = id as Tool;
+            return (
+              <button
+                key={String(label) + index}
+                type="button"
+                onClick={() => {
+                  if (String(label) === 'Crop') {
+                    if (selectedClip) startClipCrop();
+                    else if (selectedElement && (selectedElement.kind === 'image' || selectedElement.kind === 'video')) startElementCrop();
+                    return;
+                  }
+                  if (String(label) === 'Speed' && selectedClip) {
+                    setClipSpeedMenuOpen((v) => !v);
+                    return;
+                  }
+                  if (String(label) === 'Volume' && selectedClip) {
+                    openTool('audio');
+                    return;
+                  }
+                  if (String(label) === 'Duplicate' && selectedElement) {
+                    duplicateElement(selectedElement);
+                    return;
+                  }
+                  if (String(label) === 'Delete') {
+                    if (selectedElement) deleteElement(selectedElement.id);
+                    else if (selectedAudio) updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio');
+                    return;
+                  }
+                  if (String(label) === 'Split' && selectedAudio) {
+                    splitSelectedElementOrAudio();
+                    return;
+                  }
+                  openTool(navId);
+                }}
+                className="flex min-w-[58px] shrink-0 flex-1 flex-col items-center justify-center gap-0.5 px-1 py-2 text-[9px] font-semibold text-white/60 active:bg-white/10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] md:min-w-0 md:flex-none"
+                aria-label={String(label)}
+              >
+                {icon}
+                <span>{String(label)}</span>
+              </button>
+            );
+          })}
+        </div>
       </nav>
 
       {toast && (
