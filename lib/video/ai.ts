@@ -3529,7 +3529,7 @@ ${beatsForPlan}
     };
 
     const requestText = String(input.prompt || '').toLowerCase();
-    const narrationExplicitlyRequested = /\\b(add|create|write|generate|make|record|include|put)\\b[\\s\\S]{0,40}\\b(narration|voiceover|voice-over|voice over)\\b|\\b(narration|voiceover|voice-over|voice over)\\b[\\s\\S]{0,40}\\b(add|create|write|generate|make|record|include|put)\\b/i.test(requestText);
+    const narrationExplicitlyRequested = /\b(add|create|write|generate|make|record|include|put)\b[\s\S]{0,40}\b(narration|voiceover|voice-over|voice over)\b|\b(narration|voiceover|voice-over|voice over)\b[\s\S]{0,40}\b(add|create|write|generate|make|record|include|put)\b/i.test(requestText);
     const isAdvertisementRequest = /\b(advertisement|advertising|commercial|promotional video|promo video|promo)\b/i.test(requestText);
     const captionsExplicitlyRequested = /\b(captions?|subtitles?|subtitle|auto[- ]?captions?|closed captions?)\b/i.test(requestText);
     const audioExplicitlyRequested = /\b(music|soundtrack|background music|sfx|sound effects?|audio|song)\b/i.test(requestText);
