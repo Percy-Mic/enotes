@@ -72,6 +72,7 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
   const [mentionResults, setMentionResults] = useState<{ id: string; username: string; full_text_name: string }[]>([]);
   const mentionField = useRef<'draft' | 'reply'>('draft');
   const mentionQuerySeq = useRef(0);
+  const reactionBusyRef = useRef<Set<string>>(new Set());
   const listRef = useRef<HTMLDivElement>(null);
   const pickerHostRef = useRef<HTMLDivElement>(null);
   const pickerIdRef = useRef(`comment-picker-${Math.random().toString(36).slice(2)}`);
@@ -292,32 +293,60 @@ export default function CommentThread({ postId, postAuthorId, parentComment, dep
   };
 
   const toggleReaction = async (comment: Comment, emoji: string) => {
-    if (!myId) return;
-    const current = comment.reactions || {};
-    const mine = current[emoji]?.mine;
+    if (!myId || reactionBusyRef.current.has(comment.id)) return;
+    reactionBusyRef.current.add(comment.id);
 
-    /* optimistic */
+    const current = comment.reactions || {};
+    const mine = !!current[emoji]?.mine;
+
     setComments((list) =>
       list.map((c) => {
         if (c.id !== comment.id) return c;
         const reactions = { ...(c.reactions || {}) };
-        const entry = { count: reactions[emoji]?.count || 0, mine: !mine };
         if (mine) {
-          entry.count = Math.max(0, entry.count - 1);
-          if (entry.count === 0) delete reactions[emoji];
-          else reactions[emoji] = entry;
+          const count = Math.max(0, (reactions[emoji]?.count || 0) - 1);
+          if (count) reactions[emoji] = { count, mine: false };
+          else delete reactions[emoji];
         } else {
-          entry.count += 1;
-          reactions[emoji] = entry;
+          reactions[emoji] = { count: (reactions[emoji]?.count || 0) + 1, mine: true };
         }
         return { ...c, reactions };
       })
     );
 
-    if (mine) {
-      await supabase.from('comment_reactions').delete().eq('comment_id', comment.id).eq('user_id', myId).eq('emoji', emoji);
-    } else {
-      await supabase.from('comment_reactions').insert({ comment_id: comment.id, user_id: myId, emoji });
+    try {
+      const result = mine
+        ? await supabase
+            .from('comment_reactions')
+            .delete()
+            .eq('comment_id', comment.id)
+            .eq('user_id', myId)
+            .eq('emoji', emoji)
+        : await supabase
+            .from('comment_reactions')
+            .upsert(
+              { comment_id: comment.id, user_id: myId, emoji },
+              { onConflict: 'comment_id,user_id,emoji', ignoreDuplicates: true }
+            );
+
+      if (result.error) throw result.error;
+    } catch {
+      // Reload the complete reaction state instead of leaving stale optimistic counts.
+      const { data } = await supabase
+        .from('comment_reactions')
+        .select('comment_id, emoji, user_id')
+        .eq('comment_id', comment.id);
+
+      const reactions: NonNullable<Comment['reactions']> = {};
+      for (const row of (data || []) as { comment_id: string; emoji: string; user_id: string }[]) {
+        const entry = reactions[row.emoji] || { count: 0, mine: false };
+        entry.count += 1;
+        if (row.user_id === myId) entry.mine = true;
+        reactions[row.emoji] = entry;
+      }
+      setComments((list) => list.map((c) => c.id === comment.id ? { ...c, reactions } : c));
+    } finally {
+      reactionBusyRef.current.delete(comment.id);
     }
   };
 
