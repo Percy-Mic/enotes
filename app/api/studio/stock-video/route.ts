@@ -41,6 +41,7 @@ export async function GET(request: Request) {
     headers.set('Cache-Control', 'private, no-store, max-age=0');
     const length = upstream.headers.get('content-length');
     if (length) headers.set('Content-Length', length);
+    // Keep the request Range variable separate from the response Accept-Ranges header.
     const acceptRanges = upstream.headers.get('accept-ranges');
     if (acceptRanges) headers.set('Accept-Ranges', acceptRanges);
     const contentRange = upstream.headers.get('content-range');
