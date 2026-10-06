@@ -9117,7 +9117,6 @@ function VideoEditor() {
               </div>
             )}
           </div>
-            </div>
         )}
 
         {tool === 'motion' && (
