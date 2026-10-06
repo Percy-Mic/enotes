@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { BarChart3, Coins, Film, LayoutTemplate, Music, ShieldCheck, Trash2, Video } from 'lucide-react';
+import { BarChart3, Coins, Film, LayoutTemplate, Music, ShieldCheck, Sparkles, Trash2, Video } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAlert } from '@/components/ui/Alert';
 
@@ -140,6 +140,9 @@ export default function StudioPage() {
           <div className="flex flex-wrap gap-2">
             <Link href="/studio/video?new=1" className="flex items-center gap-1.5 rounded-xl bg-black px-4 py-2 text-sm font-semibold text-[#FFB6C1]">
               <Video className="h-4 w-4" /> New video
+            </Link>
+            <Link href="/studio/video?practice=1" className="flex items-center gap-1.5 rounded-xl border border-[#E5798F]/40 bg-[#E5798F]/10 px-4 py-2 text-sm font-bold text-[#B84D66]">
+              <Sparkles className="h-4 w-4" /> Practice Mode
             </Link>
             <Link href="/studio/templates" className="flex items-center gap-1.5 rounded-xl border border-[#E8E2E4] bg-white px-4 py-2 text-sm font-semibold">
               <LayoutTemplate className="h-4 w-4" /> Marketplace
