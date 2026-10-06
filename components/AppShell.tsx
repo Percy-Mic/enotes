@@ -10,6 +10,7 @@ import AppNav from '@/components/social/AppNav';
 import { AlertProvider } from '@/components/ui/Alert';
 import PushNotificationGate from '@/components/notifications/PushNotificationGate';
 import InAppNotificationCenter from '@/components/notifications/InAppNotificationCenter';
+import NotesAside from '@/components/notes/NotesAside';
 
 /**
  * Routes that render their own chrome (fixed top bars, editors, viewers).
@@ -44,7 +45,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   const immersive = IMMERSIVE_ROUTES.some((re) => re.test(pathname));
-
+  // Keep the Notes rail on normal app surfaces, but leave focused studio/editor
+  // screens unobstructed. This only restores the UI; the notes table/schema is untouched.
+  const notesRail = !immersive && !/^\/studio(\/|$)/.test(pathname);
 
   const [showNav, setShowNav] = useState(false);
   useEffect(() => {
@@ -70,11 +73,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             className={
               immersive
                 ? ''
-                : `pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-0 ${showNav ? 'md:pt-14' : ''}`
+                : `pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-0 ${showNav ? 'md:pt-14' : ''} ${showNav && notesRail ? 'xl:pl-[21rem]' : ''}`
             }
           >
             {children}
           </div>
+          {showNav && notesRail && <NotesAside />}
           <CallOverlay />
           <InAppNotificationCenter userId={myId} />
           <PushNotificationGate userId={myId} />
