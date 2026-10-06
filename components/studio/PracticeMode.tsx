@@ -132,6 +132,23 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
     setStarting(true);
     setError(null);
     try {
+      const { data: existing, error: existingError } = await supabase
+        .from('practice_sessions')
+        .select('id,assignment_id,attempt_number,status')
+        .eq('assignment_id', selected.id)
+        .eq('user_id', userId)
+        .eq('status', 'in_progress')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) throw existingError;
+
+      if (existing) {
+        onStart(selected, media, existing as PracticeSession);
+        return;
+      }
+
       const { data: previous, error: previousError } = await supabase
         .from('practice_sessions')
         .select('attempt_number')
@@ -161,7 +178,19 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
 
       if (sessionError || !session) throw sessionError || new Error('Could not start the practice session.');
 
-      onStart(selected, media, session as PracticeSession);
+      const resolvedMedia = await Promise.all(
+        media.map(async (item) => {
+          if (item.public_url || !item.storage_path) return item;
+          const signed = await supabase.storage
+            .from('studio-media')
+            .createSignedUrl(item.storage_path, 60 * 60 * 6);
+          return signed.data?.signedUrl
+            ? { ...item, public_url: signed.data.signedUrl }
+            : item;
+        }),
+      );
+
+      onStart(selected, resolvedMedia, session as PracticeSession);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start practice mode.');
     } finally {
