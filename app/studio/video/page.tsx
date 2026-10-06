@@ -2518,30 +2518,6 @@ function VideoEditor() {
     }, axis === 'horizontal' ? 'Flip horizontal' : 'Flip vertical');
   }, [selectedClip, updateClip]);
 
-  const centerSelectedElement = useCallback(() => {
-    const el = selectedElement;
-    if (!el) return;
-    updateElement(el.id, {
-      x: Math.round((project.canvas.width - el.width) / 2),
-      y: Math.round((project.canvas.height - el.height) / 2),
-    }, 'Center overlay');
-  }, [project.canvas.height, project.canvas.width, selectedElement, updateElement]);
-
-  const fitSelectedElement = useCallback(() => {
-    const el = selectedElement;
-    if (!el || (el.kind !== 'image' && el.kind !== 'video')) return;
-    const maxW = project.canvas.width * 0.92;
-    const maxH = project.canvas.height * 0.92;
-    const sourceAspect = el.width / Math.max(1, el.height);
-    const fit = containFit(maxW, maxH, sourceAspect);
-    updateElement(el.id, {
-      x: Math.round((project.canvas.width - fit.w) / 2),
-      y: Math.round((project.canvas.height - fit.h) / 2),
-      width: Math.round(fit.w),
-      height: Math.round(fit.h),
-    }, 'Fit overlay');
-  }, [project.canvas.height, project.canvas.width, selectedElement, updateElement]);
-
   /* Narration timing guard — the placement window of an AI narration
      must never sit on top of an on-screen caption cue (speech competes
      with reading) and should land inside a music bed rather than across
@@ -4565,6 +4541,30 @@ function VideoEditor() {
       coalesceKey
     );
   };
+
+  const centerSelectedElement = useCallback(() => {
+    const el = selectedElement;
+    if (!el) return;
+    updateElement(el.id, {
+      x: Math.round((project.canvas.width - el.width) / 2),
+      y: Math.round((project.canvas.height - el.height) / 2),
+    }, 'Center overlay');
+  }, [project.canvas.height, project.canvas.width, selectedElement, updateElement]);
+
+  const fitSelectedElement = useCallback(() => {
+    const el = selectedElement;
+    if (!el || (el.kind !== 'image' && el.kind !== 'video')) return;
+    const maxW = project.canvas.width * 0.92;
+    const maxH = project.canvas.height * 0.92;
+    const sourceAspect = el.width / Math.max(1, el.height);
+    const fit = containFit(maxW, maxH, sourceAspect);
+    updateElement(el.id, {
+      x: Math.round((project.canvas.width - fit.w) / 2),
+      y: Math.round((project.canvas.height - fit.h) / 2),
+      width: Math.round(fit.w),
+      height: Math.round(fit.h),
+    }, 'Fit overlay');
+  }, [project.canvas.height, project.canvas.width, selectedElement, updateElement]);
 
   const deleteElement = (id: string) => {
     if (cropMode?.type === 'element' && cropMode.id === id) setCropMode(null);
