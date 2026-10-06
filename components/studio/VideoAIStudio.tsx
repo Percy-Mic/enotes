@@ -452,7 +452,7 @@ export default function VideoAIStudio({
         if (msgs.length) {
           setConversation(msgs.map((m: { role: string; content: string; actions?: unknown[] }) => ({
             role: m.role === 'assistant' ? 'assistant' : 'user',
-            text: String(m.content || ''),
+            text: String(m.content || '').replace(/^\\n+/, '').trimStart(),
             actions: Array.isArray(m.actions) ? (m.actions as VideoAIEditAction[]) : undefined,
           })));
         }
@@ -704,7 +704,7 @@ export default function VideoAIStudio({
         ...items,
         {
           role: 'assistant',
-          text: String(output.message || 'I prepared the edit.') + applicationNote + (failedNotes.length ? `\n\n⚠️ Couldn't apply: ${Array.from(new Set(failedNotes)).join(' · ')}` : ''),
+          text: (String(output.message || 'I prepared the edit.') + applicationNote + (failedNotes.length ? `\n\n⚠️ Couldn't apply: ${Array.from(new Set(failedNotes)).join(' · ')}` : '')).replace(/^\\n+/, '').trimStart(),
           actions,
           reviewCount: Number(output.reviewCount) || 0,
         },
