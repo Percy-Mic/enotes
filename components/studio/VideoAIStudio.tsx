@@ -555,7 +555,11 @@ export default function VideoAIStudio({
       if (typeof data?.conversationId === 'string') setConversationId(data.conversationId);
 
       const output = data?.output || {};
+      if (data?.degraded || output?.degraded) {
+        throw new Error(String(output?.message || data?.message || 'The AI provider is temporarily unavailable. No changes were applied.'));
+      }
       let actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
+      const isActionRequest = /\b(add|apply|change|create|delete|remove|trim|split|move|edit|make|generate|set|adjust|replace|cut|mute|unmute|animate|resize|crop|rotate|narration|voiceover|voice over|caption|subtitle|music|audio|effect|filter|transition|motion)\b/i.test(text);
       const captions: VideoAICaption[] = Array.isArray(output.captions) ? output.captions : [];
 
       /* Never invent placeholder copy on the client. If the server somehow
@@ -570,6 +574,7 @@ export default function VideoAIStudio({
 
       const failedNotes: string[] = [];
       const narrationNotes: string[] = [];
+      let applicationNote = '';
       const narrationActions = actions.filter((action) => action.type === 'speak_narration');
       for (const action of narrationActions) {
         /* Synthesis runs server-side (real audio, real duration); the result
@@ -597,9 +602,9 @@ export default function VideoAIStudio({
                 },
               }]));
               if (result && typeof result === 'object') {
-                applicationNote += `\\n\\n✓ Narration added to the timeline.${result.failed?.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+                narrationNotes.push(`✓ Narration added to the timeline.${result.failed?.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`);
               } else {
-                applicationNote += '\\n\\n✓ Narration added to the timeline.';
+                narrationNotes.push('✓ Narration added to the timeline.');
               }
             } catch (applyError) {
               failedNotes.push('Voiceover was synthesized but could not be placed on the timeline' + (applyError instanceof Error ? ` (${applyError.message.slice(0, 120)})` : ''));
@@ -662,8 +667,15 @@ export default function VideoAIStudio({
         }
       }
 
-      let applicationNote = '';
       if (narrationNotes.length) applicationNote += `\n\n${narrationNotes.join(' · ')}`;
+      if (isActionRequest && actions.length === 0 && !captions.length) {
+        throw new Error('The AI understood the request but returned no executable edit actions. No changes were applied.');
+      }
+
+      if (isActionRequest && actions.length > 0 && !onApplyActions) {
+        throw new Error('The AI created edit actions, but the editor is not ready to apply them. No changes were applied.');
+      }
+
       if (actions.length && onApplyActions) {
         const applicable = actions.filter((action) =>
           action.type !== 'generate_captions' &&
