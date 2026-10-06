@@ -3539,6 +3539,13 @@ ${beatsForPlan}
       return true;
     });
 
+    /* Never return an empty text overlay as a successful AI edit. The UI can
+     * still show the rest of the plan, while a missing copy is honestly omitted. */
+    plannedActions = plannedActions.filter((action: any) =>
+      action.type !== 'add_text_element' ||
+      (typeof action.object?.text === 'string' && action.object.text.trim().length > 0)
+    );
+
     /*
      * Stock-query repair — an add_stock_video without a usable query is
      * silently skipped client-side while the UI still reports the chip as
