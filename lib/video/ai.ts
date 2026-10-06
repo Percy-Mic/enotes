@@ -104,8 +104,10 @@ const PROVIDER_CAPABILITIES: Record<AIProvider, readonly AICapability[]> = {
 function preferredAIProviders(capability: AICapability): AIProvider[] {
   const preference = String(process.env.AI_DEFAULT_PROVIDER || 'auto').trim().toLowerCase();
   const ordered: AIProvider[] =
-    preference === 'groq' || preference === 'free'
+    preference === 'groq'
       ? ['groq', 'gemini']
+      : preference === 'free'
+        ? ['gemini', 'groq']
       : preference === 'gemini'
         ? ['gemini', 'groq']
         : ['gemini', 'groq'];
@@ -515,7 +517,7 @@ async function groqStructured(
       model,
       messages:[{role:'user',content:images.length ? content : prompt}],
       temperature:0.2,
-      max_completion_tokens:12000,
+      max_completion_tokens:6000,
       response_format:{type:'json_object'},
     }),
     cache:'no-store',
@@ -626,19 +628,20 @@ async function groqPlannerJsonOnce(
   const key=GROQ_KEY();
   if(!key) throw new Error('Groq is not configured. Add GROQ_API_KEY to Vercel.');
   if(!hasOnlyGroqSafeMedia(media)) throw new Error('Groq planner fallback supports image frames, but not video/audio media.');
-  const images=(media || []).filter((item)=>item?.url && (item.type==='image' || item.url.startsWith('data:image/'))).slice(0,5);
-
   /*
-   * Groq enforces an organization-wide input-tokens-per-minute limit.
-   * The full planner prompt can become very large because it contains the
-   * action grammar, conversation, memory, timeline, visual index and timing
-   * signals. Keep the most important instruction contract and the newest
-   * project/timing state while staying comfortably below a 7k-token request.
+   * Groq vision input is expensive in tokens: each image consumes a large
+   * fixed token budget, and the planner prompt itself contains the action
+   * grammar, timeline, memory and timing signals. Keep this fallback small
+   * enough that a temporary Groq TPM limit does not take down the editor.
    */
-  const groqPlannerPrompt = prompt.length > 20000
-    ? prompt.slice(0, 9000) +
-      '\n\n[Planner prompt compacted for Groq input limits. Use the project state and timing data below as authoritative.]\n\n' +
-      prompt.slice(-11000)
+  const images=(media || [])
+    .filter((item)=>item?.url && (item.type==='image' || item.url.startsWith('data:image/')))
+    .slice(0,2);
+
+  const groqPlannerPrompt = prompt.length > 8000
+    ? prompt.slice(0, 4600) +
+      '\n\n[Planner context compacted for Groq input limits. Treat the timeline and selection state in this request as authoritative.]\n\n' +
+      prompt.slice(-3400)
     : prompt;
 
   // Groq's JSON-object response mode requires the prompt itself to mention JSON.
@@ -698,16 +701,24 @@ async function geminiPlannerStructured(
       let lastError:unknown=null;
 
       for(const model of models){
-        try{
+        for(let attempt=0; attempt<2; attempt+=1){
           try{
-            return await geminiPlannerJsonOnce(prompt,model,schema,media);
-          }catch(visualError){
-            console.error('[video-ai] Gemini planner visual request failed; retrying text-only:',model,visualError instanceof Error?visualError.message:String(visualError));
-            return await geminiPlannerJsonOnce(prompt,model,schema);
+            try{
+              return await geminiPlannerJsonOnce(prompt,model,schema,media);
+            }catch(visualError){
+              console.error('[video-ai] Gemini planner visual request failed; retrying text-only:',model,visualError instanceof Error?visualError.message:String(visualError));
+              return await geminiPlannerJsonOnce(prompt,model,schema);
+            }
+          }catch(error){
+            lastError=error;
+            const message=error instanceof Error ? error.message : String(error);
+            console.error('[video-ai] Gemini planner model failed:',model,'attempt',attempt+1,message);
+            if(attempt===0 && /(?:429|500|502|503|504|rate.?limit|quota|overloaded|high demand|temporar)/i.test(message)){
+              await new Promise((resolve)=>setTimeout(resolve,700));
+              continue;
+            }
+            break;
           }
-        }catch(error){
-          lastError=error;
-          console.error('[video-ai] Gemini planner model failed:',model,error instanceof Error?error.message:String(error));
         }
       }
       throw lastError instanceof Error ? lastError : new Error('No configured Gemini planner model was available.');
