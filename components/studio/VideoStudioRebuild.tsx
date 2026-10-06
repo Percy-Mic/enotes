@@ -22,6 +22,7 @@ import {
   EXPORT_QUALITY_PRESETS, ExportCancelledError, VideoRenderer, defaultExportSettings,
   type ExportProgress, type ExportSettings,
 } from '@/lib/video/renderer';
+import { type CloudRenderResolution } from '@/lib/video/json2video';
 
 type Selection =
   | { kind: 'clip'; id: string }
@@ -119,6 +120,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+function CloudIcon() { return <span className="grid h-4 w-4 place-items-center text-[10px] font-black">☁</span>; }
+
 function Slider({
   label, value, min, max, step = 1, onChange,
 }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
@@ -155,6 +158,8 @@ export default function VideoStudioRebuild() {
   const [message, setMessage] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
   const [exportSettings, setExportSettings] = useState<ExportSettings>({ ...defaultExportSettings, format: 'mp4' });
+  const [cloudRendering, setCloudRendering] = useState(false);
+  const [cloudProgress, setCloudProgress] = useState(0);
   const [history, setHistory] = useState<VideoProject[]>([]);
   const [future, setFuture] = useState<VideoProject[]>([]);
   const [localSources, setLocalSources] = useState<Record<string, string>>({});
@@ -529,11 +534,41 @@ export default function VideoStudioRebuild() {
       a.href = result.url; a.download = `${(title || 'enotes-video').replace(/[^a-z0-9_-]+/gi, '-')}.${result.format.includes('mp4') ? 'mp4' : 'webm'}`;
       a.click();
       window.setTimeout(() => URL.revokeObjectURL(result.url), 30000);
-      setMessage('Export complete');
+      setMessage('Local export complete');
     } catch (e) {
       if (e instanceof ExportCancelledError) setMessage('Export cancelled.');
       else setMessage(e instanceof Error ? e.message : 'Export failed.');
     } finally { setBusy(false); setExportProgress(null); }
+  };
+
+  const cloudExport = async () => {
+    if (!project.clips.length) return;
+    setBusy(true); setCloudRendering(true); setCloudProgress(5); setPanel('export'); setMessage('Starting cloud render…');
+    try {
+      const startResponse = await fetch('/api/video/render/json2video', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: projectRef.current, resolutionHeight: exportSettings.resolutionHeight as CloudRenderResolution, bitrate: exportSettings.qualityBitrate }) });
+      const started = await startResponse.json();
+      if (!startResponse.ok || !started.project) throw new Error(started.error || 'JSON2Video could not start the render.');
+      const renderProjectId = String(started.project);
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const pollResponse = await fetch('/api/video/render/json2video', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'status', renderProject: renderProjectId }) });
+        const status = await pollResponse.json();
+        if (!pollResponse.ok) throw new Error(status.error || 'Could not check cloud render status.');
+        const movie = status.movie || status;
+        const state = String(movie.status || '').toLowerCase();
+        const progress = Number(movie.progress ?? movie.percent ?? 0);
+        setCloudProgress(Math.min(95, Math.max(10, progress || 10 + Math.min(80, attempt))));
+        if (state === 'done' && movie.url) {
+          const a = document.createElement('a');
+          a.href = movie.url; a.download = `${(title || 'enotes-video').replace(/[^a-z0-9_-]+/gi, '-')}-cloud.mp4`; a.target = '_blank'; a.rel = 'noopener'; a.click();
+          setCloudProgress(100); setMessage('Cloud MP4 ready');
+          return;
+        }
+        if (state === 'error' || state === 'failed') throw new Error(movie.message || movie.error || 'JSON2Video render failed.');
+      }
+      throw new Error('Cloud render timed out. The render may still be processing in JSON2Video.');
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Cloud export failed.'); }
+    finally { setBusy(false); setCloudRendering(false); }
   };
 
   const onCanvasPointer = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -778,7 +813,7 @@ export default function VideoStudioRebuild() {
                     {selectedElement && <Section title="Selected layer"><Slider label="Scale" min={.1} max={4} step={.01} value={resolveElementValues(selectedElement,Math.max(0,playhead-selectedElement.start)).scale} onChange={(v)=>updateElement(selectedElement.id,{keyframes:upsertKeyframe(selectedElement,'scale_kf',Math.max(0,playhead-selectedElement.start),v)})}/><Slider label="Rotation" min={-180} max={180} value={selectedElement.rotation} onChange={(v)=>updateElement(selectedElement.id,{rotation:v})}/><Slider label="Opacity" min={0} max={1} step={.01} value={selectedElement.opacity} onChange={(v)=>updateElement(selectedElement.id,{opacity:v})}/></Section>}
                   </>}
 
-                  {panel === 'export' && <><Section title="Export"><div className="space-y-3"><label className="block text-xs text-white/65">Resolution<select value={exportSettings.resolutionHeight} onChange={(e)=>setExportSettings(s=>({...s,resolutionHeight:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white"><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label><label className="block text-xs text-white/65">Quality<select value={exportSettings.qualityBitrate} onChange={(e)=>setExportSettings(s=>({...s,qualityBitrate:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white">{EXPORT_QUALITY_PRESETS.map(q=><option key={q.id} value={q.bitrate}>{q.name}</option>)}</select></label><p className="text-[11px] leading-5 text-white/45">MP4 is requested only when the browser can encode MP4. The renderer will refuse to mislabel WebM as MP4.</p><Button disabled={busy || !project.clips.length} onClick={()=>void downloadExport()}><Download className="h-4 w-4"/> Export MP4</Button>{exportProgress && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>{exportProgress.message}</span><span>{exportProgress.percent}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${exportProgress.percent}%`}}/></div></div>}</div></Section></>}
+                  {panel === 'export' && <><Section title="Export"><div className="space-y-3"><label className="block text-xs text-white/65">Resolution<select value={exportSettings.resolutionHeight} onChange={(e)=>setExportSettings(s=>({...s,resolutionHeight:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white"><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label><label className="block text-xs text-white/65">Quality<select value={exportSettings.qualityBitrate} onChange={(e)=>setExportSettings(s=>({...s,qualityBitrate:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white">{EXPORT_QUALITY_PRESETS.map(q=><option key={q.id} value={q.bitrate}>{q.name}</option>)}</select></label><p className="text-[11px] leading-5 text-white/45">Local uses the editor renderer and needs no cloud API. Cloud MP4 uses JSON2Video with the API key kept on the server.</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><Button disabled={busy || !project.clips.length} onClick={()=>void downloadExport()}><Download className="h-4 w-4"/> Local MP4</Button><Button disabled={busy || !project.clips.length || cloudRendering} onClick={()=>void cloudExport()}><CloudIcon/> {cloudRendering ? "Rendering…" : "Cloud MP4"}</Button></div>{cloudRendering && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>JSON2Video</span><span>{cloudProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${cloudProgress}%`}}/></div></div>}{exportProgress && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>{exportProgress.message}</span><span>{exportProgress.percent}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${exportProgress.percent}%`}}/></div></div>}</div></Section></>}
 
                   {panel === 'text' && !selectedElement && <Section title="Text"><Button onClick={addText}><Type className="h-4 w-4"/> Add text</Button></Section>}
                   {panel === 'audio' && !selectedAudio && <Section title="Audio"><Button onClick={()=>audioInputRef.current?.click()}><Upload className="h-4 w-4"/> Import audio</Button></Section>}
