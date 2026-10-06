@@ -3389,9 +3389,12 @@ function VideoEditor() {
     for (const [prop, value] of Object.entries(valuesByProp) as Array<[KeyframeProperty, number]>) {
       keyframes = upsertKeyframe({ ...element, keyframes }, prop, timeIn, value);
     }
-    updateElement(element.id, { keyframes }, 'Set overlay keyframe', 'element-kf-all-' + element.id + '-' + Math.round(timeIn * 100));
+    updateProject((p) => ({
+      ...p,
+      elements: p.elements.map((item) => item.id === element.id ? { ...item, keyframes } : item),
+    }), 'Set overlay keyframe', 'element-kf-all-' + element.id + '-' + Math.round(timeIn * 100));
     notify('Keyframe added at ' + fmt(timeIn));
-  }, [notify, selectedElementId, updateElement]);
+  }, [notify, selectedElementId, updateProject]);
 
   const jumpToSelectedElementKeyframe = useCallback((direction: -1 | 1) => {
     const element = docRef.current.project.elements.find((item) => item.id === selectedElementId);
