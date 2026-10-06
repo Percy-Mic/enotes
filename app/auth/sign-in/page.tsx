@@ -20,6 +20,7 @@ function SignInForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? '';
+  const unstyled = searchParams.get('unstyled') === '1';
 
   const handleCaptchaToken = useCallback((token: string) => {
     setCaptchaToken(token);
@@ -117,6 +118,7 @@ function SignInForm() {
       description="Sign in to open your journals and pick up where you left off."
       asideTitle="Your journal is waiting for you."
       showThemeSelector
+      unstyled={unstyled}
       footer={
         <>
           <p className="text-[13px] leading-5 auth-muted">
