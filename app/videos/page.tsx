@@ -94,130 +94,98 @@ export default function VideosPage() {
     })();
   }, [router]);
 
-  /* Match the feed's AutoVideo behavior:
-     - a video must be at least 60% visible before it becomes active
-     - the active video starts automatically
-     - as soon as it drops below 60% visibility it pauses and rewinds
-     - only one video is allowed to play at a time */
+  /* Mobile-safe video activation:
+     IntersectionObserver decides which section is active. Scroll does not query every
+     section or repeatedly seek/reset every decoder. A single rAF coalesces rapid scroll
+     events, and only the active media element is allowed to play. */
   useEffect(() => {
     const container = containerRef.current;
     if (!container || videos.length === 0) return;
 
-    const ratios = intersectionRatiosRef.current;
-    ratios.clear();
+    let raf = 0;
+    let lastActive = activeIndex;
 
-    const pauseAndReset = (index: number) => {
-      const video = videoRefs.current[index];
-      if (!video) return;
-      video.pause();
-      video.currentTime = 0;
-      video.muted = true;
+    const activate = (index: number) => {
+      if (index === lastActive) return;
+      lastActive = index;
+      setActiveIndex(index);
     };
 
-    const getVisibility = () => {
-      const containerRect = container.getBoundingClientRect();
-      let bestIndex = activeIndex;
+    const observer = new IntersectionObserver((entries) => {
+      let bestIndex = lastActive;
       let bestRatio = 0;
 
-      container.querySelectorAll<HTMLElement>('[data-index]').forEach((section) => {
-        const rect = section.getBoundingClientRect();
-        const visibleTop = Math.max(rect.top, containerRect.top);
-        const visibleBottom = Math.min(rect.bottom, containerRect.bottom);
-        const visibleHeight = Math.max(0, visibleBottom - visibleTop);
-        const ratio = rect.height > 0 ? visibleHeight / rect.height : 0;
-        const index = Number(section.dataset.index);
-
-        if (!Number.isNaN(index)) {
-          ratios.set(index, ratio);
-          if (ratio > bestRatio) {
-            bestRatio = ratio;
-            bestIndex = index;
-          }
+      for (const entry of entries) {
+        const index = Number((entry.target as HTMLElement).dataset.index);
+        if (!Number.isFinite(index)) continue;
+        const ratio = entry.intersectionRatio;
+        if (ratio > bestRatio) {
+          bestRatio = ratio;
+          bestIndex = index;
         }
-      });
-
-      return { bestIndex, bestRatio };
-    };
-
-    const syncVisibleVideo = () => {
-      const { bestIndex, bestRatio } = getVisibility();
-
-      videoRefs.current.forEach((video, index) => {
-        if (!video) return;
-
-        if (index !== bestIndex || ratios.get(index)! < 0.6) {
-          pauseAndReset(index);
-        }
-      });
-
-      if (bestRatio >= 0.6) {
-        if (bestIndex !== activeIndex) {
-          setActiveIndex(bestIndex);
-        }
-
-        const video = videoRefs.current[bestIndex];
-        if (video && document.visibilityState === 'visible') {
-          video.muted = !soundEnabled;
-          void video.play().catch(() => {
-            video.muted = true;
-            void video.play().catch(() => undefined);
-          });
-        }
-      } else {
-        pauseAndReset(activeIndex);
       }
-    };
 
-    const observer = new IntersectionObserver(
-      () => syncVisibleVideo(),
-      { root: container, threshold: [0, 0.1, 0.25, 0.5, 0.6, 0.75, 0.9, 1] },
-    );
+      if (bestRatio >= 0.6) activate(bestIndex);
+    }, {
+      root: container,
+      threshold: [0.6, 0.8, 1],
+    });
 
     container.querySelectorAll<HTMLElement>('[data-index]').forEach((el) => observer.observe(el));
 
-    requestAnimationFrame(syncVisibleVideo);
-
-    const onScroll = () => syncVisibleVideo();
-    container.addEventListener('scroll', onScroll, { passive: true });
-
-    return () => {
-      observer.disconnect();
-      container.removeEventListener('scroll', onScroll);
-      videoRefs.current.forEach((_, index) => pauseAndReset(index));
-    };
-  }, [videos, activeIndex, soundEnabled]);
-
-  /* Keep playback in sync when the tab is backgrounded or restored.
-     Visibility/scroll eligibility is handled by the feed-style observer above. */
-  useEffect(() => {
-    const syncPlayback = () => {
-      videoRefs.current.forEach((video, i) => {
+    const syncActivePlayback = () => {
+      raf = 0;
+      const active = videoRefs.current[lastActive];
+      videoRefs.current.forEach((video, index) => {
         if (!video) return;
-
-        const shouldPlay = i === activeIndex && document.visibilityState === 'visible';
-        if (shouldPlay) {
-          video.muted = !soundEnabled;
-          void video.play().catch(() => {
-            /* If the browser blocks audible autoplay, fall back to muted
-               playback rather than leaving the feed frozen. */
-            video.muted = true;
-            void video.play().catch(() => undefined);
-          });
-        } else {
-          video.pause();
-          if (i !== activeIndex) {
-            video.currentTime = 0;
-            video.muted = true;
-          }
+        if (index !== lastActive) {
+          if (!video.paused) video.pause();
+          return;
+        }
+        video.muted = !soundEnabled;
+        if (document.visibilityState === 'visible') {
+          void video.play().catch(() => undefined);
         }
       });
     };
 
-    syncPlayback();
+    const scheduleSync = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(syncActivePlayback);
+    };
 
-    const onVisibility = () => syncPlayback();
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => document.removeEventListener('visibilitychange', onVisibility);
+    scheduleSync();
+
+    const onScroll = () => scheduleSync();
+    container.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      observer.disconnect();
+      container.removeEventListener('scroll', onScroll);
+      videoRefs.current.forEach((video) => {
+        if (!video) return;
+        video.pause();
+      });
+    };
+  }, [videos, activeIndex, soundEnabled]);
+
+  /* Backgrounding the page pauses the active decoder without forcing every
+     off-screen video to seek back to zero. */
+  useEffect(() => {
+    const syncPlayback = () => {
+      const active = videoRefs.current[activeIndex];
+      if (!active) return;
+      if (document.visibilityState !== 'visible') {
+        active.pause();
+        return;
+      }
+      active.muted = !soundEnabled;
+      void active.play().catch(() => undefined);
+    };
+    syncPlayback();
+    document.addEventListener('visibilitychange', syncPlayback);
+    return () => document.removeEventListener('visibilitychange', syncPlayback);
   }, [activeIndex, soundEnabled]);
 
   const toggleSound = useCallback(() => {
@@ -323,22 +291,6 @@ export default function VideosPage() {
         </div>
       </header>
 
-      {/* Desktop arrows */}
-      <button
-        onClick={() => scrollBy(-1)}
-        aria-label="Previous video"
-        className="fixed left-5 top-1/2 z-40 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 lg:flex"
-      >
-        <ChevronLeft className="h-6 w-6" />
-      </button>
-      <button
-        onClick={() => scrollBy(1)}
-        aria-label="Next video"
-        className="fixed right-5 top-1/2 z-40 hidden h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 backdrop-blur transition hover:bg-white/20 lg:flex"
-      >
-        <ChevronRight className="h-6 w-6" />
-      </button>
-
       {/* Live now rail — hidden while a broadcast overlay is open */}
       {!showGoLive && !watchingStream && liveStreams.length > 0 && (
         <div className="fixed inset-x-0 top-14 z-30 overflow-x-auto px-4 no-scrollbar">
@@ -409,24 +361,11 @@ export default function VideosPage() {
                   ref={(el) => {
                     videoRefs.current[i] = el;
                   }}
-                  src={post.media_url || ''}
+                  src={Math.abs(i - activeIndex) <= 1 ? (post.media_url || undefined) : undefined}
                   loop
                   muted={!isActive || !soundEnabled}
                   playsInline
-                  autoPlay
-                  preload={isActive || Math.abs(i - activeIndex) <= 1 ? 'auto' : 'metadata'}
-                  onLoadedData={(e) => {
-                    if (i === activeIndex && intersectionRatiosRef.current.get(i)! >= 0.6 && document.visibilityState === 'visible') {
-                      e.currentTarget.muted = !soundEnabled;
-                      void e.currentTarget.play().catch(() => undefined);
-                    }
-                  }}
-                  onCanPlay={(e) => {
-                    if (i === activeIndex && intersectionRatiosRef.current.get(i)! >= 0.6 && document.visibilityState === 'visible') {
-                      e.currentTarget.muted = !soundEnabled;
-                      void e.currentTarget.play().catch(() => undefined);
-                    }
-                  }}
+                  preload={isActive ? 'auto' : Math.abs(i - activeIndex) === 1 ? 'metadata' : 'none'}
                   onClick={(e) => {
                     const v = e.currentTarget;
                     if (v.paused) void v.play().catch(() => undefined);
@@ -440,7 +379,7 @@ export default function VideosPage() {
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/60 to-transparent" />
 
                 {/* Right rail */}
-                <div className="absolute bottom-24 right-3 flex flex-col items-center gap-5">
+                <div className="absolute bottom-[max(6rem,calc(5rem+env(safe-area-inset-bottom)))] right-3 z-30 flex flex-col items-center gap-5 pb-1">
                   <button
                     onClick={toggleSound}
                     className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur transition hover:bg-white/25"
