@@ -143,12 +143,22 @@ async function syncPlaybackVideo(
    * fullscreen canvas and effect previews at the same time. A URL-keyed
    * state made those independent decoders fight each other.
    */
-  const needsSeek =
-    forceSeek ||
-    !state ||
-    Math.abs(video.currentTime - safeTarget) >
-      (playing && !reverse ? 0.45 : playing && reverse ? 0.02 : 0.12) ||
-    Math.abs(state.lastTarget - safeTarget) > 0.8;
+  /*
+   * During continuous playback the browser decoder is the clock. Re-seeking
+   * every time the editor's JS clock is a few hundred milliseconds ahead makes
+   * remote/library videos visibly blink because every seek temporarily leaves
+   * HAVE_CURRENT_DATA. Only seek on clip activation, an explicit timeline jump,
+   * or a genuinely large desynchronization.
+   */
+  const targetJump = state ? Math.abs(state.lastTarget - safeTarget) : Infinity;
+  const currentDrift = Math.abs(video.currentTime - safeTarget);
+  const needsSeek = forceSeek || !state || (
+    playing && !reverse
+      ? targetJump > 0.9 || currentDrift > 1.25
+      : playing && reverse
+        ? targetJump > 0.02 || currentDrift > 0.02
+        : currentDrift > 0.12 || targetJump > 0.12
+  );
 
   if (rateChanged) {
     try {
@@ -343,16 +353,25 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
      */
     video.src = src;
 
-    video.onloadeddata = async () => {
-      try {
+    video.onloadeddata = () => {
+      /*
+       * loadeddata means the first frame is actually available. Do not perform
+       * an extra "resolve Infinity duration" seek here: that seek can evict the
+       * just-decoded frame on remote/CDN media and makes the shared decoder
+       * intermittently appear blank. Project metadata already carries the
+       * source duration; seeking is handled only by syncPlaybackVideo.
+       */
+      window.clearTimeout(timeout);
+      videoCache.set(src, video);
+      videoLoading.delete(src);
+      resolve(video);
+    };
+    video.oncanplay = () => {
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && !videoCache.has(src)) {
         window.clearTimeout(timeout);
-        await normalizeVideoDuration(video);
         videoCache.set(src, video);
         videoLoading.delete(src);
         resolve(video);
-      } catch (e) {
-        videoLoading.delete(src);
-        reject(e);
       }
     };
   });
@@ -2186,12 +2205,42 @@ export class VideoRenderer {
         const target = clip.reverse
           ? Math.max(clip.trimStart, sourceTime)
           : Math.min(sourceTime, Math.max(0, (clip.sourceDuration || 0) - 0.05));
-        const mediaReady = image
+        let mediaReady = image
           ? image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
           : !!video &&
             video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
             video.videoWidth > 0 &&
             video.videoHeight > 0;
+
+        /*
+         * A remote/library decoder can briefly report a low readyState around a
+         * seek even though the next frame is about to arrive. Give it a short,
+         * bounded chance to produce that frame instead of painting a blank
+         * monitor. A genuinely broken source still falls through normally.
+         */
+        if (!mediaReady && video) {
+          await new Promise<void>((resolve) => {
+            let settled = false;
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              video.removeEventListener('loadeddata', finish);
+              video.removeEventListener('canplay', finish);
+              video.removeEventListener('playing', finish);
+              window.clearTimeout(timeoutId);
+              resolve();
+            };
+            const timeoutId = window.setTimeout(finish, 220);
+            video.addEventListener('loadeddata', finish, { once: true });
+            video.addEventListener('canplay', finish, { once: true });
+            video.addEventListener('playing', finish, { once: true });
+          });
+          mediaReady =
+            video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
+            video.videoWidth > 0 &&
+            video.videoHeight > 0;
+        }
+
         if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
