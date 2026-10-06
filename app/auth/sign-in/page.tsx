@@ -7,7 +7,6 @@ import { Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
 import EnotesTurnstile, { TurnstileHandle } from '@/components/auth/Turnstile';
 import SocialAuthButtons from '@/components/auth/SocialAuthButtons';
-import AuthShell from '@/components/auth/AuthShell';
 
 function SignInForm() {
   const [email, setEmail] = useState('');
