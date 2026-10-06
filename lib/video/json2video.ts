@@ -6,6 +6,7 @@ export type CloudRenderResolution = 720 | 1080 | 1440 | 2160;
 export interface Json2VideoMovie {
   resolution: string;
   quality: 'low' | 'medium' | 'high';
+  elements?: any[];
   scenes: Array<{ duration: number; transition?: { style: string; duration: number }; 'background-color'?: string; elements: any[] }>;
   'client-data'?: Record<string, unknown>;
 }
