@@ -32,6 +32,8 @@ interface TemplateRow {
   saves: number;
   rating_sum: number;
   rating_count: number;
+  created_at: string;
+  project?: Record<string, unknown>;
   creator: { id: string; username: string; full_text_name: string; avatar_url: string; creator_verified: boolean };
 }
 
@@ -75,7 +77,7 @@ export default function TemplatesPage() {
         .select(
           `id, title, description, category, tags, aspect_ratio, duration_seconds,
            thumbnail_url, preview_url, premium, price_cents, currency, featured,
-           views, uses, saves, rating_sum, rating_count, created_at,
+           views, uses, saves, rating_sum, rating_count, created_at, project,
            creator:profiles!templates_creator_id_fkey(id, username, full_text_name, avatar_url, creator_verified)`
         )
         .eq('status', 'published')
@@ -100,8 +102,7 @@ export default function TemplatesPage() {
   }, []);
 
   const templateMediaType = (t: TemplateRow): 'video' | 'image' => {
-    const project = t as TemplateRow & { project?: unknown };
-    const raw = project.project as Record<string, unknown> | undefined;
+    const raw = t.project;
     const clips = Array.isArray(raw?.clips) ? raw.clips : [];
     const elements = Array.isArray(raw?.elements) ? raw.elements : [];
     const kinds = [...clips, ...elements].map((item) => String((item as Record<string, unknown>)?.kind || '')).filter(Boolean);
@@ -125,7 +126,7 @@ export default function TemplatesPage() {
       );
     }
     if (category === 'popular') list = [...list].sort((a, b) => b.uses - a.uses);
-    else if (category === 'new') list = [...list].sort((a, b) => String((b as TemplateRow & { created_at?: string }).created_at || '').localeCompare(String((a as TemplateRow & { created_at?: string }).created_at || '')));
+    else if (category === 'new') list = [...list].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     else if (category === 'trending') list = [...list].sort((a, b) => (Number(b.featured) - Number(a.featured)) || (b.uses - a.uses) || (b.views - a.views));
     return list;
   }, [templates, category, query, premiumOnly, mediaType]);
