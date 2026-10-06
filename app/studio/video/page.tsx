@@ -6880,7 +6880,15 @@ function VideoEditor() {
       data-history-scoped="true"
       data-clean-editor="true"
     >
-<style jsx global>{`\n        main[data-clean-editor="true"] .backdrop-blur, main[data-clean-editor="true"] .backdrop-blur-sm, main[data-clean-editor="true"] .backdrop-blur-md, main[data-clean-editor="true"] .backdrop-blur-lg { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }\n        main[data-clean-editor="true"] .shadow-2xl, main[data-clean-editor="true"] .shadow-xl, main[data-clean-editor="true"] .shadow-lg { box-shadow:none !important; }\n        main[data-clean-editor="true"] [class*="bg-gradient-to-"] { background-image:none !important; }\n        main[data-clean-editor="true"] [class*="bg-violet-"] { background-color:rgba(255,255,255,.055) !important; }\n        main[data-clean-editor="true"] [class*="border-violet-"] { border-color:rgba(255,255,255,.12) !important; }\n        main[data-clean-editor="true"] [class*="text-violet-"] { color:rgba(255,255,255,.72) !important; }\n        main[data-clean-editor="true"] input[type="range"] { accent-color:#E5798F; }\n      `}</style>\n      {/* fullscreen preview overlay (renders above everything when active) */}
+<style jsx global>{`
+        main[data-clean-editor="true"] .backdrop-blur, main[data-clean-editor="true"] .backdrop-blur-sm, main[data-clean-editor="true"] .backdrop-blur-md, main[data-clean-editor="true"] .backdrop-blur-lg { backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }
+        main[data-clean-editor="true"] .shadow-2xl, main[data-clean-editor="true"] .shadow-xl, main[data-clean-editor="true"] .shadow-lg { box-shadow:none !important; }
+        main[data-clean-editor="true"] [class*="bg-gradient-to-"] { background-image:none !important; }
+        main[data-clean-editor="true"] [class*="bg-violet-"] { background-color:rgba(255,255,255,.055) !important; }
+        main[data-clean-editor="true"] [class*="border-violet-"] { border-color:rgba(255,255,255,.12) !important; }
+        main[data-clean-editor="true"] [class*="text-violet-"] { color:rgba(255,255,255,.72) !important; }
+        main[data-clean-editor="true"] input[type="range"] { accent-color:#E5798F; }
+      `}</style>\n      {/* fullscreen preview overlay (renders above everything when active) */}
       {fullscreen && (
         <FullscreenPreview
           canvasRef={fsCanvasRef}
