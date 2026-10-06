@@ -437,7 +437,7 @@ function validateAIAction(action: VideoAIEditAction): string | null {
       return ['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'].includes(String(action.value))
         ? null : 'requires a supported aspect ratio';
     case 'transform_element':
-      return action.elementId && Object.keys(obj).length ? null : 'requires an overlay target and transform values';
+      return action.elementId && Object.keys(obj).length > 0 ? null : 'requires an overlay target and transform values';
     case 'set_element_opacity':
       return finite(action.value) ? null : 'requires a numeric opacity';
     case 'retime_element':
