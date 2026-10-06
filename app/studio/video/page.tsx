@@ -4188,8 +4188,9 @@ function VideoEditor() {
 
     const onUp = () => {
       setPointerDragId(null);
-      if (!moved) openTool('audio');
-      else if (invalidDrop) restoreOriginal();
+      /* Selecting audio only updates the contextual navigation. The drawer is
+         opened only by an explicit navigation action. */
+      if (invalidDrop) restoreOriginal();
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
