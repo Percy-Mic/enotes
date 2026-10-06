@@ -247,9 +247,8 @@ function FilterPreviewCard({
     const clip = project.clips.find((item) => item.id === clipId);
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
     const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
-    void renderAt(base);
     if (!active || playing) return;
-    if (playing) return;
+    void renderAt(base);
     const started = performance.now();
     const tick = () => {
       const elapsed = ((performance.now() - started) / 1000) % Math.min(duration, 3);
@@ -300,8 +299,8 @@ function EffectPreviewCard({
     const clip = project.clips.find((item) => item.id === clipId);
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
     const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
-    void renderAt(base);
     if (!active || playing) return;
+    void renderAt(base);
     const started = performance.now();
     const tick = () => {
       const elapsed = ((performance.now() - started) / 1000) % Math.min(duration, 3);
@@ -391,12 +390,20 @@ function MotionPresetPreviewCard({ project, clipId, preset, playing, onApply }: 
     await render(canvas, previewProject, previewTime);
   }, [project, clipId, preset, render]);
   useEffect(() => {
+    /* Never run six motion-preview decoders at once on mobile. The selected
+       preset gets the live compositor; the other cards stay lightweight until
+       selected. */
+    if (project.clips.find((clip) => clip.id === clipId)?.motion_preset !== preset) return;
     void renderAt(0.5);
+    if (playing) return;
     const started = performance.now();
-    const tick = () => { void renderAt(((performance.now() - started) / 1000) % 1.5 / 1.5); timerRef.current = window.setTimeout(tick, 110); };
+    const tick = () => {
+      void renderAt(((performance.now() - started) / 1000) % 1.5 / 1.5);
+      timerRef.current = window.setTimeout(tick, 180);
+    };
     tick();
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
-  }, [playing, renderAt]);
+  }, [playing, renderAt, project.clips, clipId, preset]);
   return (
     <button type="button" onClick={onApply} className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1 text-left transition hover:border-white/25">
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
@@ -431,17 +438,19 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, playin
   }, [project, clipId, layers, render]);
 
   useEffect(() => {
+    if (!active) return;
     const clip = project.clips.find((item) => item.id === clipId);
     const d = Math.max(0.2, clip ? clipDuration(clip) : 1);
     void renderAt(Math.min(d - 0.05, Math.max(0.05, d * 0.35)));
+    if (playing) return;
     const started = performance.now();
     const tick = () => {
       void renderAt(((performance.now() - started) / 1000) % Math.min(d, 3));
-      timerRef.current = window.setTimeout(tick, 125);
+      timerRef.current = window.setTimeout(tick, 180);
     };
     tick();
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
-  }, [renderAt, project.clips, clipId]);
+  }, [active, playing, renderAt, project.clips, clipId]);
 
   return (
     <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
