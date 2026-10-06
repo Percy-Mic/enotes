@@ -10306,7 +10306,7 @@ function VideoEditor() {
                 ['export', <Crop key="crop" className="h-5 w-5" />, 'Crop'],
                 ['motion', <SkipForward key="speed" className="h-5 w-5" />, 'Speed'],
                 ['audio', <SlidersHorizontal key="volume" className="h-5 w-5" />, 'Volume'],
-                ['overlays', <MoreHorizontal key="more" className="h-5 w-5" />, 'More'],
+                ['overlays', <Layers key="more" className="h-5 w-5" />, 'More'],
               ]
             : selectedElement
               ? [
@@ -10315,7 +10315,7 @@ function VideoEditor() {
                   ['look', <SlidersHorizontal key="look" className="h-5 w-5" />, 'Style'],
                   ['overlays', <Layers key="layer" className="h-5 w-5" />, 'Layer'],
                   ['export', <Crop key="crop" className="h-5 w-5" />, 'Crop'],
-                  ['motion', <Diamond key="keyframe" className="h-5 w-5" />, 'Keyframe'],
+                  ['motion', <Sparkles key="keyframe" className="h-5 w-5" />, 'Keyframe'],
                   ['overlays', <Copy key="duplicate" className="h-5 w-5" />, 'Duplicate'],
                   ['overlays', <Trash2 key="delete" className="h-5 w-5" />, 'Delete'],
                 ]
@@ -10324,7 +10324,7 @@ function VideoEditor() {
                     ['audio', <Music key="edit" className="h-5 w-5" />, 'Audio'],
                     ['audio', <Volume2 key="volume" className="h-5 w-5" />, 'Volume'],
                     ['audio', <Sparkles key="effects" className="h-5 w-5" />, 'Effects'],
-                    ['audio', <Activity key="beats" className="h-5 w-5" />, 'Beats'],
+                    ['audio', <Sparkles key="beats" className="h-5 w-5" />, 'Beats'],
                     ['audio', <Film key="replace" className="h-5 w-5" />, 'Replace'],
                     ['audio', <SlidersHorizontal key="adjust" className="h-5 w-5" />, 'Adjust'],
                     ['export', <Scissors key="split" className="h-5 w-5" />, 'Split'],
