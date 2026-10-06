@@ -437,17 +437,18 @@ function validateAIAction(action: VideoAIEditAction): string | null {
       return ['original', '16:9', '9:16', '1:1', '4:5', '3:2', '21:9'].includes(String(action.value))
         ? null : 'requires a supported aspect ratio';
     case 'transform_element':
-      return action.elementId && Object.keys(obj).length > 0 ? null : 'requires an overlay target and transform values';
+      return Boolean(action.elementId && Object.keys(obj).length > 0) ? null : 'requires an overlay target and transform values';
     case 'set_element_opacity':
       return finite(action.value) ? null : 'requires a numeric opacity';
     case 'retime_element':
-      return action.elementId && (finite(obj.start) || finite(obj.end)) ? null : 'requires an overlay target and timing';
+      return Boolean(action.elementId && (finite(obj.start) || finite(obj.end))) ? null : 'requires an overlay target and timing';
     case 'set_keyframe':
-      return action.object &&
+      return Boolean(
+        action.object &&
         typeof obj.property === 'string' &&
         finite(obj.t) &&
         finite(obj.value)
-        ? null : 'requires property, time, and value';
+      ) ? null : 'requires property, time, and value';
     case 'add_text_element':
       return typeof obj.text === 'string' && obj.text.trim() ? null : 'requires non-empty text';
     case 'split_clip':
