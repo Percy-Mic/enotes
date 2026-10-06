@@ -223,3 +223,26 @@ export function extractPrivateStoragePath(
   } catch {}
   return null;
 }
+
+/**
+ * Rehydrate a stored private/public media URL into a fresh URL.
+ * Database rows keep the durable Storage object path in media_path when
+ * possible; older rows may only contain an expired signed URL, so we
+ * recover the path from that URL before issuing a new signed URL.
+ */
+export async function refreshStoredMediaUrl(
+  bucket: UploadContext,
+  value: string | null | undefined,
+  storedPath?: string | null,
+): Promise<{ url: string; path: string | null }> {
+  const path = storedPath || (bucket === 'journal-media' || bucket === 'chat-media'
+    ? extractPrivateStoragePath(bucket, value)
+    : null);
+
+  if (path) {
+    const url = await getMediaUrl(bucket, path);
+    return { url: url || value || '', path };
+  }
+
+  return { url: value || '', path: null };
+}
