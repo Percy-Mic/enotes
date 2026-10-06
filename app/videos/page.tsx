@@ -51,7 +51,6 @@ export default function VideosPage() {
   const [soundEnabled, setSoundEnabled] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
-  const intersectionRatiosRef = useRef(new Map<number, number>());
 
   useEffect(() => {
     (async () => {
