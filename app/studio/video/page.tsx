@@ -6888,7 +6888,8 @@ function VideoEditor() {
         main[data-clean-editor="true"] [class*="border-violet-"] { border-color:rgba(255,255,255,.12) !important; }
         main[data-clean-editor="true"] [class*="text-violet-"] { color:rgba(255,255,255,.72) !important; }
         main[data-clean-editor="true"] input[type="range"] { accent-color:#E5798F; }
-      `}</style>\n      {/* fullscreen preview overlay (renders above everything when active) */}
+      `}</style>
+      {/* fullscreen preview overlay (renders above everything when active) */}
       {fullscreen && (
         <FullscreenPreview
           canvasRef={fsCanvasRef}
