@@ -450,8 +450,15 @@ export interface TimelineElement {
   rotation: number;
   opacity: number;      // 0-1
   z: number;
-  /** video-overlay crop, fractions of the SOURCE frame (video/image kinds) */
+  /** video/image overlay crop, fractions of the SOURCE frame. */
   crop?: CropRect | null;
+  /** Non-destructive compositor mask. Rendered by the same preview/export renderer. */
+  mask?: MaskSpec;
+  /** Layer visibility/locking used by the direct-manipulation workflow. */
+  hidden?: boolean;
+  locked?: boolean;
+  /** Optional grouping id for future multi-selection/group transforms. */
+  group_id?: string;
   /* text-only */
   font_size?: number;
   font_family?: string;
@@ -760,6 +767,20 @@ export function normalizeProject(input: unknown): VideoProject {
       x: Number(el.x) || 0, y: Number(el.y) || 0, width: Math.max(1, Number(el.width) || 200), height: Math.max(1, Number(el.height) || 150),
       rotation: Number(el.rotation) || 0, opacity: Math.max(0, Math.min(1, el.opacity == null ? 1 : Number(el.opacity))), z: Number(el.z) || 1,
       ...(el.crop !== undefined ? { crop: sanitizeCrop(el.crop as Partial<CropRect>) } : {}),
+      ...(el.mask && typeof el.mask === 'object' ? {
+        mask: {
+          shape: (['none', 'split', 'shutter', 'ellipse', 'rectangle'] as MaskShape[]).includes((el.mask as MaskSpec).shape)
+            ? (el.mask as MaskSpec).shape
+            : 'none',
+          amount: clamp(Number((el.mask as MaskSpec).amount) || 0.72, 0.05, 1),
+          feather: clamp(Number((el.mask as MaskSpec).feather) || 0, 0, 1),
+          invert: Boolean((el.mask as MaskSpec).invert),
+          rotation: Number((el.mask as MaskSpec).rotation) || 0,
+        },
+      } : {}),
+      ...(el.hidden !== undefined ? { hidden: Boolean(el.hidden) } : {}),
+      ...(el.locked !== undefined ? { locked: Boolean(el.locked) } : {}),
+      ...(el.group_id ? { group_id: String(el.group_id) } : {}),
       ...(el.font_size != null ? { font_size: Number(el.font_size) } : {}), ...(el.font_family ? { font_family: String(el.font_family) } : {}),
       ...(el.font_weight != null ? { font_weight: Number(el.font_weight) } : {}), ...(el.color ? { color: String(el.color) } : {}),
       ...(el.align ? { align: el.align as TimelineElement['align'] } : {}), ...(el.background !== undefined ? { background: el.background as string | null } : {}),
