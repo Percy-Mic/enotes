@@ -37,6 +37,44 @@ export async function POST(request: Request) {
     const auth = await db.auth.getUser();
     if (!auth.data.user) return NextResponse.json({ error: 'You must be signed in.' }, { status: 401 });
 
+    const contentType = request.headers.get('content-type') || '';
+    if (contentType.includes('multipart/form-data')) {
+      const form = await request.formData();
+      const action = String(form.get('action') || '');
+      const file = form.get('file');
+      if (!(file instanceof File)) return NextResponse.json({ error: 'Audio file is required.' }, { status: 400 });
+
+      if (action === 'speech-to-text') {
+        const data = new FormData();
+        data.append('file', file, file.name || 'audio.webm');
+        data.append('model_id', String(form.get('model_id') || 'scribe_v2'));
+        const response = await fetch(API + '/v1/speech-to-text', {
+          method: 'POST', headers: { 'xi-api-key': key }, body: data, cache: 'no-store',
+        });
+        const json = await response.json();
+        return NextResponse.json(json, { status: response.status });
+      }
+
+      if (action === 'audio-isolation' || action === 'speech-to-speech') {
+        const voiceId = String(form.get('voice_id') || process.env.ELEVENLABS_VOICE_ID || '').trim();
+        if (action === 'speech-to-speech' && !voiceId) return NextResponse.json({ error: 'voice_id is required.' }, { status: 400 });
+        const data = new FormData();
+        data.append(action === 'audio-isolation' ? 'audio' : 'audio', file, file.name || 'audio.webm');
+        if (action === 'speech-to-speech') data.append('model_id', String(form.get('model_id') || 'eleven_multilingual_sts_v2'));
+        const endpoint = action === 'audio-isolation'
+          ? '/v1/audio-isolation'
+          : '/v1/speech-to-speech/' + encodeURIComponent(voiceId);
+        const response = await fetch(API + endpoint, {
+          method: 'POST', headers: { 'xi-api-key': key }, body: data, cache: 'no-store',
+        });
+        if (!response.ok) return NextResponse.json({ error: await response.text() }, { status: response.status });
+        const saved = await saveAudio(db, auth.data.user.id, response);
+        return NextResponse.json({ configured: true, provider: 'elevenlabs', action, ...saved });
+      }
+
+      return NextResponse.json({ error: 'Unsupported multipart action.' }, { status: 400 });
+    }
+
     const body = await request.json();
     const action = String(body.action || '');
     const text = String(body.text || '').trim();
