@@ -144,7 +144,7 @@ export default function PracticeMode({ userId, open, onClose, onStart }: Props) 
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            operation: 'assistant',
+            operation: 'practice-brief',
             prompt: [
               'You are the senior creative director assigning a real video-editing job in enotes Practice Mode.',
               'Create a concise client-facing creative brief for the editor based ONLY on the supplied assignment and media metadata.',
