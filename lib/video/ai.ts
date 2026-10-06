@@ -3591,14 +3591,15 @@ ${beatsForPlan}
      *    fallback text with role-appropriate neutral copy — an opener for
      *    cues in the first part of the timeline, a closing CTA near the end
      *    — so the design slot survives with intentional-looking text. */
-    const placeholderText = /^your message$/i;
+    const placeholderText = /^(?:your message|your story|your brand|learn more|watch more)$/i;
     for (const action of plannedActions) {
       if (action.type !== 'add_text_element') continue;
       const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
       const text = typeof obj.text === 'string' ? obj.text.trim() : '';
       if (text && !placeholderText.test(text)) continue;
       const start = Number(obj.start) || 0;
-      obj.text = timelineEnd > 0 && start >= timelineEnd * 0.6 ? 'WATCH MORE' : 'YOUR STORY';
+      /* A missing AI caption is not a valid edit. Drop it later in sanitization rather than inventing copy. */
+       obj.text = '';
     }
 
     /* 1b) Narration-copy guard: the live session caught Gemini emitting
