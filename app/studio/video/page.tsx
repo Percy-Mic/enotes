@@ -4578,6 +4578,111 @@ function VideoEditor() {
     setSelectedElementId(copy.id);
   };
 
+  const changeElementLayer = useCallback((id: string, action: 'front' | 'back' | 'forward' | 'backward' | 'hide' | 'lock') => {
+    updateProject((p) => {
+      const index = p.elements.findIndex((item) => item.id === id);
+      if (index < 0) return p;
+      if (action === 'hide' || action === 'lock') {
+        const key = action === 'hide' ? 'hidden' : 'locked';
+        return { ...p, elements: p.elements.map((item) => item.id === id ? { ...item, [key]: !item[key] } : item) };
+      }
+      const ordered = [...p.elements].sort((a, b) => a.z - b.z || a.id.localeCompare(b.id));
+      const currentIndex = ordered.findIndex((item) => item.id === id);
+      if (currentIndex < 0) return p;
+      let nextIndex = currentIndex;
+      if (action === 'front') nextIndex = ordered.length - 1;
+      if (action === 'back') nextIndex = 0;
+      if (action === 'forward') nextIndex = Math.min(ordered.length - 1, currentIndex + 1);
+      if (action === 'backward') nextIndex = Math.max(0, currentIndex - 1);
+      if (nextIndex === currentIndex) return p;
+      const swapped = [...ordered];
+      [swapped[currentIndex], swapped[nextIndex]] = [swapped[nextIndex], swapped[currentIndex]];
+      const zById = new Map(swapped.map((item, z) => [item.id, z + 1]));
+      return { ...p, elements: p.elements.map((item) => ({ ...item, z: zById.get(item.id) ?? item.z })) };
+    }, action === 'hide' ? 'Toggle overlay visibility' : action === 'lock' ? 'Toggle overlay lock' : 'Reorder overlay layer', 'layer-' + id + '-' + action);
+  }, [updateProject]);
+
+  const splitSelectedElementOrAudio = useCallback(() => {
+    const p = docRef.current.project;
+    const t = playheadRef.current;
+
+    if (selectedElementId) {
+      const el = p.elements.find((item) => item.id === selectedElementId);
+      if (!el || el.locked || t <= el.start + 0.12 || t >= el.end - 0.12) {
+        notify('Move the playhead inside the selected overlay before splitting.');
+        return;
+      }
+      const splitLocal = t - el.start;
+      const firstKeyframes = el.keyframes
+        ? Object.fromEntries(Object.entries(el.keyframes).map(([prop, list]) => [prop, (list || []).filter((k) => k.t <= splitLocal)]).filter(([, list]) => (list as unknown[]).length))
+        : undefined;
+      const secondKeyframes = el.keyframes
+        ? Object.fromEntries(Object.entries(el.keyframes).map(([prop, list]) => [prop, (list || []).filter((k) => k.t >= splitLocal).map((k) => ({ ...k, id: makeVideoId('kf'), t: Math.max(0, k.t - splitLocal) }))]).filter(([, list]) => (list as unknown[]).length))
+        : undefined;
+      const a: TimelineElement = { ...el, end: t, keyframes: firstKeyframes };
+      const b: TimelineElement = { ...el, id: makeVideoId('el'), start: t, keyframes: secondKeyframes };
+      updateProject((next) => ({ ...next, elements: next.elements.flatMap((item) => item.id === el.id ? [a, b] : [item]) }), 'Split overlay');
+      setSelectedElementId(b.id);
+      notify('Overlay split at the playhead.');
+      return;
+    }
+
+    if (selectedAudioId) {
+      const audio = p.audio.find((item) => item.id === selectedAudioId);
+      if (!audio) return;
+      const audioEnd = audio.start + Math.max(0.1, audio.trimEnd - audio.trimStart);
+      if (t <= audio.start + 0.12 || t >= audioEnd - 0.12) {
+        notify('Move the playhead inside the selected audio before splitting.');
+        return;
+      }
+      const sourceSplit = audio.trimStart + (t - audio.start);
+      const a: AudioTrack = { ...audio, trimEnd: sourceSplit, fadeOut: 0 };
+      const b: AudioTrack = { ...audio, id: makeVideoId('aud'), start: t, trimStart: sourceSplit, fadeIn: 0 };
+      updateProject((next) => ({ ...next, audio: next.audio.flatMap((item) => item.id === audio.id ? [a, b] : [item]) }), 'Split audio');
+      setSelectedAudioId(b.id);
+      notify('Audio split at the playhead.');
+      return;
+    }
+
+    if (selectedClipId) {
+      splitAtPlayhead();
+      return;
+    }
+
+    notify('Select a clip, overlay, or audio item to split.');
+  }, [notify, selectedAudioId, selectedClipId, selectedElementId, splitAtPlayhead, updateProject]);
+
+  const detachSelectedClipAudio = useCallback(() => {
+    const p = docRef.current.project;
+    const clip = p.clips.find((item) => item.id === selectedClipId);
+    if (!clip || clip.media_type === 'image' || !clip.src) {
+      notify('Select a video clip with audio to detach its sound.');
+      return;
+    }
+    const start = previewClipStart(p, clip.id);
+    const duration = Math.max(0.1, clipDuration(clip));
+    updateProject((next) => {
+      const assignment = assignAudioTrack(next, start, start + duration);
+      const track: AudioTrack = {
+        id: makeVideoId('aud'),
+        name: clip.name + ' — detached audio',
+        src: clip.src,
+        track_id: assignment.trackId,
+        start,
+        sourceDuration: clip.sourceDuration,
+        trimStart: clip.trimStart,
+        trimEnd: Math.min(clip.sourceDuration, clip.trimStart + duration * Math.max(0.05, clip.speed)),
+        volume: clip.volume,
+        fadeIn: 0,
+        fadeOut: 0,
+        kind: 'music',
+      };
+      return { ...next, tracks: assignment.tracks, audio: [...next.audio, track], clips: next.clips.map((item) => item.id === clip.id ? { ...item, muted: true } : item) };
+    }, 'Detach clip audio');
+    setSelectedAudioId(null);
+    notify('Clip audio detached to its own editable audio track.');
+  }, [assignAudioTrack, notify, selectedClipId, updateProject]);
+
   /* ============================================================
      Direct manipulation on the preview (CapCut-style):
      • tap an overlay OR the main video → select it
@@ -4692,7 +4797,7 @@ function VideoEditor() {
   const elementAt = (px: number, py: number): TimelineElement | null => {
     const t = playheadRef.current;
     const visible = docRef.current.project.elements
-      .filter((el) => t >= el.start && t < el.end)
+      .filter((el) => !el.hidden && t >= el.start && t < el.end)
       .sort((a, b) => a.z - b.z);
     for (let i = visible.length - 1; i >= 0; i--) {
       if (hitsElement(visible[i], px, py)) return visible[i];
@@ -4742,6 +4847,7 @@ function VideoEditor() {
     setPlaying(false);
     setSelectedElementId(el.id);
     setSelectedClipId(null);
+    if (el.locked) return;
 
     const start = canvasPoint(e);
     if (!start) return;
@@ -7160,12 +7266,28 @@ function VideoEditor() {
               >Ripple</button>
               {selectedClipId && (
                 <>
+                  <button onClick={splitSelectedElementOrAudio} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15" title="Split the selected clip at the playhead">
+                    <Scissors className="h-3.5 w-3.5" /> Split
+                  </button>
+                  <button onClick={detachSelectedClipAudio} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15" title="Move the clip audio to its own editable track">
+                    <Volume2 className="h-3.5 w-3.5" /> Detach
+                  </button>
                   <button onClick={addAllMainClipKeyframes} className="flex items-center gap-1 rounded-lg bg-[#E5798F]/20 px-2.5 py-1.5 text-[11px] font-bold text-[#FFB6C1] hover:bg-[#E5798F]/30 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add transform keyframes at the current playhead">
                     ◆ Keyframe
                   </button>
                   <button onClick={() => jumpToMainClipKeyframe(-1)} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] text-white/70 hover:bg-white/15" title="Previous keyframe" aria-label="Previous keyframe">‹◆</button>
                   <button onClick={() => jumpToMainClipKeyframe(1)} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] text-white/70 hover:bg-white/15" title="Next keyframe" aria-label="Next keyframe">◆›</button>
                 </>
+              )}
+              {selectedElementId && (
+                <button onClick={splitSelectedElementOrAudio} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15" title="Split the selected overlay at the playhead">
+                  <Scissors className="h-3.5 w-3.5" /> Split overlay
+                </button>
+              )}
+              {selectedAudioId && (
+                <button onClick={splitSelectedElementOrAudio} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15" title="Split the selected audio at the playhead">
+                  <Scissors className="h-3.5 w-3.5" /> Split audio
+                </button>
               )}
               <button onClick={addTimelineMarker} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add marker at playhead">
                 <Plus className="h-3.5 w-3.5" /> Marker
@@ -8061,6 +8183,7 @@ function VideoEditor() {
                 onDuplicate={() => duplicateElement(selectedElement)}
                 onDelete={() => deleteElement(selectedElement.id)}
                 onCrop={startElementCrop}
+                onLayerAction={(action) => changeElementLayer(selectedElement.id, action)}
               />
             )}
           </div>
@@ -8288,6 +8411,7 @@ function VideoEditor() {
                 onDuplicate={() => duplicateElement(selectedElement)}
                 onDelete={() => deleteElement(selectedElement.id)}
                 onCrop={startElementCrop}
+                onLayerAction={(action) => changeElementLayer(selectedElement.id, action)}
               />
             )}
           </div>
@@ -9171,6 +9295,7 @@ function VideoEditor() {
                 onDuplicate={() => duplicateElement(selectedElement)}
                 onDelete={() => deleteElement(selectedElement.id)}
                 onCrop={startElementCrop}
+                onLayerAction={(action) => changeElementLayer(selectedElement.id, action)}
               />
             ) : selectedClip ? (
               <div className="space-y-3 rounded-xl bg-white/5 p-3">
@@ -10409,7 +10534,7 @@ function TextMotionPreview({ animation, label, active, onClick }: {
   );
 }
 
-function ElementInspector({ el, duration, playhead, updateElement, onChange, onDuplicate, onDelete, onCrop }: {
+function ElementInspector({ el, duration, playhead, updateElement, onChange, onDuplicate, onDelete, onCrop, onLayerAction }: {
   el: TimelineElement;
   duration: number;
   /** project-time playhead (s) — keyframes are captured at the playhead */
@@ -10420,6 +10545,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
   onDuplicate: () => void;
   onDelete: () => void;
   onCrop: () => void;
+  onLayerAction: (action: 'front' | 'back' | 'forward' | 'backward' | 'hide' | 'lock') => void;
 }) {
   /* ---- keyframes ---- */
   const elActive = playhead >= el.start && playhead < el.end;
@@ -10449,6 +10575,80 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
         <button onClick={onDuplicate} className="rounded-lg bg-white/10 p-2" aria-label="Duplicate overlay"><Copy className="h-3.5 w-3.5" /></button>
         <button onClick={onDelete} className="rounded-lg bg-red-500/20 p-2 text-red-200" aria-label="Delete overlay"><Trash2 className="h-3.5 w-3.5" /></button>
       </div>
+
+      <section className="rounded-xl border border-white/10 bg-black/20 p-2.5">
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold text-white">Layer controls</p>
+            <p className="text-[8px] text-white/35">Reorder without leaving the timeline.</p>
+          </div>
+          <Layers className="h-4 w-4 text-[#E5798F]" />
+        </div>
+        <div className="grid grid-cols-4 gap-1.5">
+          {[
+            ['backward', '↓'], ['forward', '↑'], ['back', 'Bottom'], ['front', 'Top'],
+          ].map(([action, label]) => (
+            <button key={action} type="button" onClick={() => onLayerAction(action as 'front' | 'back' | 'forward' | 'backward')}
+              className="min-h-9 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-[9px] font-bold text-white/70 hover:border-[#E5798F]/40 hover:text-white">
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+          <button type="button" onClick={() => onLayerAction('lock')} aria-pressed={!!el.locked}
+            className={'flex min-h-9 items-center justify-center gap-1.5 rounded-lg border px-2 text-[9px] font-bold ' + (el.locked ? 'border-amber-300/40 bg-amber-300/10 text-amber-100' : 'border-white/10 bg-white/[0.04] text-white/65')}>
+            <Lock className="h-3.5 w-3.5" /> {el.locked ? 'Unlock' : 'Lock'}
+          </button>
+          <button type="button" onClick={() => onLayerAction('hide')} aria-pressed={!!el.hidden}
+            className={'min-h-9 rounded-lg border px-2 text-[9px] font-bold ' + (el.hidden ? 'border-[#E5798F]/40 bg-[#E5798F]/10 text-[#FFB6C1]' : 'border-white/10 bg-white/[0.04] text-white/65')}>
+            {el.hidden ? 'Show layer' : 'Hide layer'}
+          </button>
+        </div>
+      </section>
+
+      {(el.kind === 'image' || el.kind === 'video' || el.kind === 'gif') ? (
+        <section className="rounded-xl border border-white/10 bg-black/20 p-2.5">
+          <div className="mb-2 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-white">Mask</p>
+              <p className="text-[8px] text-white/35">Applied to the media and preserved in export.</p>
+            </div>
+            <span className="rounded-full bg-cyan-400/10 px-2 py-1 text-[8px] font-semibold text-cyan-200">{el.mask?.shape || 'none'}</span>
+          </div>
+          <div className="grid grid-cols-5 gap-1">
+            {([
+              ['none','None'], ['split','Split'], ['shutter','Shutter'], ['ellipse','Ellipse'], ['rectangle','Rectangle'],
+            ] as const).map(([shape, label]) => (
+              <button key={shape} type="button" onClick={() => onChange({
+                mask: shape === 'none' ? undefined : {
+                  shape,
+                  amount: el.mask?.amount ?? 0.72,
+                  feather: el.mask?.feather ?? 0,
+                  invert: el.mask?.invert ?? false,
+                  rotation: el.mask?.rotation ?? 0,
+                },
+              }, 'Set overlay mask')}
+                className={'rounded-lg px-1.5 py-2 text-[8px] font-bold ' + (el.mask?.shape === shape || (shape === 'none' && !el.mask) ? 'bg-[#E5798F] text-white' : 'bg-white/10 text-white/55')}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {el.mask && (
+            <div className="mt-2 space-y-1.5">
+              <Slider label="Mask amount" min={5} max={100} value={(el.mask.amount ?? 0.72) * 100}
+                onChange={(v) => onChange({ mask: { ...el.mask!, amount: v / 100 } }, 'Mask amount', 'emask-a-' + el.id)} />
+              <Slider label="Feather" min={0} max={100} value={(el.mask.feather ?? 0) * 100}
+                onChange={(v) => onChange({ mask: { ...el.mask!, feather: v / 100 } }, 'Mask feather', 'emask-f-' + el.id)} />
+              <Slider label="Rotation" min={-180} max={180} value={el.mask.rotation ?? 0}
+                onChange={(v) => onChange({ mask: { ...el.mask!, rotation: v } }, 'Mask rotation', 'emask-r-' + el.id)} />
+              <button type="button" onClick={() => onChange({ mask: { ...el.mask!, invert: !el.mask!.invert } }, 'Invert overlay mask')}
+                className={'w-full rounded-lg px-3 py-2 text-[9px] font-bold ' + (el.mask.invert ? 'bg-cyan-400/20 text-cyan-100' : 'bg-white/10 text-white/60')}>
+                {el.mask.invert ? 'Invert mask · On' : 'Invert mask'}
+              </button>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {elActive ? (
         <details className="rounded-lg bg-white/5 p-2">
