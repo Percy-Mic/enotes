@@ -70,8 +70,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             className={
               immersive
                 ? ''
-                : `pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-0 ${showNav ? 'md:pt-14' : ''} ${
-                  }`
+                : `pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-0 ${showNav ? 'md:pt-14' : ''}`
             }
           >
             {children}
