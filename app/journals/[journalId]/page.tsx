@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 
 import { supabase } from '@/lib/supabase/client';
+import { extractPrivateStoragePath, refreshStoredMediaUrl } from '@/lib/storage/upload';
 
 import ShareJournalModal from '@/components/social/ShareJournalModal';
 import { useMobileGestures } from '@/lib/gestures/useMobileGestures';
@@ -355,8 +356,20 @@ export default function JournalBookView() {
         return;
       }
 
-      const loadedJournal =
+      let loadedJournal =
         journalResult.data as Journal;
+
+      const coverRef = await refreshStoredMediaUrl(
+        'journal-media',
+        loadedJournal.cover_media_url || loadedJournal.cover_url,
+      );
+      if (!cancelled && coverRef.url) {
+        loadedJournal = {
+          ...loadedJournal,
+          cover_media_url: coverRef.url,
+          cover_url: coverRef.url,
+        };
+      }
 
       setJournal(loadedJournal);
 
@@ -552,7 +565,7 @@ export default function JournalBookView() {
       }
 
       const finalPages =
-        metadataPages.map((page) => {
+        await Promise.all(metadataPages.map(async (page) => {
           const isLocked =
             lockedIds.has(page.id);
 
@@ -582,14 +595,27 @@ export default function JournalBookView() {
             };
           }
 
+          const normalized = normalizePageContent(content, page);
+          const refreshedElements = await Promise.all(
+            normalized.elements.map(async (element) => {
+              if (element.type !== 'media' || !element.media_url) return element;
+              const refreshed = await refreshStoredMediaUrl(
+                'journal-media',
+                element.media_url,
+                element.media_path || extractPrivateStoragePath('journal-media', element.media_url),
+              );
+              return refreshed.url
+                ? { ...element, media_path: refreshed.path || element.media_path, media_url: refreshed.url }
+                : element;
+            }),
+          );
+
           return {
-            ...normalizePageContent(
-              content,
-              page,
-            ),
+            ...normalized,
+            elements: refreshedElements,
             locked: isLocked,
           };
-        });
+        }));
 
       setPages(finalPages);
       setLoading(false);
