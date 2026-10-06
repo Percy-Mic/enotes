@@ -43,11 +43,7 @@ function fmt(seconds: number): string {
   return `${minutes}:${String(remaining).padStart(2, '0')}`;
 }
 
-const CATEGORIES = [
-  'all', 'trending', 'popular', 'new', 'travel', 'birthday', 'wedding', 'memories',
-  'love', 'friends', 'family', 'business', 'reels', 'cinematic', 'vlog',
-  'gaming', 'music', 'minimal', 'journal', 'seasonal',
-];
+const CATEGORY_PRIORITY = ['all', 'trending', 'popular', 'new'];
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
@@ -97,6 +93,11 @@ export default function TemplatesPage() {
       setLoading(false);
     })();
   }, []);
+
+  const categories = useMemo(() => {
+    const fromDb = Array.from(new Set(templates.map((t) => String(t.category || '').trim().toLowerCase()).filter(Boolean)));
+    return [...CATEGORY_PRIORITY.filter((item) => item === 'all' || fromDb.includes(item)), ...fromDb.filter((item) => !CATEGORY_PRIORITY.includes(item))];
+  }, [templates]);
 
   const filtered = useMemo(() => {
     let list = templates;
@@ -213,7 +214,7 @@ export default function TemplatesPage() {
 
           {/* Reference-style category strip */}
           <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-2 [scrollbar-width:none]">
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <button key={c} onClick={() => setCategory(c)} className={`shrink-0 rounded-full px-3.5 py-2 text-xs font-semibold capitalize transition ${category === c ? 'bg-black text-white' : 'bg-white text-[#646871] hover:bg-[#eef0f3]'}`}>
                 {c === 'all' ? 'For You' : c}
               </button>
