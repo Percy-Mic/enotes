@@ -14,8 +14,8 @@ function resolutionFor(project: VideoProject, height: CloudRenderResolution): st
   const ratio = project.canvas.width / Math.max(1, project.canvas.height);
   const width = Math.round(height * ratio);
   if (height === 2160) return '4k';
-  if (height === 1440) return width >= height ? '2k' : '2k';
-  if (height === 1080) return width >= height ? 'full-hd' : 'full-hd';
+  if (height === 1440) return '2k';
+  if (height === 1080) return 'full-hd';
   return 'hd';
 }
 
@@ -66,7 +66,7 @@ function keyframesForClip(clip: VideoClip) {
   });
 }
 
-function clipElement(clip: VideoClip, src: string, start: number): any {
+function clipElement(project: VideoProject, clip: VideoClip, src: string, start: number): any {
   const duration = Math.max(0.05, clipDuration(clip));
   const v = resolveClipValues(clip, 0);
   const base: any = {
@@ -76,8 +76,8 @@ function clipElement(clip: VideoClip, src: string, start: number): any {
     start,
     duration,
     position: 'custom',
-    x: Math.round((clip.transform.offset_x || 0) + (clip.source_width ? (1280 - clip.source_width) / 2 : 0)),
-    y: Math.round((clip.transform.offset_y || 0) + (clip.source_height ? (720 - clip.source_height) / 2 : 0)),
+    x: Math.round((project.canvas.width - (clip.source_width || project.canvas.width) * v.scale * clip.transform.scale_x) / 2 + (clip.transform.offset_x || 0)),
+    y: Math.round((project.canvas.height - (clip.source_height || project.canvas.height) * v.scale * clip.transform.scale_y) / 2 + (clip.transform.offset_y || 0)),
     width: Math.max(1, Math.round((clip.source_width || 1280) * v.scale * clip.transform.scale_x)),
     height: Math.max(1, Math.round((clip.source_height || 720) * v.scale * clip.transform.scale_y)),
     rotate: { angle: clip.transform.rotation || 0, speed: 0 },
@@ -190,7 +190,7 @@ export function projectToJson2Video(
   for (const clip of project.clips) {
     const src = sources[clip.src] || clip.src;
     if (!/^https?:\\/\\//i.test(src)) continue;
-    elements.push(clipElement(clip, src, timeline));
+    elements.push(clipElement(project, clip, src, timeline));
     timeline += clipDuration(clip);
   }
 
@@ -208,7 +208,7 @@ export function projectToJson2Video(
   }
 
   return {
-    resolution: resolutionFor(project, resolutionHeight),
+    resolution: (project.canvas.width / Math.max(1, project.canvas.height) === 16 / 9 && resolutionHeight <= 1080) ? resolutionFor(project, resolutionHeight) : `${Math.round(resolutionHeight * project.canvas.width / Math.max(1, project.canvas.height))}x${resolutionHeight}`,
     quality: qualityFor(bitrate),
     scenes: [{
       duration: Math.max(0.1, projectDurationForCloud(project)),
