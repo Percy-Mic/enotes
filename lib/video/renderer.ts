@@ -2150,10 +2150,6 @@ export class VideoRenderer {
     project = normalizeProject(project);
     this.ctx = ctx;
     const { width: W, height: H } = project.canvas;
-    if (canvas.width !== W || canvas.height !== H) {
-      canvas.width = W;
-      canvas.height = H;
-    }
 
     /*
      * Mobile preview uses a smaller backing store. The canvas is already
@@ -2165,17 +2161,13 @@ export class VideoRenderer {
       ? (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches ? 540 : 960)
       : Math.max(W, H);
     const previewScale = opts.previewing ? Math.min(1, previewEdge / Math.max(W, H)) : 1;
-    if (previewScale < 1) {
-      const previewW = Math.max(1, Math.round(W * previewScale));
-      const previewH = Math.max(1, Math.round(H * previewScale));
-      if (canvas.width !== previewW || canvas.height !== previewH) {
-        canvas.width = previewW;
-        canvas.height = previewH;
-      }
-      ctx.setTransform(previewScale, 0, 0, previewScale, 0, 0);
-    } else {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const targetW = Math.max(1, Math.round(W * previewScale));
+    const targetH = Math.max(1, Math.round(H * previewScale));
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
     }
+    ctx.setTransform(previewScale, 0, 0, previewScale, 0, 0);
 
     /* Canvas background is part of the project recipe, so preview/export/template remixes all agree.
        It sits underneath media and becomes visible when a clip is scaled, cropped, or letterboxed. */
