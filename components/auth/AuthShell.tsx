@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import AuthThemeSelector from '@/components/auth/AuthThemeSelector';
 
@@ -13,8 +13,6 @@ type AuthShellProps = {
   asideTitle?: string;
   asideDescription?: string;
   showThemeSelector?: boolean;
-  /** Temporarily render the auth page without its author CSS for CSS demonstrations. */
-  unstyled?: boolean;
 };
 
 export default function AuthShell({
@@ -26,59 +24,7 @@ export default function AuthShell({
   asideTitle = 'Your stories deserve a place that feels like yours.',
   asideDescription = 'Write, collect, create, and keep the moments that matter — all in one calm digital space.',
   showThemeSelector = false,
-  unstyled = false,
 }: AuthShellProps) {
-  useEffect(() => {
-    if (!unstyled) return;
-
-    const root = document.documentElement;
-    root.dataset.authUnstyled = 'true';
-
-    return () => {
-      delete root.dataset.authUnstyled;
-    };
-  }, [unstyled]);
-
-  if (unstyled) {
-    return (
-      <>
-        <style>{`
-          html[data-auth-unstyled],
-          html[data-auth-unstyled] body {
-            margin: 0 !important;
-            padding: 0 !important;
-            min-height: 100% !important;
-            background: white !important;
-            color: black !important;
-            font-family: initial !important;
-          }
-
-          html[data-auth-unstyled] body,
-          html[data-auth-unstyled] body > *,
-          html[data-auth-unstyled] body > * *,
-          html[data-auth-unstyled] body > * *::before,
-          html[data-auth-unstyled] body > * *::after {
-            all: revert !important;
-          }
-
-          html[data-auth-unstyled] body,
-          html[data-auth-unstyled] body > * {
-            display: block !important;
-          }
-        `}</style>
-
-        <main>
-          <h1>{title}</h1>
-          <p>{description}</p>
-
-          <div>{children}</div>
-
-          {footer && <footer>{footer}</footer>}
-        </main>
-      </>
-    );
-  }
-
   return (
     <main className="auth-page min-h-[100dvh] w-full overflow-x-hidden">
       <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1440px] grid-cols-1 lg:grid-cols-[minmax(0,1.06fr)_minmax(420px,.94fr)]">
