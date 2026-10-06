@@ -640,6 +640,89 @@ function applyMaskClip(ctx: CanvasRenderingContext2D, mask: MaskSpec | undefined
      Keeping the geometric clip exact avoids leaking pixels outside the mask. */
   return true;
 }
+/* Reused overlay compositor surfaces. Overlay masks are rendered into
+   these surfaces first so feather/invert work identically in preview and export
+   without clipping the rest of the project canvas. */
+let overlaySurface: HTMLCanvasElement | null = null;
+let overlayMaskSurface: HTMLCanvasElement | null = null;
+
+function getOverlaySurface(width: number, height: number) {
+  const w = Math.max(1, Math.ceil(width));
+  const h = Math.max(1, Math.ceil(height));
+  if (!overlaySurface || overlaySurface.width !== w || overlaySurface.height !== h) {
+    overlaySurface = overlaySurface || document.createElement('canvas');
+    overlaySurface.width = w;
+    overlaySurface.height = h;
+  }
+  if (!overlayMaskSurface || overlayMaskSurface.width !== w || overlayMaskSurface.height !== h) {
+    overlayMaskSurface = overlayMaskSurface || document.createElement('canvas');
+    overlayMaskSurface.width = w;
+    overlayMaskSurface.height = h;
+  }
+  return { surface: overlaySurface, mask: overlayMaskSurface };
+}
+
+function maskPathForCanvas(ctx: CanvasRenderingContext2D, mask: MaskSpec, W: number, H: number) {
+  const amount = Math.max(0.05, Math.min(1, mask.amount ?? 0.72));
+  const path = new Path2D();
+  if (mask.shape === 'ellipse') {
+    path.ellipse(W / 2, H / 2, W * 0.5 * amount, H * 0.5 * amount, 0, 0, Math.PI * 2);
+  } else if (mask.shape === 'rectangle') {
+    const w = W * amount;
+    const h = H * amount;
+    path.rect((W - w) / 2, (H - h) / 2, w, h);
+  } else if (mask.shape === 'split') {
+    path.rect(0, 0, W * amount, H);
+  } else if (mask.shape === 'shutter') {
+    const gap = H * 0.5 * amount;
+    path.rect(0, 0, W, gap);
+    path.rect(0, H - gap, W, gap);
+  } else {
+    path.rect(0, 0, W, H);
+  }
+  return path;
+}
+
+function applyMaskToSurface(surface: HTMLCanvasElement, maskCanvas: HTMLCanvasElement, mask: MaskSpec | undefined) {
+  if (!mask || mask.shape === 'none') return;
+  const W = surface.width;
+  const H = surface.height;
+  const maskCtx = maskCanvas.getContext('2d');
+  const sourceCtx = surface.getContext('2d');
+  if (!maskCtx || !sourceCtx) return;
+
+  maskCtx.setTransform(1, 0, 0, 1, 0, 0);
+  maskCtx.globalCompositeOperation = 'source-over';
+  maskCtx.globalAlpha = 1;
+  maskCtx.filter = 'none';
+  maskCtx.clearRect(0, 0, W, H);
+  maskCtx.save();
+  maskCtx.translate(W / 2, H / 2);
+  maskCtx.rotate(((mask.rotation || 0) * Math.PI) / 180);
+  const path = maskPathForCanvas(maskCtx, mask, W, H);
+  const featherPx = Math.max(0, Math.min(Math.max(W, H) * 0.12, (mask.feather ?? 0) * Math.max(W, H) * 0.08));
+  if (mask.invert) {
+    maskCtx.fillStyle = '#fff';
+    maskCtx.fillRect(-W / 2, -H / 2, W, H);
+    maskCtx.globalCompositeOperation = 'destination-out';
+    maskCtx.filter = featherPx > 0 ? `blur(${featherPx.toFixed(2)}px)` : 'none';
+    maskCtx.fillStyle = '#000';
+    maskCtx.fill(path);
+  } else {
+    maskCtx.filter = featherPx > 0 ? `blur(${featherPx.toFixed(2)}px)` : 'none';
+    maskCtx.fillStyle = '#fff';
+    maskCtx.fill(path);
+  }
+  maskCtx.restore();
+
+  sourceCtx.save();
+  sourceCtx.globalCompositeOperation = 'destination-in';
+  sourceCtx.globalAlpha = 1;
+  sourceCtx.filter = 'none';
+  sourceCtx.drawImage(maskCanvas, 0, 0);
+  sourceCtx.restore();
+}
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(src);
   if (cached && cached.complete && cached.naturalWidth > 0 && cached.naturalHeight > 0) {
@@ -1356,14 +1439,8 @@ export function fitIntoBox(
 
 function drawImageElement(ctx: CanvasRenderingContext2D, el: TimelineElement, timeIn: number) {
   const img = imageCache.get(el.src || '');
-  if (!img) return;
+  if (!img || el.hidden) return;
   const v = resolveElementValues(el, timeIn);
-  ctx.save();
-  ctx.globalAlpha = v.opacity;
-  let scale = v.scale;
-  ctx.translate(v.x + el.width / 2, v.y + el.height / 2);
-  ctx.rotate((v.rotation * Math.PI) / 180);
-  ctx.scale(scale * (el.flip_h ? -1 : 1), scale * (el.flip_v ? -1 : 1));
 
   const iw = img.naturalWidth || img.width;
   const ih = img.naturalHeight || img.height;
@@ -1373,6 +1450,33 @@ function drawImageElement(ctx: CanvasRenderingContext2D, el: TimelineElement, ti
   const sw = Math.max(1, iw * (1 - (crop?.left || 0) - (crop?.right || 0)));
   const sh = Math.max(1, ih * (1 - (crop?.top || 0) - (crop?.bottom || 0)));
   const { dw, dh } = fitIntoBox(sw, sh, el.width, el.height, el.object_fit || 'contain');
+
+  if (el.mask && el.mask.shape !== 'none') {
+    const { surface, mask } = getOverlaySurface(Math.max(el.width, dw), Math.max(el.height, dh));
+    const sctx = surface.getContext('2d');
+    if (!sctx) return;
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.globalAlpha = 1;
+    sctx.globalCompositeOperation = 'source-over';
+    sctx.filter = 'none';
+    sctx.clearRect(0, 0, surface.width, surface.height);
+    sctx.drawImage(img, sx, sy, sw, sh, (surface.width - dw) / 2, (surface.height - dh) / 2, dw, dh);
+    applyMaskToSurface(surface, mask, el.mask);
+    ctx.save();
+    ctx.globalAlpha = v.opacity;
+    ctx.translate(v.x + el.width / 2, v.y + el.height / 2);
+    ctx.rotate((v.rotation * Math.PI) / 180);
+    ctx.scale(v.scale * (el.flip_h ? -1 : 1), v.scale * (el.flip_v ? -1 : 1));
+    ctx.drawImage(surface, -surface.width / 2, -surface.height / 2);
+    ctx.restore();
+    return;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = v.opacity;
+  ctx.translate(v.x + el.width / 2, v.y + el.height / 2);
+  ctx.rotate((v.rotation * Math.PI) / 180);
+  ctx.scale(v.scale * (el.flip_h ? -1 : 1), v.scale * (el.flip_v ? -1 : 1));
   ctx.drawImage(img, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
   ctx.restore();
 }
@@ -1394,7 +1498,7 @@ async function drawVideoElement(
     reverse?: boolean
   ) => Promise<void> = syncPlaybackVideo,
 ) {
-  if (!el.src) return;
+  if (!el.src || el.hidden) return;
   const video = await loadVideoFn(el.src);
   const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : (el.source_duration || 10);
   const speed = Math.max(0.05, el.speed || 1);
@@ -1425,7 +1529,22 @@ async function drawVideoElement(
   const sw = Math.max(1, vw * (1 - (crop?.left || 0) - (crop?.right || 0)));
   const sh = Math.max(1, vh * (1 - (crop?.top || 0) - (crop?.bottom || 0)));
   const { dw, dh } = fitIntoBox(sw, sh, el.width, el.height, el.object_fit || 'contain');
-  ctx.drawImage(video, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+
+  if (el.mask && el.mask.shape !== 'none') {
+    const { surface, mask } = getOverlaySurface(Math.max(el.width, dw), Math.max(el.height, dh));
+    const sctx = surface.getContext('2d');
+    if (!sctx) return;
+    sctx.setTransform(1, 0, 0, 1, 0, 0);
+    sctx.globalAlpha = 1;
+    sctx.globalCompositeOperation = 'source-over';
+    sctx.filter = 'none';
+    sctx.clearRect(0, 0, surface.width, surface.height);
+    sctx.drawImage(video, sx, sy, sw, sh, (surface.width - dw) / 2, (surface.height - dh) / 2, dw, dh);
+    applyMaskToSurface(surface, mask, el.mask);
+    ctx.drawImage(surface, 0, 0, surface.width, surface.height, -surface.width / 2, -surface.height / 2, surface.width, surface.height);
+  } else {
+    ctx.drawImage(video, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+  }
   ctx.restore();
 }
 
