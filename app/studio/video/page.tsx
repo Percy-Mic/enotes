@@ -9738,39 +9738,41 @@ function VideoEditor() {
             )}
 
             {!exportResult ? (
-              <div className="flex gap-2">
-                <button
-                  onClick={runExport}
-                  disabled={exporting}
-                  className="flex-1 rounded-xl bg-white py-3 text-sm font-bold text-black focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-50"
-                >
-                  {exporting ? 'Rendering… keep this tab open' : 'Export video'}
-                </button>
-                {exporting && (
+              <>
+                <div className="flex gap-2">
                   <button
-                    onClick={() => rendererRef.current.cancelExport()}
-                    className="rounded-xl border border-white/25 px-4 py-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                    onClick={runExport}
+                    disabled={exporting}
+                    className="flex-1 rounded-xl bg-white py-3 text-sm font-bold text-black focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-50"
                   >
-                    Cancel
+                    {exporting ? 'Rendering… keep this tab open' : 'Export video'}
                   </button>
-                )}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => void cloudExport()}
-                  disabled={cloudRendering || creatomateRendering || exporting}
-                  className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-xs font-semibold text-white/85 disabled:opacity-50"
-                >
-                  {cloudRendering ? `JSON2Video ${cloudProgress}%` : 'Cloud MP4 · JSON2Video'}
-                </button>
-                <button
-                  onClick={() => void creatomateExport()}
-                  disabled={cloudRendering || creatomateRendering || exporting}
-                  className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-xs font-semibold text-white/85 disabled:opacity-50"
-                >
-                  {creatomateRendering ? `Creatomate ${creatomateProgress}%` : 'Cloud MP4 · Creatomate'}
-                </button>
-              </div>
+                  {exporting && (
+                    <button
+                      onClick={() => rendererRef.current.cancelExport()}
+                      className="rounded-xl border border-white/25 px-4 py-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => void cloudExport()}
+                    disabled={cloudRendering || creatomateRendering || exporting}
+                    className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-xs font-semibold text-white/85 disabled:opacity-50"
+                  >
+                    {cloudRendering ? `JSON2Video ${cloudProgress}%` : 'Cloud MP4 · JSON2Video'}
+                  </button>
+                  <button
+                    onClick={() => void creatomateExport()}
+                    disabled={cloudRendering || creatomateRendering || exporting}
+                    className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-xs font-semibold text-white/85 disabled:opacity-50"
+                  >
+                    {creatomateRendering ? `Creatomate ${creatomateProgress}%` : 'Cloud MP4 · Creatomate'}
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="space-y-2">
                 <video src={exportResult.url} controls className="w-full rounded-xl border border-white/10" />
