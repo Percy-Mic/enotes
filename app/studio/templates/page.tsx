@@ -56,6 +56,7 @@ export default function TemplatesPage() {
   const [category, setCategory] = useState('all');
   const [query, setQuery] = useState('');
   const [premiumOnly, setPremiumOnly] = useState<'all' | 'free' | 'premium'>('all');
+  const [mediaType, setMediaType] = useState<'video' | 'image'>('video');
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [meId, setMeId] = useState<string | null>(null);
   const ents = useEntitlements(meId);
@@ -74,7 +75,7 @@ export default function TemplatesPage() {
         .select(
           `id, title, description, category, tags, aspect_ratio, duration_seconds,
            thumbnail_url, preview_url, premium, price_cents, currency, featured,
-           views, uses, saves, rating_sum, rating_count,
+           views, uses, saves, rating_sum, rating_count, created_at,
            creator:profiles!templates_creator_id_fkey(id, username, full_text_name, avatar_url, creator_verified)`
         )
         .eq('status', 'published')
@@ -98,9 +99,20 @@ export default function TemplatesPage() {
     })();
   }, []);
 
+  const templateMediaType = (t: TemplateRow): 'video' | 'image' => {
+    const project = t as TemplateRow & { project?: unknown };
+    const raw = project.project as Record<string, unknown> | undefined;
+    const clips = Array.isArray(raw?.clips) ? raw.clips : [];
+    const elements = Array.isArray(raw?.elements) ? raw.elements : [];
+    const kinds = [...clips, ...elements].map((item) => String((item as Record<string, unknown>)?.kind || '')).filter(Boolean);
+    if (kinds.some((kind) => kind === 'video')) return 'video';
+    if (kinds.length > 0 && kinds.every((kind) => ['image', 'photo', 'sticker'].includes(kind))) return 'image';
+    return 'video';
+  };
+
   const filtered = useMemo(() => {
-    let list = templates;
-    if (category !== 'all') list = list.filter((t) => t.category === category);
+    let list = templates.filter((t) => templateMediaType(t) === mediaType);
+    if (category !== 'all' && !['trending', 'popular', 'new'].includes(category)) list = list.filter((t) => t.category === category);
     if (premiumOnly !== 'all') list = list.filter((t) => (premiumOnly === 'premium' ? t.premium : !t.premium));
     const q = query.trim().toLowerCase();
     if (q) {
@@ -112,8 +124,11 @@ export default function TemplatesPage() {
           t.creator.username?.toLowerCase().includes(q)
       );
     }
+    if (category === 'popular') list = [...list].sort((a, b) => b.uses - a.uses);
+    else if (category === 'new') list = [...list].sort((a, b) => String((b as TemplateRow & { created_at?: string }).created_at || '').localeCompare(String((a as TemplateRow & { created_at?: string }).created_at || '')));
+    else if (category === 'trending') list = [...list].sort((a, b) => (Number(b.featured) - Number(a.featured)) || (b.uses - a.uses) || (b.views - a.views));
     return list;
-  }, [templates, category, query, premiumOnly]);
+  }, [templates, category, query, premiumOnly, mediaType]);
 
   const toggleSave = async (id: string) => {
     if (!meId) return;
@@ -194,7 +209,13 @@ export default function TemplatesPage() {
               <h2 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Make stunning videos with a template.</h2>
               <p className="mt-2 max-w-xl text-sm leading-5 text-black/60">Choose a ready-made edit, replace the media and sounds, and keep the creator's transitions, effects, text, timing and keyframes.</p>
               <div className="mt-5 flex max-w-2xl overflow-hidden rounded-xl bg-white shadow-sm">
-                <button type="button" className="flex shrink-0 items-center gap-1 border-r border-[#ececf0] px-3 py-3 text-xs font-semibold"><span>Video</span><ChevronDown className="h-3.5 w-3.5" /></button>
+                <label className="relative flex shrink-0 items-center gap-1 border-r border-[#ececf0] px-3 py-3 text-xs font-semibold">
+                  <select value={mediaType} onChange={(e) => setMediaType(e.target.value as 'video' | 'image')} aria-label="Template media type" className="appearance-none bg-transparent pr-4 outline-none">
+                    <option value="video">Video</option>
+                    <option value="image">Photo</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-2 h-3.5 w-3.5" />
+                </label>
                 <div className="relative min-w-0 flex-1">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9ca0a8]" />
                   <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search templates" aria-label="Search templates" className="h-full w-full bg-transparent py-3 pl-9 pr-3 text-sm outline-none" />
@@ -205,8 +226,8 @@ export default function TemplatesPage() {
 
           <div className="mt-5 flex items-end justify-between border-b border-[#e5e7eb]">
             <div className="flex gap-6">
-              <button type="button" className="border-b-2 border-[#12b8d6] pb-3 text-sm font-bold">Video</button>
-              <button type="button" disabled className="pb-3 text-sm font-semibold text-[#a0a4ab]">Image</button>
+              <button type="button" onClick={() => setMediaType('video')} className={`border-b-2 pb-3 text-sm font-bold ${mediaType === 'video' ? 'border-[#12b8d6] text-[#111]' : 'border-transparent text-[#8b8f97]'}`}>Video</button>
+              <button type="button" onClick={() => setMediaType('image')} className={`border-b-2 pb-3 text-sm font-semibold ${mediaType === 'image' ? 'border-[#12b8d6] text-[#111]' : 'border-transparent text-[#8b8f97]'}`}>Photo</button>
             </div>
             <div className="hidden pb-2 text-[10px] text-[#92969e] sm:block">Creator templates · {templates.length}</div>
           </div>
@@ -218,7 +239,7 @@ export default function TemplatesPage() {
                 {c === 'all' ? 'For You' : c}
               </button>
             ))}
-            <button type="button" className="ml-auto hidden shrink-0 rounded-full bg-white p-2 text-[#555] sm:block" aria-label="More categories"><ChevronRight className="h-4 w-4" /></button>
+            <span className="ml-auto hidden shrink-0 rounded-full bg-white px-3 py-2 text-[10px] font-semibold text-[#777] sm:block">{filtered.length} results</span>
           </div>
 
           <div className="mt-1 flex gap-2">
