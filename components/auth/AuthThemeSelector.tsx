@@ -55,13 +55,13 @@ export default function AuthThemeSelector() {
         <div
           role="menu"
           aria-label="Choose theme"
-          className="absolute right-0 top-[calc(100%+0.5rem)] w-[min(18rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border auth-border auth-surface p-1.5 shadow-[0_18px_50px_rgba(17,17,17,.16)]"
+          className="absolute right-0 top-[calc(100%+0.5rem)] w-[min(18rem,calc(100vw-1.5rem))] max-h-[calc(100dvh-7rem)] overflow-y-auto overflow-x-hidden sm:max-h-[calc(100dvh-2rem)] rounded-2xl border auth-border auth-surface p-1.5 shadow-[0_18px_50px_rgba(17,17,17,.16)]"
         >
           <div className="px-3 py-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] auth-subtle">Appearance</p>
             <p className="mt-0.5 text-xs auth-muted">Choose how enotes looks on this device.</p>
           </div>
-          <div className="space-y-0.5">
+          <div className="grid grid-cols-2 gap-1 sm:grid-cols-1 sm:gap-0.5">
             {OPTIONS.map((option) => {
               const selected = mode === option.value;
               return (
@@ -74,16 +74,16 @@ export default function AuthThemeSelector() {
                     setMode(option.value);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-[var(--auth-input-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--auth-accent)]/20"
+                  className="flex min-w-0 items-center gap-2 rounded-xl px-2.5 py-2 text-left transition hover:bg-[var(--auth-input-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--auth-accent)]/20 sm:gap-3 sm:px-3 sm:py-2.5"
                 >
-                  <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border auth-border ${selected ? 'bg-[var(--auth-accent)]/10 auth-accent' : 'auth-surface auth-muted'}`}>
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg border auth-border sm:h-9 sm:w-9 ${selected ? 'bg-[var(--auth-accent)]/10 auth-accent' : 'auth-surface auth-muted'}`}>
                     {option.icon}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-semibold auth-ink">{option.label}</span>
-                    <span className="block truncate text-[11px] auth-muted">{option.description}</span>
+                    <span className="block truncate text-[12px] font-semibold auth-ink sm:text-[13px]">{option.label}</span>
+                    <span className="hidden truncate text-[11px] auth-muted sm:block">{option.description}</span>
                   </span>
-                  {selected && <Check className="h-4 w-4 shrink-0 auth-accent" aria-hidden="true" />}
+                  {selected && <Check className="h-3.5 w-3.5 shrink-0 auth-accent sm:h-4 sm:w-4" aria-hidden="true" />}
                 </button>
               );
             })}
