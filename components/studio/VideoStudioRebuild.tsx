@@ -157,7 +157,7 @@ export default function VideoStudioRebuild() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
-  const [exportSettings, setExportSettings] = useState<ExportSettings>({ ...defaultExportSettings, format: 'mp4' });
+  const [exportSettings, setExportSettings] = useState<ExportSettings>(() => ({ ...defaultExportSettings(emptyProject()), format: 'mp4' }));
   const [cloudRendering, setCloudRendering] = useState(false);
   const [cloudProgress, setCloudProgress] = useState(0);
   const [history, setHistory] = useState<VideoProject[]>([]);
