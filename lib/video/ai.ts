@@ -277,7 +277,7 @@ async function uploadGeminiFileFromUrl(
   return {
     uri: String(file.uri),
     mimeType: String(
-      file.mimeType || mimeType,
+      file.mimeType || uploadMimeType,
     ),
   };
 }
