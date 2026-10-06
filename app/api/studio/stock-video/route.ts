@@ -24,9 +24,12 @@ export async function GET(request: Request) {
   if (!allowed(target)) return NextResponse.json({ error: 'Video source is not allowed.' }, { status: 403 });
 
   try {
+    const range = request.headers.get('range');
+    const upstreamHeaders = new Headers({ Accept: 'video/*,*/*;q=0.8' });
+    if (range) upstreamHeaders.set('Range', range);
     const upstream = await fetch(target.toString(), {
       cache: 'no-store',
-      headers: { Accept: 'video/*,*/*;q=0.8' },
+      headers: upstreamHeaders,
     });
     if (!upstream.ok || !upstream.body) {
       return NextResponse.json({ error: `Stock video responded ${upstream.status}.` }, { status: 502 });
