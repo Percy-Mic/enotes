@@ -197,14 +197,14 @@ export function projectToJson2Video(
   for (const el of project.elements) {
     const src = el.src ? (sources[el.src] || el.src) : null;
     if (el.kind === 'text') elements.push(textElement(el));
-    else if (src && /^https?:\\/\\//i.test(src) && ['image', 'video', 'gif'].includes(el.kind)) {
+    else if (src && (src.startsWith('http://') || src.startsWith('https://')) && ['image', 'video', 'gif'].includes(el.kind)) {
       elements.push(overlayElement(el, src));
     }
   }
 
   for (const audio of project.audio) {
     const src = sources[audio.src] || audio.src;
-    if (/^https?:\\/\\//i.test(src)) elements.push(audioElement(audio, src));
+    if (src.startsWith('http://') || src.startsWith('https://')) elements.push(audioElement(audio, src));
   }
 
   return {
