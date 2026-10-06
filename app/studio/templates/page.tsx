@@ -33,6 +33,7 @@ interface TemplateRow {
   rating_sum: number;
   rating_count: number;
   creator: { id: string; username: string; full_text_name: string; avatar_url: string; creator_verified: boolean };
+  created_at?: string;
 }
 
 function fmt(seconds: number): string {
@@ -70,7 +71,7 @@ export default function TemplatesPage() {
         .select(
           `id, title, description, category, tags, aspect_ratio, duration_seconds,
            thumbnail_url, preview_url, premium, price_cents, currency, featured,
-           views, uses, saves, rating_sum, rating_count,
+           views, uses, saves, rating_sum, rating_count, created_at,
            creator:profiles!templates_creator_id_fkey(id, username, full_text_name, avatar_url, creator_verified)`
         )
         .eq('status', 'published')
@@ -101,7 +102,15 @@ export default function TemplatesPage() {
 
   const filtered = useMemo(() => {
     let list = templates;
-    if (category !== 'all') list = list.filter((t) => t.category === category);
+    if (category === 'trending') {
+      list = [...list].sort((a, b) => (Number(b.views) * 0.35 + Number(b.uses) * 0.65) - (Number(a.views) * 0.35 + Number(a.uses) * 0.65));
+    } else if (category === 'popular') {
+      list = [...list].sort((a, b) => Number(b.uses) - Number(a.uses));
+    } else if (category === 'new') {
+      list = [...list].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    } else if (category !== 'all') {
+      list = list.filter((t) => t.category === category);
+    }
     if (premiumOnly !== 'all') list = list.filter((t) => (premiumOnly === 'premium' ? t.premium : !t.premium));
     const q = query.trim().toLowerCase();
     if (q) {
