@@ -160,6 +160,8 @@ export default function VideoStudioRebuild() {
   const [exportSettings, setExportSettings] = useState<ExportSettings>(() => ({ ...defaultExportSettings(emptyProject()), format: 'mp4' }));
   const [cloudRendering, setCloudRendering] = useState(false);
   const [cloudProgress, setCloudProgress] = useState(0);
+  const [creatomateRendering, setCreatomateRendering] = useState(false);
+  const [creatomateProgress, setCreatomateProgress] = useState(0);
   const [history, setHistory] = useState<VideoProject[]>([]);
   const [future, setFuture] = useState<VideoProject[]>([]);
   const [localSources, setLocalSources] = useState<Record<string, string>>({});
@@ -571,6 +573,33 @@ export default function VideoStudioRebuild() {
     finally { setBusy(false); setCloudRendering(false); }
   };
 
+  const creatomateExport = async () => {
+    if (!project.clips.length) return;
+    setBusy(true); setCreatomateRendering(true); setCreatomateProgress(5); setPanel('export'); setMessage('Starting Creatomate render…');
+    try {
+      const startResponse = await fetch('/api/video/render/creatomate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ project: projectRef.current, resolutionHeight: exportSettings.resolutionHeight as 720 | 1080 | 1440 | 2160 }) });
+      const started = await startResponse.json();
+      if (!startResponse.ok || !started.id) throw new Error(started.error || 'Creatomate could not start the render.');
+      const renderId = String(started.id);
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const pollResponse = await fetch('/api/video/render/creatomate', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'status', renderId }) });
+        const status = await pollResponse.json();
+        if (!pollResponse.ok) throw new Error(status.error || 'Could not check Creatomate render status.');
+        const state = String(status.status || '').toLowerCase();
+        setCreatomateProgress(state === 'succeeded' ? 100 : Math.min(95, 10 + Math.round((attempt / 120) * 85)));
+        if (state === 'succeeded' && status.url) {
+          const a = document.createElement('a');
+          a.href = status.url; a.download = (title || 'enotes-video').replace(/[^a-z0-9_-]+/gi, '-') + '-creatomate.mp4'; a.target = '_blank'; a.rel = 'noopener'; a.click();
+          setCreatomateProgress(100); setMessage('Creatomate MP4 ready'); return;
+        }
+        if (state === 'failed') throw new Error(status.error_message || 'Creatomate render failed.');
+      }
+      throw new Error('Creatomate render timed out. The render may still be processing in Creatomate.');
+    } catch (e) { setMessage(e instanceof Error ? e.message : 'Creatomate export failed.'); }
+    finally { setBusy(false); setCreatomateRendering(false); }
+  };
+
   const onCanvasPointer = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!selection || panel === 'crop') return;
     const target = e.currentTarget;
@@ -813,7 +842,7 @@ export default function VideoStudioRebuild() {
                     {selectedElement && <Section title="Selected layer"><Slider label="Scale" min={.1} max={4} step={.01} value={resolveElementValues(selectedElement,Math.max(0,playhead-selectedElement.start)).scale} onChange={(v)=>updateElement(selectedElement.id,{keyframes:upsertKeyframe(selectedElement,'scale_kf',Math.max(0,playhead-selectedElement.start),v)})}/><Slider label="Rotation" min={-180} max={180} value={selectedElement.rotation} onChange={(v)=>updateElement(selectedElement.id,{rotation:v})}/><Slider label="Opacity" min={0} max={1} step={.01} value={selectedElement.opacity} onChange={(v)=>updateElement(selectedElement.id,{opacity:v})}/></Section>}
                   </>}
 
-                  {panel === 'export' && <><Section title="Export"><div className="space-y-3"><label className="block text-xs text-white/65">Resolution<select value={exportSettings.resolutionHeight} onChange={(e)=>setExportSettings(s=>({...s,resolutionHeight:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white"><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label><label className="block text-xs text-white/65">Quality<select value={exportSettings.qualityBitrate} onChange={(e)=>setExportSettings(s=>({...s,qualityBitrate:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white">{EXPORT_QUALITY_PRESETS.map(q=><option key={q.id} value={q.bitrate}>{q.name}</option>)}</select></label><p className="text-[11px] leading-5 text-white/45">Local uses the editor renderer and needs no cloud API. Cloud MP4 uses JSON2Video with the API key kept on the server.</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><Button disabled={busy || !project.clips.length} onClick={()=>void downloadExport()}><Download className="h-4 w-4"/> Local MP4</Button><Button disabled={busy || !project.clips.length || cloudRendering} onClick={()=>void cloudExport()}><CloudIcon/> {cloudRendering ? "Rendering…" : "Cloud MP4"}</Button></div>{cloudRendering && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>JSON2Video</span><span>{cloudProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${cloudProgress}%`}}/></div></div>}{exportProgress && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>{exportProgress.message}</span><span>{exportProgress.percent}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${exportProgress.percent}%`}}/></div></div>}</div></Section></>}
+                  {panel === 'export' && <><Section title="Export"><div className="space-y-3"><label className="block text-xs text-white/65">Resolution<select value={exportSettings.resolutionHeight} onChange={(e)=>setExportSettings(s=>({...s,resolutionHeight:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white"><option value="720">720p</option><option value="1080">1080p</option><option value="1440">1440p</option><option value="2160">4K</option></select></label><label className="block text-xs text-white/65">Quality<select value={exportSettings.qualityBitrate} onChange={(e)=>setExportSettings(s=>({...s,qualityBitrate:Number(e.target.value)}))} className="mt-1 w-full rounded-lg border border-white/10 bg-white/5 p-2 text-white">{EXPORT_QUALITY_PRESETS.map(q=><option key={q.id} value={q.bitrate}>{q.name}</option>)}</select></label><p className="text-[11px] leading-5 text-white/45">Local uses the editor renderer. Cloud exports use JSON2Video or Creatomate, with both API keys kept on the server.</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-3"><Button disabled={busy || !project.clips.length} onClick={()=>void downloadExport()}><Download className="h-4 w-4"/> Local MP4</Button><Button disabled={busy || !project.clips.length || cloudRendering || creatomateRendering} onClick={()=>void cloudExport()}><CloudIcon/> {cloudRendering ? "Rendering…" : "JSON2Video"}</Button><Button disabled={busy || !project.clips.length || cloudRendering || creatomateRendering} onClick={()=>void creatomateExport()}><CloudIcon/> {creatomateRendering ? "Rendering…" : "Creatomate"}</Button></div>{cloudRendering && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>JSON2Video</span><span>{cloudProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${cloudProgress}%`}}/></div></div>}{creatomateRendering && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>Creatomate</span><span>{creatomateProgress}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${creatomateProgress}%`}}/></div></div>}{exportProgress && <div><div className="mb-1 flex justify-between text-[10px] text-white/55"><span>{exportProgress.message}</span><span>{exportProgress.percent}%</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-[#ffb6c1]" style={{width:`${exportProgress.percent}%`}}/></div></div>}</div></Section></>}
 
                   {panel === 'text' && !selectedElement && <Section title="Text"><Button onClick={addText}><Type className="h-4 w-4"/> Add text</Button></Section>}
                   {panel === 'audio' && !selectedAudio && <Section title="Audio"><Button onClick={()=>audioInputRef.current?.click()}><Upload className="h-4 w-4"/> Import audio</Button></Section>}
