@@ -102,12 +102,20 @@ export default function TemplatesPage() {
   }, []);
 
   const templateMediaType = (t: TemplateRow): 'video' | 'image' => {
-    const raw = t.project;
-    const clips = Array.isArray(raw?.clips) ? raw.clips : [];
-    const elements = Array.isArray(raw?.elements) ? raw.elements : [];
-    const kinds = [...clips, ...elements].map((item) => String((item as Record<string, unknown>)?.kind || '')).filter(Boolean);
-    if (kinds.some((kind) => kind === 'video')) return 'video';
-    if (kinds.length > 0 && kinds.every((kind) => ['image', 'photo', 'sticker'].includes(kind))) return 'image';
+    const raw = t.project || {};
+    const containers: unknown[] = [
+      raw,
+      ...(Array.isArray(raw.clips) ? raw.clips : []),
+      ...(Array.isArray(raw.elements) ? raw.elements : []),
+      ...(Array.isArray((raw as any).timeline?.elements) ? (raw as any).timeline.elements : []),
+      ...(Array.isArray((raw as any).tracks) ? (raw as any).tracks.flatMap((track: any) => Array.isArray(track?.elements) ? track.elements : []) : []),
+    ];
+    const kinds = containers
+      .flatMap((item: any) => [item?.kind, item?.type, item?.media_type, item?.mediaType])
+      .map((kind) => String(kind || '').toLowerCase())
+      .filter(Boolean);
+    if (kinds.some((kind) => kind === 'video' || kind === 'video/mp4')) return 'video';
+    if (kinds.some((kind) => ['image', 'photo', 'sticker', 'image/jpeg', 'image/png', 'image/webp'].includes(kind))) return 'image';
     return 'video';
   };
 
@@ -149,6 +157,7 @@ export default function TemplatesPage() {
   };
 
   const [usingId, setUsingId] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateRow | null>(null);
   const [useError, setUseError] = useState<string | null>(null);
 
   /* "Use" goes through the use_template RPC: the database copies the
@@ -250,6 +259,29 @@ export default function TemplatesPage() {
           </div>
 
           {useError && <p role="alert" className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-600">{useError}</p>}
+
+          {selectedTemplate && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label={selectedTemplate.title} onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedTemplate(null); }}>
+              <div className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-[#ececf0] px-4 py-3">
+                  <div className="min-w-0"><h2 className="truncate text-sm font-bold">{selectedTemplate.title}</h2><p className="text-[10px] text-[#858991]">{selectedTemplate.creator.username ? '@' + selectedTemplate.creator.username : 'enotes creator'} · {fmt(selectedTemplate.duration_seconds)}</p></div>
+                  <button type="button" onClick={() => setSelectedTemplate(null)} className="rounded-lg px-3 py-2 text-xs font-bold text-[#666] hover:bg-[#f2f3f5]">Close</button>
+                </div>
+                <div className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="aspect-[3/4] overflow-hidden rounded-xl bg-[#111]">
+                    {templateMediaType(selectedTemplate) === 'video' && selectedTemplate.preview_url ? <video src={selectedTemplate.preview_url} controls autoPlay muted playsInline className="h-full w-full object-contain" /> : selectedTemplate.thumbnail_url ? <img src={selectedTemplate.thumbnail_url} alt={selectedTemplate.title} className="h-full w-full object-contain" /> : <div className="flex h-full items-center justify-center text-5xl">🖼️</div>}
+                  </div>
+                  <div className="flex flex-col">
+                    <p className="text-sm leading-6 text-[#555]">{selectedTemplate.description || 'Ready-made enotes template. Replace the media while keeping the edit structure.'}</p>
+                    <div className="mt-4 flex flex-wrap gap-1.5">{(selectedTemplate.tags || []).slice(0, 8).map((tag) => <span key={tag} className="rounded-full bg-[#f1f2f4] px-2 py-1 text-[10px] font-semibold text-[#666]">{tag}</span>)}</div>
+                    <div className="mt-auto pt-5">
+                      <button type="button" disabled={usingId !== null} onClick={() => { setSelectedTemplate(null); void useTemplate(selectedTemplate); }} className="flex w-full items-center justify-center gap-2 rounded-xl bg-black px-4 py-3 text-xs font-bold text-white disabled:opacity-50"><Play className="h-4 w-4" />{usingId === selectedTemplate.id ? 'Opening…' : selectedTemplate.premium ? 'Use premium template' : 'Use template'}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {loading ? (
             <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
               {[0,1,2,3,4,5,6,7,8,9].map((i) => <div key={i} className="aspect-[3/4] animate-pulse rounded-xl bg-[#e9ebef]" />)}
@@ -266,11 +298,13 @@ export default function TemplatesPage() {
                 return (
                   <article key={t.id} className="group min-w-0">
                     <div className="relative aspect-[3/4] overflow-hidden rounded-xl bg-[#e9ebef]">
-                      {t.preview_url ? (
-                        <video src={t.preview_url} muted loop playsInline preload="metadata" onMouseEnter={(e) => { void e.currentTarget.play().catch(() => {}); }} onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
-                      ) : t.thumbnail_url ? (
-                        <img src={t.thumbnail_url} alt={t.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
-                      ) : <div className="flex h-full items-center justify-center text-4xl">🎞</div>}
+                      <button type="button" onClick={() => setSelectedTemplate(t)} className="absolute inset-0 z-0 block h-full w-full cursor-pointer text-left" aria-label={'Preview ' + t.title}>
+                        {mediaType === 'video' && t.preview_url ? (
+                          <video src={t.preview_url} muted loop playsInline preload="metadata" onMouseEnter={(e) => { void e.currentTarget.play().catch(() => {}); }} onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                        ) : t.thumbnail_url ? (
+                          <img src={t.thumbnail_url} alt={t.title} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]" />
+                        ) : <div className="flex h-full items-center justify-center text-4xl">{mediaType === 'image' ? '🖼️' : '🎞'}</div>}
+                      </button>
                       <button onClick={() => toggleSave(t.id)} aria-label={savedIds.has(t.id) ? 'Remove from saved' : 'Save template'} className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur">{savedIds.has(t.id) ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}</button>
                       {t.featured && <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-1 text-[9px] font-black text-black">★ Featured</span>}
                       <div className="absolute inset-x-2 bottom-2 flex items-center justify-between text-[9px] font-bold text-white"><span className="rounded-full bg-black/50 px-2 py-1">{t.duration_seconds ? fmt(t.duration_seconds) : ''}</span>{rating && <span className="rounded-full bg-black/50 px-2 py-1"><Star className="mr-0.5 inline h-3 w-3 fill-current" />{rating}</span>}</div>
