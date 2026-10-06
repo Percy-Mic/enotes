@@ -111,6 +111,7 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
   const [shareStatus, setShareStatus] = useState<string | null>(null);
   const [sharingToCommunity, setSharingToCommunity] = useState(false);
   const likeBusyRef = useRef(false);
+  const reactionBusyRef = useRef(false);
 
   useEffect(() => {
     setDisplayQuote(post.repost_quote || null);
@@ -185,20 +186,17 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
   };
 
   const toggleReaction = async (emoji: string) => {
-    if (!myId) return;
-    const mine = reactions[emoji]?.mine;
-    /* a user holds at most one reaction on a post — switching replaces */
+    if (!myId || reactionBusyRef.current) return;
+    reactionBusyRef.current = true;
+
+    const mine = !!reactions[emoji]?.mine;
     const previous = Object.keys(reactions).find((e) => reactions[e]?.mine);
 
     setReactions((prev) => {
-      const next: ReactionMap = {};
-      for (const [e, v] of Object.entries(prev)) {
-        if (v.mine && e !== emoji) continue; /* old reaction of mine goes away */
-        next[e] = { ...v };
-      }
+      const next = { ...prev };
       if (mine) {
         const count = Math.max(0, (next[emoji]?.count || 0) - 1);
-        if (count > 0) next[emoji] = { count, mine: false };
+        if (count) next[emoji] = { count, mine: false };
         else delete next[emoji];
       } else {
         next[emoji] = { count: (next[emoji]?.count || 0) + 1, mine: true };
@@ -206,29 +204,37 @@ export default function PostCard({ post, onDeleted, onHide, compact = false }: P
       return next;
     });
 
-    if (mine) {
-      const { error } = await supabase
-        .from('post_reactions')
-        .delete()
-        .eq('post_id', post.id)
-        .eq('user_id', myId)
-        .eq('emoji', emoji);
-      if (error) await refreshReactions(); /* revert to DB truth */
-    } else {
-      /* replacing an older reaction of mine → drop it first, then upsert
-         (upsert also makes a rapid double-tap on one emoji idempotent) */
-      if (previous && previous !== emoji) {
-        await supabase
+    try {
+      if (mine) {
+        const { error } = await supabase
           .from('post_reactions')
           .delete()
           .eq('post_id', post.id)
           .eq('user_id', myId)
-          .neq('emoji', emoji);
+          .eq('emoji', emoji);
+        if (error) throw error;
+      } else {
+        if (previous && previous !== emoji) {
+          const { error } = await supabase
+            .from('post_reactions')
+            .delete()
+            .eq('post_id', post.id)
+            .eq('user_id', myId)
+            .eq('emoji', previous);
+          if (error) throw error;
+        }
+        const { error } = await supabase
+          .from('post_reactions')
+          .upsert(
+            { post_id: post.id, user_id: myId, emoji },
+            { onConflict: 'post_id,user_id,emoji', ignoreDuplicates: true }
+          );
+        if (error) throw error;
       }
-      const { error } = await supabase
-        .from('post_reactions')
-        .upsert({ post_id: post.id, user_id: myId, emoji }, { onConflict: 'post_id,user_id,emoji' });
-      if (error) await refreshReactions();
+    } catch {
+      await refreshReactions();
+    } finally {
+      reactionBusyRef.current = false;
     }
   };
 
