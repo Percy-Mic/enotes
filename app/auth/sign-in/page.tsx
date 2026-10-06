@@ -117,6 +117,7 @@ function SignInForm() {
       title="Welcome back ♡"
       description="Sign in to open your journals and pick up where you left off."
       asideTitle="Your journal is waiting for you."
+      showThemeSelector
       footer={
         <>
           <p className="text-[13px] leading-5 auth-muted">
