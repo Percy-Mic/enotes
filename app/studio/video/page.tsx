@@ -133,7 +133,7 @@ function useLatestPreviewRenderer() {
      running was silently dropped. During playback this happened constantly,
      so effect/filter/motion thumbnails could remain black or stale forever. */
   const render = useCallback(async (canvas: HTMLCanvasElement, project: VideoProject, time: number) => {
-    const maxPreviewEdge = 480;
+    const maxPreviewEdge = 360;
     const edge = Math.max(project.canvas.width, project.canvas.height);
     const scale = edge > maxPreviewEdge ? maxPreviewEdge / edge : 1;
     const previewProject: VideoProject = scale < 1
@@ -391,11 +391,11 @@ function MotionPresetPreviewCard({ project, clipId, preset, playing, onApply }: 
   }, [project, clipId, preset, render]);
   useEffect(() => {
     void renderAt(0.5);
-    const started = performance.now();
-    const tick = () => { void renderAt(((performance.now() - started) / 1000) % 1.5 / 1.5); timerRef.current = window.setTimeout(tick, 110); };
-    tick();
-    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
-  }, [playing, renderAt]);
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [renderAt]);
   return (
     <button type="button" onClick={onApply} className="group overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1 text-left transition hover:border-white/25">
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
@@ -433,13 +433,10 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, playin
     const clip = project.clips.find((item) => item.id === clipId);
     const d = Math.max(0.2, clip ? clipDuration(clip) : 1);
     void renderAt(Math.min(d - 0.05, Math.max(0.05, d * 0.35)));
-    const started = performance.now();
-    const tick = () => {
-      void renderAt(((performance.now() - started) / 1000) % Math.min(d, 3));
-      timerRef.current = window.setTimeout(tick, 125);
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = null;
     };
-    tick();
-    return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
   }, [renderAt, project.clips, clipId]);
 
   return (
