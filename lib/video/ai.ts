@@ -3529,6 +3529,7 @@ ${beatsForPlan}
     };
 
     const requestText = String(input.prompt || '').toLowerCase();
+    const narrationExplicitlyRequested = /\\b(add|create|write|generate|make|record|include|put)\\b[\\s\\S]{0,40}\\b(narration|voiceover|voice-over|voice over)\\b|\\b(narration|voiceover|voice-over|voice over)\\b[\\s\\S]{0,40}\\b(add|create|write|generate|make|record|include|put)\\b/i.test(requestText);
     const isAdvertisementRequest = /\b(advertisement|advertising|commercial|promotional video|promo video|promo)\b/i.test(requestText);
     const captionsExplicitlyRequested = /\b(captions?|subtitles?|subtitle|auto[- ]?captions?|closed captions?)\b/i.test(requestText);
     const audioExplicitlyRequested = /\b(music|soundtrack|background music|sfx|sound effects?|audio|song)\b/i.test(requestText);
@@ -3540,6 +3541,60 @@ ${beatsForPlan}
       if (action.type === 'add_stock_video' && useOnlyUserMedia) return false;
       return true;
     });
+
+    /*
+     * Narration is an executable editor capability, not a suggestion.
+     * Some planner responses correctly understand "add narration" but omit
+     * the action object. Detect that intent deterministically so the request
+     * can never degrade into a generic "I prepared an edit plan" response.
+     * The script itself is generated below only when the planner omitted it.
+     */
+    if (narrationExplicitlyRequested && !plannedActions.some((action: any) => action.type === 'speak_narration')) {
+      plannedActions.push({
+        type: 'speak_narration',
+        object: {
+          text: '',
+          start: 0,
+          voice: 'Puck',
+          style: 'natural, clear, engaging',
+        },
+      });
+    }
+
+    if (narrationExplicitlyRequested) {
+      const narrationActions = plannedActions.filter((action: any) => action.type === 'speak_narration');
+      for (const action of narrationActions) {
+        action.object = action.object && typeof action.object === 'object' ? action.object : {};
+        const existingText = typeof action.object.text === 'string' ? action.object.text.trim() : '';
+        if (existingText) continue;
+
+        const narrationPrompt = `Write a concise natural voiceover script for this video editing request.
+User request: ${String(input.prompt || '').slice(0, 1200)}
+Project summary: ${JSON.stringify({
+  aspect: compactProject.aspect,
+  clips: compactProject.clips,
+  existingText: compactProject.elements,
+  transcript: transcriptForPlan,
+}).slice(0, 9000)}
+Rules:
+- Return ONLY the narration words, no quotes, no labels, no markdown.
+- Do not say "add narration", "voiceover", or describe the editing process.
+- Base the script on visible/project evidence when available; never invent specific people, places, brands, or facts.
+- Keep it concise (roughly 20-60 words unless the user explicitly requested longer).
+`;
+        try {
+          const generatedNarration = await routedAIText(narrationPrompt);
+          const cleanNarration = String(generatedNarration || '')
+            .replace(/^["']|["']$/g, '')
+            .replace(/^(narration|voiceover|script)\\s*:\\s*/i, '')
+            .trim()
+            .slice(0, 600);
+          if (cleanNarration) action.object.text = cleanNarration;
+        } catch (error) {
+          console.error('[video-ai] narration script generation failed:', error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
 
     /* Never return an empty text overlay as a successful AI edit. The UI can
      * still show the rest of the plan, while a missing copy is honestly omitted. */
