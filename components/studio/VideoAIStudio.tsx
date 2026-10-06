@@ -585,14 +585,24 @@ export default function VideoAIStudio({
           });
           const synth = await synthResponse.json().catch(() => ({}));
           if (synthResponse.ok && synth?.output?.audioBase64Wav && onApplyActions) {
-            void Promise.resolve(onApplyActions([{
-              type: 'speak_narration',
-              object: {
-                text: synth.output.text,
-                start: synth.output.start,
-                audioBase64Wav: synth.output.audioBase64Wav,
-              },
-            }])).catch(() => undefined);
+            try {
+              const result = await Promise.resolve(onApplyActions([{
+                type: 'speak_narration',
+                object: {
+                  text: synth.output.text,
+                  start: synth.output.start,
+                  audioBase64Wav: synth.output.audioBase64Wav,
+                  mimeType: synth.output.mimeType || 'audio/wav',
+                },
+              }]));
+              if (result && typeof result === 'object') {
+                applicationNote += `\\n\\n✓ Narration added to the timeline.${result.failed?.length ? ` ⚠️ ${result.failed.join(' · ')}` : ''}`;
+              } else {
+                applicationNote += '\\n\\n✓ Narration added to the timeline.';
+              }
+            } catch (applyError) {
+              failedNotes.push('Voiceover was synthesized but could not be placed on the timeline' + (applyError instanceof Error ? ` (${applyError.message.slice(0, 120)})` : ''));
+            }
           } else {
             /* A failed line must not block the rest of the plan — but it
                must never be reported as applied. */
