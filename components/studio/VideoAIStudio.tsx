@@ -569,6 +569,7 @@ export default function VideoAIStudio({
       });
 
       const failedNotes: string[] = [];
+      const narrationNotes: string[] = [];
       const narrationActions = actions.filter((action) => action.type === 'speak_narration');
       for (const action of narrationActions) {
         /* Synthesis runs server-side (real audio, real duration); the result
@@ -662,6 +663,7 @@ export default function VideoAIStudio({
       }
 
       let applicationNote = '';
+      if (narrationNotes.length) applicationNote += `\n\n${narrationNotes.join(' · ')}`;
       if (actions.length && onApplyActions) {
         const applicable = actions.filter((action) =>
           action.type !== 'generate_captions' &&
