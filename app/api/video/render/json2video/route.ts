@@ -23,7 +23,7 @@ async function resolveSources(db: Awaited<ReturnType<typeof createClient>>, proj
   ];
   const out: Record<string, string> = {};
   for (const item of all) {
-    if (/^https?:\\/\\//i.test(item.src)) out[item.src] = item.src;
+    if (item.src.startsWith('http://') || item.src.startsWith('https://')) out[item.src] = item.src;
     if (item.path) {
       const { data } = await db.storage.from('studio-media').createSignedUrl(item.path, 60 * 60);
       if (data?.signedUrl) out[item.src] = data.signedUrl;
