@@ -346,10 +346,16 @@ function TransitionPreviewCard({ project, clipId, transition, duration, active, 
     await render(canvas, previewProject, previewTime);
   }, [project, clipId, transition, duration, index, cut, render]);
   useEffect(() => {
-    void renderAt(0.5);
+    /* Only the selected transition needs a live compositor. Rendering all 15
+       transition cards simultaneously was one of the biggest mobile spikes. */
     if (!active) return;
+    void renderAt(0.5);
+    if (playing) return;
     const started = performance.now();
-    const tick = () => { void renderAt(((performance.now() - started) / 1000) % 1.4 / 1.4); timerRef.current = window.setTimeout(tick, 110); };
+    const tick = () => {
+      void renderAt(((performance.now() - started) / 1000) % 1.4 / 1.4);
+      timerRef.current = window.setTimeout(tick, 180);
+    };
     tick();
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
   }, [active, playing, renderAt]);
