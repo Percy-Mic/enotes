@@ -189,7 +189,7 @@ export function projectToJson2Video(
 
   for (const clip of project.clips) {
     const src = sources[clip.src] || clip.src;
-    if (!/^https?:\\/\\//i.test(src)) continue;
+    if (!(src.startsWith('http://') || src.startsWith('https://'))) continue;
     elements.push(clipElement(project, clip, src, timeline));
     timeline += clipDuration(clip);
   }
