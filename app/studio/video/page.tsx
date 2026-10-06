@@ -6212,6 +6212,10 @@ function VideoEditor() {
   const [exportResult, setExportResult] = useState<ExportResult | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [cloudRendering, setCloudRendering] = useState(false);
+  const [cloudProgress, setCloudProgress] = useState(0);
+  const [creatomateRendering, setCreatomateRendering] = useState(false);
+  const [creatomateProgress, setCreatomateProgress] = useState(0);
   const exportingRef = useRef(false);
   exportingRef.current = exporting;
   const exportUrlRef = useRef<string | null>(null);
@@ -6323,6 +6327,115 @@ function VideoEditor() {
       }
     } finally {
       setExporting(false);
+    }
+  };
+
+  const cloudExport = async () => {
+    if (!meId || cloudRendering || creatomateRendering) return;
+    const saved = await saveNow();
+    if (!saved) { notify('Save the project before starting a cloud render.'); return; }
+
+    setCloudRendering(true);
+    setCloudProgress(5);
+    try {
+      const response = await fetch('/api/video/render/json2video', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          project: docRef.current.project,
+          resolutionHeight: settings.resolutionHeight,
+          bitrate: settings.qualityBitrate,
+        }),
+      });
+      const started = await response.json().catch(() => ({}));
+      if (!response.ok || !started.project) throw new Error(started.error || 'JSON2Video could not start the render.');
+
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const poll = await fetch('/api/video/render/json2video', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'status', renderProject: String(started.project) }),
+        });
+        const status = await poll.json().catch(() => ({}));
+        if (!poll.ok) throw new Error(status.error || 'Could not check JSON2Video status.');
+
+        const movie = status.movie || status;
+        const state = String(movie.status || '').toLowerCase();
+        const progress = Number(movie.progress ?? movie.percent ?? 0);
+        setCloudProgress(Math.min(95, Math.max(10, progress || 10 + Math.min(80, attempt))));
+
+        if (state === 'done' && movie.url) {
+          const a = document.createElement('a');
+          a.href = movie.url;
+          a.download = `${(docRef.current.title || 'enotes-video').replace(/[^a-z0-9_-]+/gi, '-')}-json2video.mp4`;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.click();
+          setCloudProgress(100);
+          notify('JSON2Video MP4 ready.');
+          return;
+        }
+        if (state === 'error' || state === 'failed') throw new Error(movie.message || movie.error || 'JSON2Video render failed.');
+      }
+      throw new Error('JSON2Video render timed out. The provider may still be processing it.');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'JSON2Video export failed.');
+    } finally {
+      setCloudRendering(false);
+    }
+  };
+
+  const creatomateExport = async () => {
+    if (!meId || cloudRendering || creatomateRendering) return;
+    const saved = await saveNow();
+    if (!saved) { notify('Save the project before starting a cloud render.'); return; }
+
+    setCreatomateRendering(true);
+    setCreatomateProgress(5);
+    try {
+      const response = await fetch('/api/video/render/creatomate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          project: docRef.current.project,
+          resolutionHeight: settings.resolutionHeight,
+        }),
+      });
+      const started = await response.json().catch(() => ({}));
+      if (!response.ok || !started.id) throw new Error(started.error || 'Creatomate could not start the render.');
+
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2500));
+        const poll = await fetch('/api/video/render/creatomate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action: 'status', renderId: String(started.id) }),
+        });
+        const status = await poll.json().catch(() => ({}));
+        if (!poll.ok) throw new Error(status.error || 'Could not check Creatomate status.');
+
+        const state = String(status.status || '').toLowerCase();
+        setCreatomateProgress(state === 'succeeded' ? 100 : Math.min(95, 10 + Math.round((attempt / 120) * 85)));
+
+        if (state === 'succeeded' && status.url) {
+          const a = document.createElement('a');
+          a.href = status.url;
+          a.download = `${(docRef.current.title || 'enotes-video').replace(/[^a-z0-9_-]+/gi, '-')}-creatomate.mp4`;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.click();
+          setCreatomateProgress(100);
+          notify('Creatomate MP4 ready.');
+          return;
+        }
+        if (state === 'failed') throw new Error(status.error_message || 'Creatomate render failed.');
+      }
+      throw new Error('Creatomate render timed out. The provider may still be processing it.');
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Creatomate export failed.');
+    } finally {
+      setCreatomateRendering(false);
     }
   };
 
@@ -9641,6 +9754,22 @@ function VideoEditor() {
                     Cancel
                   </button>
                 )}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => void cloudExport()}
+                  disabled={cloudRendering || creatomateRendering || exporting}
+                  className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-xs font-semibold text-white/85 disabled:opacity-50"
+                >
+                  {cloudRendering ? `JSON2Video ${cloudProgress}%` : 'Cloud MP4 · JSON2Video'}
+                </button>
+                <button
+                  onClick={() => void creatomateExport()}
+                  disabled={cloudRendering || creatomateRendering || exporting}
+                  className="rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-xs font-semibold text-white/85 disabled:opacity-50"
+                >
+                  {creatomateRendering ? `Creatomate ${creatomateProgress}%` : 'Cloud MP4 · Creatomate'}
+                </button>
               </div>
             ) : (
               <div className="space-y-2">
