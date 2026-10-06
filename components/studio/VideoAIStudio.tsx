@@ -513,11 +513,11 @@ export default function VideoAIStudio({
             const urls = Array.isArray(raw.clips)
               ? raw.clips
                   .map((clip) => clip?.src)
-                  .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+                  .filter((url): url is string => typeof url === 'string' && !/^(blob:|data:)/i.test(url))
                   .filter((url) => url !== selectedMediaUrl)
                   .slice(0, 10)
               : [];
-            if (aiMediaUrl && !urls.includes(aiMediaUrl)) urls.unshift(aiMediaUrl);
+              if (aiMediaUrl && !urls.includes(aiMediaUrl)) urls.unshift(aiMediaUrl);
             return urls.slice(0, 10).map((url) => ({ url, type: 'video' as const }));
           })(),
           selection: {
