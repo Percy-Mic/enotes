@@ -1538,6 +1538,7 @@ function VideoEditor() {
   const previewAudioContextRef = useRef<AudioContext | null>(null);
   const previewAudioSourcesRef = useRef<Map<string, MediaElementAudioSourceNode>>(new Map());
   const previewAudioGraphRef = useRef<Map<string, { signature: string; output: GainNode }>>(new Map());
+  const previewAudioLastSyncRef = useRef(0);
 
   const ensurePreviewAudioGraph = useCallback((key: string, media: HTMLMediaElement, effects: AudioEffect[] | undefined) => {
     if (typeof window === 'undefined') return;
@@ -1617,6 +1618,14 @@ function VideoEditor() {
 
 
   const syncPreviewAudio = useCallback((time: number, shouldPlay: boolean) => {
+    /* The audio elements keep playing between sync points. Re-running the
+       whole track scan on every animation-frame tick is unnecessary and is
+       especially expensive on mobile. Only correct drift about 10x/sec while
+       playing; stopping/seeking still synchronizes immediately. */
+    const now = performance.now();
+    if (shouldPlay && now - previewAudioLastSyncRef.current < 100) return;
+    previewAudioLastSyncRef.current = now;
+
     const p = docRef.current.project;
     const lanes = p.tracks.filter((t) => t.kind === 'audio');
     const soloActive = lanes.some((t) => t.solo);
