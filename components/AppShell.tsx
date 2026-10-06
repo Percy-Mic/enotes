@@ -7,7 +7,6 @@ import { CallProvider } from '@/components/chat/CallProvider';
 import { GroupCallProvider } from '@/components/chat/GroupCallProvider';
 import CallOverlay from '@/components/chat/CallOverlay';
 import AppNav from '@/components/social/AppNav';
-import NotesAside from '@/components/notes/NotesAside';
 import { AlertProvider } from '@/components/ui/Alert';
 import PushNotificationGate from '@/components/notifications/PushNotificationGate';
 import InAppNotificationCenter from '@/components/notifications/InAppNotificationCenter';
@@ -38,31 +37,14 @@ const IMMERSIVE_ROUTES = [
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [myId, setMyId] = useState<string | null>(null);
-  const [asideEnabled, setAsideEnabled] = useState(false);
   const pathname = usePathname() || '/';
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => setMyId(user?.id || null));
   }, []);
 
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1280px)');
-    const apply = () => setAsideEnabled(mq.matches);
-    apply();
-    mq.addEventListener('change', apply);
-    return () => mq.removeEventListener('change', apply);
-  }, []);
-
   const immersive = IMMERSIVE_ROUTES.some((re) => re.test(pathname));
 
-  const NO_ASIDE_ROUTES = [
-    /^\/notes(\/|$)/,
-    /^\/journals(\/|$)/,
-    /^\/communities(\/|$)/,
-    /^\/admin(\/|$)/,
-  ];
-  const asideHidden = NO_ASIDE_ROUTES.some((re) => re.test(pathname));
-  const showAside = asideEnabled && !asideHidden;
 
   const [showNav, setShowNav] = useState(false);
   useEffect(() => {
@@ -89,13 +71,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               immersive
                 ? ''
                 : `pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-0 ${showNav ? 'md:pt-14' : ''} ${
-                    showAside ? 'xl:pl-[21rem]' : ''
                   }`
             }
           >
             {children}
           </div>
-          {showNav && showAside && <NotesAside />}
           <CallOverlay />
           <InAppNotificationCenter userId={myId} />
           <PushNotificationGate userId={myId} />
