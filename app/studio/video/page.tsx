@@ -18,6 +18,7 @@ import { audioPlaceholderSrc, isAudioPlaceholder } from '@/lib/video/project';
 import { normalizeVideoDuration, ExportCancelledError } from '@/lib/video/renderer';
 import SharePostPicker from '@/components/community/SharePostPicker';
 import VideoAIStudio, { type VideoAIEditAction } from '@/components/studio/VideoAIStudio';
+import PracticeMode, { type PracticeAssignment, type PracticeMedia, type PracticeSession } from '@/components/studio/PracticeMode';
 import { AUDIO_EFFECT_PRESETS, audioEffectName, connectAudioEffects } from '@/lib/video/audio-effects';
 import {
   CANVAS_SIZES, DEFAULT_ADJUSTMENTS, DEFAULT_AUDIO_PROCESSING, DEFAULT_TRANSFORM, EFFECT_PRESETS, FILTER_PRESETS, KEYFRAMABLE_PROPERTIES, SPEED_OPTIONS, TEXT_ANIMATION_PRESETS, TEXT_LOOP_PRESETS,
@@ -1005,12 +1006,17 @@ function VideoEditor() {
   const templateId = search.get('template');
   const projectId = search.get('project');
   const soundParam = search.get('sound');
+  const practiceParam = search.get('practice');
 
   const history = useHistory<EditorDoc>({ title: 'Untitled project', project: emptyProject('9:16') });
   const { state: doc, setState: setDoc } = history;
   const project = doc.project;
 
   const [meId, setMeId] = useState<string | null>(null);
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [practiceAssignment, setPracticeAssignment] = useState<PracticeAssignment | null>(null);
+  const [practiceSessionId, setPracticeSessionId] = useState<string | null>(null);
+  const [practiceSubmitting, setPracticeSubmitting] = useState(false);
   const { has, loading: entLoading } = useEntitlements(meId);
 
   /* ---------- refs & playback ---------- */
@@ -1121,6 +1127,10 @@ function VideoEditor() {
   const selectedElement = project.elements.find((e) => e.id === selectedElementId) || null;
   const selectedAudio = project.audio.find((a) => a.id === selectedAudioId) || null;
 
+  useEffect(() => {
+    if (practiceParam === '1' && meId) setPracticeOpen(true);
+  }, [practiceParam, meId]);
+
   const notify = useCallback((msg: string) => {
     setToast(msg);
     window.setTimeout(() => setToast(null), 2600);
@@ -1136,6 +1146,97 @@ function VideoEditor() {
       );
     },
     [setDoc]
+  );
+
+  const startPractice = useCallback(
+    (assignment: PracticeAssignment, media: PracticeMedia[], session: PracticeSession) => {
+      const aspect: AspectRatio =
+        assignment.orientation === 'vertical'
+          ? '9:16'
+          : assignment.orientation === 'horizontal'
+            ? '16:9'
+            : '1:1';
+      const canvas = CANVAS_SIZES[aspect];
+      let cursor = 0;
+
+      const clips: VideoClip[] = media
+        .filter((item) => (item.media_type === 'video' || item.media_type === 'image') && item.public_url)
+        .map((item, index) => {
+          const sourceDuration = Math.max(0.2, Number(item.duration_seconds) || 5);
+          const clip: VideoClip = {
+            id: makeVideoId('practice-clip'),
+            src: item.public_url as string,
+            name: item.file_name || item.role || `Client clip ${index + 1}`,
+            storage_path: item.storage_path || undefined,
+            sourceDuration,
+            source_width: Number(item.width) > 0 ? Number(item.width) : undefined,
+            source_height: Number(item.height) > 0 ? Number(item.height) : undefined,
+            trimStart: 0,
+            trimEnd: sourceDuration,
+            speed: 1,
+            volume: 1,
+            muted: false,
+            media_type: item.media_type === 'image' ? 'image' : 'video',
+            transform: { ...DEFAULT_TRANSFORM },
+            adjustments: { ...DEFAULT_ADJUSTMENTS },
+            filter: 'none',
+            effect: 'none',
+            transitionIn: { type: 'none', duration: 0.5 },
+          };
+          cursor += sourceDuration;
+          return clip;
+        });
+
+      const audio = media
+        .filter((item) => item.media_type === 'audio' && item.public_url)
+        .map((item, index) => {
+          const sourceDuration = Math.max(0.2, Number(item.duration_seconds) || 5);
+          return {
+            id: makeVideoId('practice-audio'),
+            name: item.file_name || item.role || `Client audio ${index + 1}`,
+            src: item.public_url as string,
+            storage_path: item.storage_path || undefined,
+            start: 0,
+            sourceDuration,
+            trimStart: 0,
+            trimEnd: sourceDuration,
+            volume: 0.8,
+            fadeIn: 0,
+            fadeOut: 0,
+            kind: 'music' as const,
+          };
+        });
+
+      const nextProject = normalizeProject({
+        ...emptyProject(aspect),
+        version: 3,
+        aspect,
+        canvas,
+        clips,
+        audio,
+        elements: [],
+        tracks: [],
+        masterMuted: false,
+      });
+
+      setDoc(
+        {
+          title: `Practice · ${assignment.title}`,
+          project: nextProject,
+        },
+        'Start practice assignment',
+      );
+      setPracticeAssignment(assignment);
+      setPracticeSessionId(session.id);
+      setPracticeOpen(false);
+      setPlayhead(0);
+      setSelectedClipId(clips[0]?.id || null);
+      setSelectedElementId(null);
+      setSelectedAudioId(audio[0]?.id || null);
+      setPlaying(false);
+      notify(`Client brief loaded: ${assignment.topic}`);
+    },
+    [notify, setDoc],
   );
 
   const updateClip = useCallback(
@@ -6597,6 +6698,63 @@ function VideoEditor() {
     }
   };
 
+  const submitPractice = useCallback(async () => {
+    if (!practiceSessionId || !meId) {
+      notify('Start a Practice Mode assignment first.');
+      return;
+    }
+    if (!exportResult) {
+      notify('Export your MP4 first, then submit it to the client.');
+      openTool('export');
+      return;
+    }
+
+    setPracticeSubmitting(true);
+    try {
+      const file = new File(
+        [exportResult.blob],
+        `practice-${practiceSessionId}-${Date.now()}.mp4`,
+        { type: exportResult.blob.type || 'video/mp4' },
+      );
+      const uploaded = await uploadFile(file, 'studio-media', meId);
+      const { error: submissionError } = await supabase
+        .from('practice_submissions')
+        .insert({
+          session_id: practiceSessionId,
+          user_id: meId,
+          video_url: uploaded.url,
+          storage_path: uploaded.path,
+          duration_seconds: exportResult.durationSeconds,
+          width: exportResult.width,
+          height: exportResult.height,
+          file_size: exportResult.blob.size,
+          project_snapshot: docRef.current.project,
+          status: 'submitted',
+          submitted_at: new Date().toISOString(),
+        });
+
+      if (submissionError) throw submissionError;
+
+      const { error: sessionError } = await supabase
+        .from('practice_sessions')
+        .update({
+          status: 'submitted',
+          submitted_at: new Date().toISOString(),
+          elapsed_seconds: Math.max(0, Math.round(projectDuration(docRef.current.project))),
+        })
+        .eq('id', practiceSessionId)
+        .eq('user_id', meId);
+
+      if (sessionError) throw sessionError;
+
+      notify('Practice submission sent to the client.');
+    } catch (e) {
+      notify(`Could not submit practice: ${e instanceof Error ? e.message : 'unknown error'}`);
+    } finally {
+      setPracticeSubmitting(false);
+    }
+  }, [exportResult, meId, notify, openTool, practiceSessionId]);
+
   const postExport = async () => {
     if (!exportResult || !meId) return;
     try {
@@ -7036,6 +7194,13 @@ function VideoEditor() {
       className="flex h-[100dvh] flex-col overflow-hidden bg-[#0d0d0d] text-white"
       data-history-scoped="true"
     >
+      <PracticeMode
+        userId={meId || ''}
+        open={practiceOpen && Boolean(meId)}
+        onClose={() => setPracticeOpen(false)}
+        onStart={startPractice}
+      />
+
       {/* fullscreen preview overlay (renders above everything when active) */}
       {fullscreen && (
         <FullscreenPreview
@@ -7054,6 +7219,15 @@ function VideoEditor() {
         <Link href="/studio" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" aria-label="Back to studio">
           ←
         </Link>
+        <button
+          type="button"
+          onClick={() => setPracticeOpen(true)}
+          className={`flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2 sm:px-3 py-1.5 text-xs font-bold transition ${practiceSessionId ? 'border-[#E5798F]/50 bg-[#E5798F]/10 text-[#FFB6C1]' : 'border-white/15 bg-white/[0.04] text-white/75'}`}
+          title={practiceSessionId ? 'Open another practice brief' : 'Practice Mode'}
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">{practiceSessionId ? 'Practice' : 'Practice Mode'}</span>
+        </button>
         <input
           value={doc.title}
           onChange={(e) => setDoc({ ...doc, title: e.target.value }, 'Rename project', 'project-title')}
@@ -7085,6 +7259,18 @@ function VideoEditor() {
         >
           <Download className="h-3.5 w-3.5" /><span className="hidden sm:inline">Export</span>
         </button>
+        {practiceSessionId && (
+          <button
+            type="button"
+            onClick={() => void submitPractice()}
+            disabled={practiceSubmitting || !exportResult}
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-[#E5798F]/40 bg-[#E5798F]/10 px-2 sm:px-3 py-1.5 text-xs font-bold text-[#FFB6C1] disabled:opacity-40"
+            title="Submit the exported MP4 to the practice client"
+          >
+            {practiceSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">Submit</span>
+          </button>
+        )}
       </header>
 
       {templateOriginId && (
