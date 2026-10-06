@@ -2360,10 +2360,14 @@ function VideoEditor() {
     finally { setStockBusy(false); }
   }, [stockOrientation, stockProvider, stockQuery]);
 
+  const stockPlaybackUrl = useCallback((url: string) => {
+    return '/api/studio/stock-video?url=' + encodeURIComponent(url);
+  }, []);
+
   const addStockVideo = useCallback((item: { url: string; width: number; height: number; duration: number; photographer: string; provider: 'pexels' | 'pixabay' }) => {
     const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
     const clip: VideoClip = {
-      id: makeVideoId('clip'), src: item.url, name: (item.provider === 'pixabay' ? 'Pixabay · ' : 'Pexels · ') + item.photographer,
+      id: makeVideoId('clip'), src: stockPlaybackUrl(item.url), name: (item.provider === 'pixabay' ? 'Pixabay · ' : 'Pexels · ') + item.photographer,
       sourceDuration, trimStart: 0, trimEnd: Math.min(sourceDuration, 30), speed: 1, volume: 1, muted: false,
       source_width: item.width || undefined, source_height: item.height || undefined,
       transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
@@ -2378,7 +2382,7 @@ function VideoEditor() {
       clips: [...p.clips, clip],
     }), 'Add stock footage');
     setSelectedClipId(clip.id); setSelectedElementId(null); notify('Stock footage added to the main timeline.');
-  }, [notify, updateProject]);
+  }, [notify, stockPlaybackUrl, updateProject]);
 
   const startPracticeProject = useCallback(async () => {
     setStockBusy(true);
@@ -2414,7 +2418,7 @@ function VideoEditor() {
       const clips = uniqueResults.map((item: any) => {
         const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
         return {
-          id: makeVideoId('clip'), src: String(item.url), name: 'Practice · ' + (item.photographer || 'Pexels'),
+          id: makeVideoId('clip'), src: stockPlaybackUrl(String(item.url)), name: 'Practice · ' + (item.photographer || 'Pexels'),
           sourceDuration, trimStart: 0, trimEnd: Math.min(sourceDuration, 6), speed: 1, volume: 1, muted: false,
           source_width: Number(item.width) || undefined, source_height: Number(item.height) || undefined,
           transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
@@ -2449,7 +2453,7 @@ function VideoEditor() {
     } finally {
       setStockBusy(false);
     }
-  }, [notify, setDoc]);
+  }, [notify, setDoc, stockPlaybackUrl]);
 
   useEffect(() => {
     if (tool === 'media' && stockVideos.length === 0) void searchStockVideos(true);
