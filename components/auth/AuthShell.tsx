@@ -13,6 +13,8 @@ type AuthShellProps = {
   asideTitle?: string;
   asideDescription?: string;
   showThemeSelector?: boolean;
+  /** Temporarily render the auth page without its author CSS for CSS demonstrations. */
+  unstyled?: boolean;
 };
 
 export default function AuthShell({
@@ -24,9 +26,14 @@ export default function AuthShell({
   asideTitle = 'Your stories deserve a place that feels like yours.',
   asideDescription = 'Write, collect, create, and keep the moments that matter — all in one calm digital space.',
   showThemeSelector = false,
+  unstyled = false,
 }: AuthShellProps) {
   return (
-    <main className="auth-page min-h-[100dvh] w-full overflow-x-hidden">
+    <>
+      {unstyled && (
+        <style>{`.auth-css-disabled, .auth-css-disabled * { all: revert !important; } .auth-css-disabled { display: block !important; }`}</style>
+      )}
+      <main className={unstyled ? 'auth-css-disabled' : 'auth-page min-h-[100dvh] w-full overflow-x-hidden'}>
       <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1440px] grid-cols-1 lg:grid-cols-[minmax(0,1.06fr)_minmax(420px,.94fr)]">
         <section className="auth-brand-panel relative hidden overflow-hidden p-8 lg:flex lg:flex-col lg:justify-between lg:p-10 xl:p-14">
           <div className="pointer-events-none absolute -right-28 -top-28 h-80 w-80 rounded-full border-[48px] border-white/25" />
@@ -88,6 +95,7 @@ export default function AuthShell({
           </div>
         </section>
       </div>
-    </main>
+      </main>
+    </>
   );
 }
