@@ -125,15 +125,49 @@ function previewClipStart(project: VideoProject, clipId: string): number {
   return project.clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0);
 }
 
-function useLatestPreviewRenderer() {
-  const rendererRef = useRef<VideoRenderer | null>(null);
-  const renderingRef = useRef(false);
-  const queuedRequestRef = useRef<{ canvas: HTMLCanvasElement; project: VideoProject; time: number } | null>(null);
+/* Effects/filter/motion cards are previews, not independent video players.
+ * Keep ONE isolated decoder/compositor for the whole picker and serialize
+ * thumbnail work. Mounting 20+ cards must never create 20+ <video> decoders
+ * for the same source, which can starve the main editor compositor/GPU and
+ * turn both the picker and the main canvas black.
+ */
+let sharedPreviewRenderer: VideoRenderer | null = null;
+let sharedPreviewRendering = false;
+let sharedPreviewRequest: { canvas: HTMLCanvasElement; project: VideoProject; time: number } | null = null;
+let sharedPreviewDrainScheduled = false;
 
-  /* Picker cards must be latest-wins. The old implementation rendered one
-     request and then stopped; every request arriving while that render was
-     running was silently dropped. During playback this happened constantly,
-     so effect/filter/motion thumbnails could remain black or stale forever. */
+async function drainSharedPreviewQueue() {
+  if (sharedPreviewRendering) return;
+  sharedPreviewRendering = true;
+  try {
+    if (!sharedPreviewRenderer) sharedPreviewRenderer = new VideoRenderer();
+
+    while (sharedPreviewRequest) {
+      const next = sharedPreviewRequest;
+      sharedPreviewRequest = null;
+      try {
+        await sharedPreviewRenderer.drawFrame(next.canvas, next.project, next.time, {
+          previewing: true,
+          playing: false,
+          isolatedPreview: true,
+        });
+      } catch {
+        /* A picker preview is non-critical; preserve the last good frame. */
+      }
+    }
+  } finally {
+    sharedPreviewRendering = false;
+    if (sharedPreviewRequest && !sharedPreviewDrainScheduled) {
+      sharedPreviewDrainScheduled = true;
+      queueMicrotask(() => {
+        sharedPreviewDrainScheduled = false;
+        void drainSharedPreviewQueue();
+      });
+    }
+  }
+}
+
+function useLatestPreviewRenderer() {
   const render = useCallback(async (canvas: HTMLCanvasElement, project: VideoProject, time: number) => {
     const maxPreviewEdge = 360;
     const edge = Math.max(project.canvas.width, project.canvas.height);
@@ -149,41 +183,13 @@ function useLatestPreviewRenderer() {
         }
       : project;
 
-    queuedRequestRef.current = { canvas, project: previewProject, time };
-    if (renderingRef.current) return;
-
-    renderingRef.current = true;
-    try {
-      if (!rendererRef.current) rendererRef.current = new VideoRenderer();
-
-      while (queuedRequestRef.current) {
-        const next = queuedRequestRef.current;
-        queuedRequestRef.current = null;
-        try {
-          await rendererRef.current.drawFrame(next.canvas, next.project, next.time, {
-            previewing: true,
-            playing: false,
-            isolatedPreview: true,
-          });
-        } catch {
-          /* A picker is non-critical; keep the last successful frame. */
-        }
-        /* If several timer ticks arrived during the render, only the newest
-           one is rendered. Never build an unbounded preview backlog. */
-      }
-    } finally {
-      renderingRef.current = false;
-      /* A request can arrive in the tiny gap between the loop condition and
-         finally. Re-run with THAT queued request, not the stale arguments
-         from the render that just finished. */
-      const queued = queuedRequestRef.current;
-      if (queued) {
-        queuedRequestRef.current = null;
-        queueMicrotask(() => void render(queued.canvas, queued.project, queued.time));
-      }
-    }
+    /* Latest request wins globally. The cards all preview the same source,
+       so there is no benefit in decoding them concurrently. */
+    sharedPreviewRequest = { canvas, project: previewProject, time };
+    void drainSharedPreviewQueue();
   }, []);
-  return { rendererRef, render };
+
+  return { rendererRef: { current: sharedPreviewRenderer }, render };
 }
 type LookPreviewProps = {
   project: VideoProject;
