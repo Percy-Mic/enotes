@@ -319,6 +319,8 @@ type Props = {
   selectedMediaType?: 'image' | 'video' | 'audio' | null;
   selectedClipId?: string | null;
   selectedElementId?: string | null;
+  quickRequest?: string | null;
+  onQuickRequestConsumed?: () => void;
   onAddCaptions?: (captions: VideoAICaption[]) => void;
   onAddMedia?: (media: { url: string; name: string }) => void;
   onAddStockVideo?: (media: { url: string; name: string; width: number; height: number; duration: number; photographer: string; provider: 'pexels' | 'pixabay' }) => void;
@@ -471,6 +473,8 @@ export default function VideoAIStudio({
   selectedMediaType,
   selectedClipId,
   selectedElementId,
+  quickRequest,
+  onQuickRequestConsumed,
   onAddCaptions,
   onAddMedia,
   onAddStockVideo,
@@ -829,6 +833,11 @@ export default function VideoAIStudio({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!quickRequest || busy) return;
+    void askAssistant(quickRequest).finally(() => onQuickRequestConsumed?.());
+  }, [quickRequest]);
 
   return (
     <div className="min-w-0 space-y-3 overflow-x-hidden">
