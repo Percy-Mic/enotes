@@ -616,6 +616,28 @@ export default function VideoAIStudio({
         throw new Error(String(output?.message || data?.message || 'The AI provider is temporarily unavailable. No changes were applied.'));
       }
       let actions: VideoAIEditAction[] = Array.isArray(output.actions) ? output.actions : [];
+      const isNarrationRequest = /\b(add|create|write|generate|make|record|include|put)\b[\\s\\S]{0,40}\b(narration|voiceover|voice-over|voice over)\b|\b(narration|voiceover|voice-over|voice over)\b[\\s\\S]{0,40}\b(add|create|write|generate|make|record|include|put)\b/i.test(text);
+      /*
+       * Narration is a hard executable intent. If the planner/critic returns
+       * an empty action list, do not let the request fall through to the
+       * generic "prepared an edit plan" state. The narration synthesis step
+       * below needs a concrete action to carry the generated audio back into
+       * the editor.
+       */
+      if (isNarrationRequest && !actions.some((action) => action.type === 'speak_narration')) {
+        actions = [
+          ...actions,
+          {
+            type: 'speak_narration',
+            object: {
+              text: '',
+              start: 0,
+              voice: 'Puck',
+              style: 'natural, clear, engaging',
+            },
+          } as VideoAIEditAction,
+        ];
+      }
       const isActionRequest = /\b(add|apply|change|create|delete|remove|trim|split|move|edit|make|generate|set|adjust|replace|cut|mute|unmute|animate|resize|crop|rotate|narration|voiceover|voice over|caption|subtitle|music|audio|effect|filter|transition|motion)\b/i.test(text);
       const captions: VideoAICaption[] = Array.isArray(output.captions) ? output.captions : [];
 
