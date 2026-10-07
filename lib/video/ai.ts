@@ -3168,194 +3168,14 @@ ${beatsForPlan}
     );
 
     /*
-     * Deterministic emergency planner.
-     *
-     * Gemini remains the creative planner, but a temporary model/API/schema
-     * failure must never turn a valid editing request into an empty response.
-     * This fallback deliberately uses only local editor actions, so it needs
-     * no additional paid AI provider.
+     * Do not mutate the project when the AI planner fails.
+     * A provider/schema failure is an AI failure, not permission to invent
+     * a generic edit. In particular, never synthesize headlines, CTAs,
+     * stock footage, trims, grades, or motion that the user did not request.
+     * The provider router already retries/falls back between AI providers;
+     * if all planner attempts fail, the caller must receive a truthful error
+     * and the editor must remain unchanged.
      */
-    const buildDeterministicEditPlan = () => {
-      const timeline = Array.isArray(compactProject.timeline)
-        ? (compactProject.timeline as Array<Record<string, unknown>>)
-        : [];
-
-      const clips = Array.isArray(compactProject.clips)
-        ? (compactProject.clips as Array<Record<string, unknown>>)
-        : [];
-
-      const actions: Array<Record<string, unknown>> = [];
-      const usableTimeline = timeline.filter((item) => {
-        const id = String(item.clipId || item.id || '');
-        return Boolean(id);
-      });
-
-      const clipById = new Map(
-        clips.map((clip) => [String(clip.id || ''), clip]),
-      );
-
-      /*
-       * One shared grade makes the whole timeline read as one piece.
-       * Values are intentionally restrained so this remains a safe fallback
-       * rather than pretending to understand the footage semantically.
-       */
-      if (usableTimeline.length) {
-        actions.push({
-          type: 'set_clip_adjustments',
-          clipId: 'all',
-          object: {
-            brightness: 2,
-            contrast: 10,
-            saturate: 4,
-            exposure: 1,
-            temperature: 2,
-            tint: 0,
-            vibrance: 8,
-            vignette: 10,
-            grain: 2,
-            sharpen: 8,
-          },
-        });
-      }
-
-      /*
-       * Mandatory finishing pass first: trims for every usable clip, then a
-       * consistent transition at every edit point. Keeping these in separate
-       * passes guarantees that the 24-action safety budget cannot starve the
-       * later clips of their core treatment.
-       */
-      for (const item of usableTimeline) {
-        if (actions.length >= 24) break;
-        const clipId = String(item.clipId || item.id || '');
-        const sourceStart = Number(item.sourceStart);
-        const sourceEnd = Number(item.sourceEnd);
-        if (Number.isFinite(sourceStart) && Number.isFinite(sourceEnd) && sourceEnd > sourceStart) {
-          const sourceDuration = sourceEnd - sourceStart;
-          const trim = Math.min(0.45, Math.max(0.08, sourceDuration * 0.06));
-          const nextStart = sourceStart + trim;
-          const nextEnd = sourceEnd - trim;
-          if (nextEnd > nextStart + 0.2) {
-            actions.push({
-              type: 'trim_clip',
-              clipId,
-              value: String(Number(nextStart.toFixed(3))),
-              value2: String(Number(nextEnd.toFixed(3))),
-            });
-          }
-        }
-      }
-
-      for (let index = 1; index < usableTimeline.length && actions.length < 24; index += 1) {
-        const item = usableTimeline[index];
-        const clipId = String(item.clipId || item.id || '');
-        actions.push({
-          type: 'set_clip_transition',
-          clipId,
-          value: 'crossfade',
-          value2: '0.45',
-        });
-      }
-
-      /*
-       * Motion is an enhancement after the mandatory edit grammar is covered.
-       * Apply subtle push-ins to as many early clips as the remaining budget
-       * allows, using two keyframes per clip as required by the executor.
-       */
-      for (const item of usableTimeline) {
-        if (actions.length + 2 > 21) break;
-        const clipId = String(item.clipId || item.id || '');
-        const timelineStart = Number(item.timelineStart);
-        const timelineEnd = Number(item.timelineEnd);
-        const localDuration =
-          Number.isFinite(timelineStart) && Number.isFinite(timelineEnd)
-            ? Math.max(0.5, timelineEnd - timelineStart)
-            : Number(clipById.get(clipId)?.duration || 0);
-        if (localDuration <= 0.5) continue;
-        actions.push({
-          type: 'set_keyframe',
-          clipId,
-          object: {
-            property: 'scale_kf',
-            t: 0,
-            value: 1,
-          },
-        });
-        actions.push({
-          type: 'set_keyframe',
-          clipId,
-          object: {
-            property: 'scale_kf',
-            t: Number(localDuration.toFixed(3)),
-            value: 1.035,
-          },
-        });
-      }
-
-      const projectEnd =
-        usableTimeline.length > 0
-          ? Number(usableTimeline[usableTimeline.length - 1].timelineEnd) || 0
-          : 0;
-
-      if (projectEnd > 0 && actions.length < 24) {
-        const canvasWidth = Number(compactCanvas.width) || 1080;
-        const canvasHeight = Number(compactCanvas.height) || 1920;
-
-        actions.push({
-          type: 'add_text_element',
-          object: {
-            text: 'MAKE EVERY FRAME COUNT',
-            start: 0,
-            end: Math.min(projectEnd, Math.max(2.5, Math.min(4, projectEnd))),
-            x: Math.round(canvasWidth * 0.06),
-            y: Math.round(canvasHeight * 0.07),
-            width: Math.round(canvasWidth * 0.88),
-            height: Math.round(canvasHeight * 0.08),
-            font_size: Math.round(canvasHeight * 0.055),
-            color: '#FFFFFF',
-            background: 'rgba(0,0,0,0.28)',
-            animation: 'fade-up',
-            font_family: 'Inter',
-            font_weight: 700,
-            stroke_color: '#000000',
-            shadow: true,
-            align: 'center',
-          },
-        });
-
-        if (projectEnd >= 2.5 && actions.length < 24) {
-          const ctaEnd = projectEnd;
-          const ctaStart = Math.max(0, ctaEnd - Math.min(3.5, ctaEnd));
-          actions.push({
-            type: 'add_text_element',
-            object: {
-              text: 'WATCH TILL THE END',
-              start: ctaStart,
-              end: ctaEnd,
-              x: Math.round(canvasWidth * 0.06),
-              y: Math.round(canvasHeight * 0.80),
-              width: Math.round(canvasWidth * 0.88),
-              height: Math.round(canvasHeight * 0.07),
-              font_size: Math.round(canvasHeight * 0.045),
-              color: '#FFFFFF',
-              background: 'rgba(0,0,0,0.24)',
-              animation: 'fade-up',
-              font_family: 'Inter',
-              font_weight: 700,
-              stroke_color: '#000000',
-              shadow: true,
-              align: 'center',
-            },
-          });
-        }
-      }
-
-      return {
-        message: 'I prepared a complete professional edit using the local fallback planner.',
-        summary:
-          'Tightened clip timing, matched the color treatment across the timeline, added consistent transitions, subtle motion, and a readable text layer.',
-        actions: actions.slice(0, 24),
-      };
-    };
 
     let plan: any = null;
 
@@ -3397,14 +3217,15 @@ ${beatsForPlan}
       !plan.actions.length
     ) {
       /*
-       * Gemini/Groq formatting failures must not make the editing assistant
-       * unusable. This fallback uses only the real project timeline and local
-       * editor actions, and does not claim to understand unavailable footage.
+       * No silent local edit fallback. If the planner could not produce a
+       * concrete action list, nothing is allowed to change in the project.
+       * The API route will surface this as a provider/planner failure and the
+       * client will report that no changes were applied.
        */
-      plan = buildDeterministicEditPlan();
-      console.warn(
-        '[video-ai] using deterministic edit-plan fallback:',
-        plannerError || 'provider returned no usable actions',
+      throw new Error(
+        plannerError
+          ? `The AI planner could not produce an executable edit. No changes were applied. ${plannerError}`
+          : 'The AI planner returned no executable edit actions. No changes were applied.',
       );
     }
 
@@ -3655,16 +3476,12 @@ Rules:
      *    fallback text with role-appropriate neutral copy — an opener for
      *    cues in the first part of the timeline, a closing CTA near the end
      *    — so the design slot survives with intentional-looking text. */
-    const placeholderText = /^(?:your message|your story|your brand|learn more|watch more)$/i;
-    for (const action of plannedActions) {
-      if (action.type !== 'add_text_element') continue;
-      const obj = (action.object = action.object && typeof action.object === 'object' ? action.object : {});
-      const text = typeof obj.text === 'string' ? obj.text.trim() : '';
-      if (text && !placeholderText.test(text)) continue;
-      const start = Number(obj.start) || 0;
-      /* A missing AI caption is not a valid edit. Drop it later in sanitization rather than inventing copy. */
-       obj.text = '';
-    }
+    const placeholderText = /^(?:your message|your story|your brand|learn more|watch more|make every frame count|watch till the end)$/i;
+    plannedActions = plannedActions.filter((action: any) => {
+      if (action.type !== 'add_text_element') return true;
+      const text = typeof action.object?.text === 'string' ? action.object.text.trim() : '';
+      return Boolean(text) && !placeholderText.test(text);
+    });
 
     /* 1b) Narration-copy guard: the live session caught Gemini emitting
        speak_narration with an EMPTY object ({}) — the client then
@@ -3706,49 +3523,12 @@ Rules:
       plannedActions.push({ type: 'set_clip_filter', clipId: 'all', value: 'cinematic' });
     }
 
-    const adTextCount = plannedActions.filter((action: any) =>
-      action.type === 'add_text_element' &&
-      typeof action.object?.text === 'string' &&
-      String(action.object.text).trim()
-    ).length;
-
-    if (isAdvertisementRequest && adTextCount < 2) {
-      const duration = Math.max(3, Number(compactProject.clips.reduce((sum: number, clip: any) => sum + Math.max(0.1, (Number(clip.trimEnd) || 1) - (Number(clip.trimStart) || 0)) / Math.max(0.05, Number(clip.speed) || 1), 0)) || 6);
-      plannedActions.push(
-        {
-          type: 'add_text_element',
-          object: {
-            text: 'YOUR BRAND',
-            start: 0,
-            end: Math.min(duration, 3),
-            x: Number(compactProject.canvas?.width || 1080) * 0.08,
-            y: Number(compactProject.canvas?.height || 1350) * 0.12,
-            width: Number(compactProject.canvas?.width || 1080) * 0.84,
-            height: 120,
-            font_size: 64,
-            color: '#FFFFFF',
-            background: '#000000',
-            animation: 'pop',
-          },
-        },
-        {
-          type: 'add_text_element',
-          object: {
-            text: 'LEARN MORE',
-            start: Math.max(0, duration - 3),
-            end: duration,
-            x: Number(compactProject.canvas?.width || 1080) * 0.12,
-            y: Number(compactProject.canvas?.height || 1350) * 0.78,
-            width: Number(compactProject.canvas?.width || 1080) * 0.76,
-            height: 100,
-            font_size: 52,
-            color: '#FFFFFF',
-            background: '#E5798F',
-            animation: 'slide-up',
-          },
-        },
-      );
-    }
+    /*
+     * Do not manufacture ad copy. Advertisement mode can request a headline
+     * or CTA, but only the planner may choose the actual words from the user's
+     * request and project evidence. If it does not emit text, keep the edit
+     * text-free rather than inserting generic marketing copy.
+     */
 
     /*
      * Sanitizer v2.
@@ -4033,64 +3813,11 @@ Return {"add": [...], "fixes": [{"index": <0-based index into the plan>, "action
     }
 
     /*
-     * Copywriting pass — the planner tier (flash-lite) often emits blank or
-     * placeholder text cues even with full visual context, which used to
-     * render as generic "YOUR STORY". One dedicated call to the stronger
-     * text model writes the ACTUAL copy per cue, grounded in the request,
-     * the visual index, and each cue's timing/role.
+     * Never invent copy for a text action. Text overlays are part of the
+     * user's edit intent and must come from the planner's explicit action.
+     * Empty/placeholder cues are removed below instead of being rewritten
+     * into generic hooks or CTAs.
      */
-    const placeholderTextRe = /^(your story|watch more|your message)$/i;
-    const textCueIdxs: number[] = [];
-    sanitizedActions.forEach((action: any, idx: number) => {
-      if (action.type !== 'add_text_element') return;
-      const t = String(action.object?.text || '').trim();
-      if (!t || placeholderTextRe.test(t)) textCueIdxs.push(idx);
-    });
-    if (textCueIdxs.length) {
-      try {
-        const copySchema = {
-          type: 'object',
-          properties: {
-            copies: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: { index: { type: 'integer' }, text: { type: 'string' } },
-                required: ['index', 'text'],
-              },
-            },
-          },
-          required: ['copies'],
-        };
-        const cueContext = textCueIdxs.map((idx) => {
-          const a: any = sanitizedActions[idx];
-          const start = Number(a.object?.start) || 0;
-          const role = timelineEnd > 0 && start >= timelineEnd * 0.6 ? 'closing CTA' : start <= 3 ? 'opening hook/title' : 'mid-video emphasis';
-          return { index: idx, start, end: Number(a.object?.end) || start + 3, role };
-        });
-        const copy = await geminiStructured(
-          `You are the copywriter for a video edit. Write the EXACT on-screen text for each cue below.\n\n` +
-          `User request: ${String(input.prompt || '').slice(0, 300)}\n\n` +
-          `What is visible in the footage (visual index): ${JSON.stringify(persistedVisionIndex.slice(0, 20).map((v) => ({ desc: v.description, tags: (v as { visualTags?: unknown }).visualTags })))}\n\n` +
-          `Spoken words and when (transcript): ${JSON.stringify(transcriptForPlan).slice(0, 1200)}\n\n` +
-          `Cues needing copy (index refers to the actions array): ${JSON.stringify(cueContext)}\n\n` +
-          `Rules: max 6 words per cue (8 for a CTA), UPPERCASE for openers/CTAs, sentence case for captions; copy must match what the footage actually shows and the user's request; no quotes, no emojis, no hashtags. Return one entry per cue index.`,
-          copySchema,
-          process.env.GEMINI_TEXT_MODEL || 'gemini-3.8-flash',
-        );
-        const copies = Array.isArray((copy as any)?.copies) ? (copy as any).copies : [];
-        for (const c of copies) {
-          const idx = Number(c?.index);
-          const text = String(c?.text || '').trim().replace(/["“”]/g, '').slice(0, 80);
-          if (Number.isInteger(idx) && idx >= 0 && idx < sanitizedActions.length && text && !placeholderTextRe.test(text)) {
-            sanitizedActions[idx] = { ...sanitizedActions[idx], object: { ...sanitizedActions[idx].object, text } };
-          }
-        }
-      } catch {
-        /* Copy enhancement is optional; cues keep their neutral fallback. */
-      }
-    }
-
     /*
      * Timing guard — deterministic duration/sequencing for text cues,
      * independent of what the model guessed. Reading speed caps how long
