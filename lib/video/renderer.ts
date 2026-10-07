@@ -2606,9 +2606,99 @@ export class VideoRenderer {
          would otherwise make every exported soundtrack audibly late. */
       let startDelay = 0;
 
-      // Main-track original audio. Clips remain sequential in the visual track;
-      // their decoded audio is scheduled at the exact same project positions.
-      // playbackRate = clip.speed keeps audio in sync with speed-changed video.
+      // Main-track original audio. Prefer Web Audio decoding when the source is
+      // a standalone audio stream, but do NOT assume a video container can be
+      // passed to decodeAudioData(). MP4/WebM files are containers that must be
+      // demuxed by the media element. When decodeAudioData() rejects the full
+      // video file, fall back to an HTMLAudioElement + MediaElementAudioSourceNode
+      // so AAC/Opus tracks embedded in the video remain audible in the export.
+      //
+      // The fallback is deliberately kept per-clip. One problematic clip must
+      // not remove audio from every other clip in the project.
+      const exportMediaAudio: Array<{ media: HTMLAudioElement; timer: number | null }> = [];
+      const scheduleMediaClipAudio = async (
+        clip: VideoClip,
+        clipStart: number,
+        clipDurationSec: number,
+      ) => {
+        if (clip.reverse) {
+          throw new Error('Reverse clip audio requires a directly decodable audio buffer.');
+        }
+
+        const media = document.createElement('audio');
+        media.crossOrigin = 'anonymous';
+        media.preload = 'auto';
+        media.volume = 1;
+        media.muted = false;
+        media.defaultMuted = false;
+        media.src = clip.src;
+        media.playsInline = true;
+
+        const waitForMetadata = new Promise<void>((resolve, reject) => {
+          if (media.readyState >= HTMLMediaElement.HAVE_METADATA) {
+            resolve();
+            return;
+          }
+          const onReady = () => {
+            cleanup();
+            resolve();
+          };
+          const onError = () => {
+            cleanup();
+            reject(new Error(media.error?.message || 'The video audio track could not be opened.'));
+          };
+          const cleanup = () => {
+            media.removeEventListener('loadedmetadata', onReady);
+            media.removeEventListener('error', onError);
+          };
+          media.addEventListener('loadedmetadata', onReady, { once: true });
+          media.addEventListener('error', onError, { once: true });
+        });
+        await waitForMetadata;
+
+        const source = audioCtx.createMediaElementSource(media);
+        const volumeGain = audioCtx.createGain();
+        const audioStart = audioCtx.currentTime + startDelay + clipStart;
+        const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
+
+        for (let i = 0; i <= audioSteps; i++) {
+          const u = i / audioSteps;
+          const value = resolveClipValues(clip, u * clipDurationSec).volume;
+          const at = audioStart + u * clipDurationSec;
+          if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
+          else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), at);
+        }
+
+        connectAudioEffects(audioCtx, source, clip.audioProcessing?.effects, destination, volumeGain);
+
+        /*
+         * Start the media element exactly at the clip's project position.
+         * A media element has its own clock, so seeking to trimStart immediately
+         * and then delaying play would be safe, but calling play() later can hit
+         * autoplay policy on some browsers. Instead, start it muted at export
+         * setup (inaudible autoplay is allowed), then seek to the real trim point
+         * and unmute at the scheduled project start. The Web Audio gain remains
+         * the final volume authority.
+         */
+        media.muted = true;
+        media.currentTime = Math.max(0, clip.trimStart);
+        const startDelayMs = Math.max(0, (audioStart - audioCtx.currentTime) * 1000);
+        const timer = window.setTimeout(() => {
+          try {
+            media.currentTime = Math.max(0, clip.trimStart);
+            media.muted = false;
+            media.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
+            void media.play().catch(() => {
+              /* The caller verifies the destination track; keep the media
+                 object alive long enough for the browser to retry playback. */
+            });
+          } catch {}
+        }, startDelayMs);
+
+        exportMediaAudio.push({ media, timer });
+        void media.play().catch(() => {});
+      };
+
       if (!scaled.masterMuted) {
         let clipStart = 0;
         for (const clip of scaled.clips) {
@@ -2618,52 +2708,65 @@ export class VideoRenderer {
               const res = await fetch(clip.src);
               if (!res.ok) throw new Error(`HTTP ${res.status}`);
               const array = await res.arrayBuffer();
-              const decoded = await audioCtx.decodeAudioData(array);
-              const source = audioCtx.createBufferSource();
-              const trimLength = Math.max(0.05, clip.trimEnd - clip.trimStart);
-              if (clip.reverse) {
-                source.buffer = reverseAudioSegment(audioCtx, decoded, clip.trimStart, clip.trimEnd);
-                source.playbackRate.value = Math.max(0.0625, Math.min(16, clip.speed));
-                const processed = connectAudioProcessing(audioCtx, source, 1, {
-                  noiseReduction: clip.audioProcessing?.noiseReduction || 0,
-                  highPassHz: clip.audioProcessing?.highPassHz || 80,
-                  lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
-                  compressor: clip.audioProcessing?.compressor || false,
-                });
-                const volumeGain = audioCtx.createGain();
-                const audioStart = audioCtx.currentTime + startDelay + clipStart;
-                const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
-                for (let i = 0; i <= audioSteps; i++) {
-                  const u = i / audioSteps;
-                  const value = resolveClipValues(clip, u * clipDurationSec).volume;
-                  if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
-                  else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
+
+              try {
+                const decoded = await audioCtx.decodeAudioData(array);
+                const source = audioCtx.createBufferSource();
+                const trimLength = Math.max(0.05, clip.trimEnd - clip.trimStart);
+                if (clip.reverse) {
+                  source.buffer = reverseAudioSegment(audioCtx, decoded, clip.trimStart, clip.trimEnd);
+                  source.playbackRate.value = Math.max(0.0625, Math.min(16, clip.speed));
+                  const processed = connectAudioProcessing(audioCtx, source, 1, {
+                    noiseReduction: clip.audioProcessing?.noiseReduction || 0,
+                    highPassHz: clip.audioProcessing?.highPassHz || 80,
+                    lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
+                    compressor: clip.audioProcessing?.compressor || false,
+                  });
+                  const volumeGain = audioCtx.createGain();
+                  const audioStart = audioCtx.currentTime + startDelay + clipStart;
+                  const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
+                  for (let i = 0; i <= audioSteps; i++) {
+                    const u = i / audioSteps;
+                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
+                    else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
+                  }
+                  connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination, volumeGain);
+                  source.start(audioStart, 0, trimLength);
+                } else {
+                  source.buffer = decoded;
+                  source.playbackRate.value = Math.max(0.0625, Math.min(16, clip.speed));
+                  const processed = connectAudioProcessing(audioCtx, source, 1, {
+                    noiseReduction: clip.audioProcessing?.noiseReduction || 0,
+                    highPassHz: clip.audioProcessing?.highPassHz || 80,
+                    lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
+                    compressor: clip.audioProcessing?.compressor || false,
+                  });
+                  const volumeGain = audioCtx.createGain();
+                  const audioStart = audioCtx.currentTime + startDelay + clipStart;
+                  const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
+                  for (let i = 0; i <= audioSteps; i++) {
+                    const u = i / audioSteps;
+                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
+                    else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
+                  }
+                  connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination, volumeGain);
+                  source.start(audioStart, clip.trimStart, trimLength);
                 }
-                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination, volumeGain);
-                source.start(audioStart, 0, trimLength);
-              } else {
-                source.buffer = decoded;
-                source.playbackRate.value = Math.max(0.0625, Math.min(16, clip.speed));
-                const processed = connectAudioProcessing(audioCtx, source, 1, {
-                  noiseReduction: clip.audioProcessing?.noiseReduction || 0,
-                  highPassHz: clip.audioProcessing?.highPassHz || 80,
-                  lowPassHz: clip.audioProcessing?.lowPassHz || 14000,
-                  compressor: clip.audioProcessing?.compressor || false,
-                });
-                const volumeGain = audioCtx.createGain();
-                const audioStart = audioCtx.currentTime + startDelay + clipStart;
-                const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
-                for (let i = 0; i <= audioSteps; i++) {
-                  const u = i / audioSteps;
-                  const value = resolveClipValues(clip, u * clipDurationSec).volume;
-                  if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
-                  else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
-                }
-                connectAudioEffects(audioCtx, processed, clip.audioProcessing?.effects, destination, volumeGain);
-                source.start(audioStart, clip.trimStart, trimLength);
+              } catch {
+                /*
+                 * IMPORTANT: decodeAudioData() is not a reliable video-container
+                 * demuxer. Fall through to the browser's media-element decoder
+                 * instead of silently dropping the clip soundtrack.
+                 */
+                await scheduleMediaClipAudio(clip, clipStart, clipDurationSec);
               }
             } catch {
-              // Some video containers/codecs expose no decodable audio track.
+              /*
+               * Network/fetch errors are still isolated to this clip. The
+               * existing source validation reports unusable media separately.
+               */
             }
           }
           clipStart += clipDurationSec;
@@ -2899,6 +3002,12 @@ export class VideoRenderer {
 
       recorder.stop();
       const blob = await done;
+      exportMediaAudio.forEach(({ media, timer }) => {
+        if (timer !== null) window.clearTimeout(timer);
+        media.pause();
+        media.removeAttribute('src');
+        try { media.load(); } catch {}
+      });
       destination.stream.getTracks().forEach((t) => t.stop());
       canvasStream.getTracks().forEach((t) => t.stop());
       void audioCtx.close();
