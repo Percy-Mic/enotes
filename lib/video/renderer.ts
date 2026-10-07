@@ -2632,7 +2632,6 @@ export class VideoRenderer {
         media.muted = false;
         media.defaultMuted = false;
         media.src = clip.src;
-        media.playsInline = true;
 
         const waitForMetadata = new Promise<void>((resolve, reject) => {
           if (media.readyState >= HTMLMediaElement.HAVE_METADATA) {
