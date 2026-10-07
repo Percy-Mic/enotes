@@ -125,36 +125,50 @@ function previewClipStart(project: VideoProject, clipId: string): number {
   return project.clips.slice(0, index).reduce((sum, clip) => sum + clipDuration(clip), 0);
 }
 
-/* Effects/filter/motion cards are previews, not independent video players.
- * Keep ONE isolated decoder/compositor for the whole picker and serialize
- * thumbnail work. Mounting 20+ cards must never create 20+ <video> decoders
- * for the same source, which can starve the main editor compositor/GPU and
- * turn both the picker and the main canvas black.
+/* Effects/filter/motion previews share ONE detached compositor surface.
+ * Preset cards never request their own 2D/GPU canvas contexts. Rendered frames
+ * become CSS poster images, preventing the Effects drawer from exhausting
+ * Chromium's canvas/GPU-context budget and taking down the main editor canvas.
  */
 let sharedPreviewRenderer: VideoRenderer | null = null;
+let sharedPreviewCanvas: HTMLCanvasElement | null = null;
 let sharedPreviewRendering = false;
-const sharedPreviewRequests = new Map<HTMLCanvasElement, { project: VideoProject; time: number }>();
 let sharedPreviewDrainScheduled = false;
+const sharedPreviewRequests = new Map<HTMLCanvasElement, { project: VideoProject; time: number }>();
+
+function getSharedPreviewSurface() {
+  if (!sharedPreviewCanvas) {
+    sharedPreviewCanvas = document.createElement('canvas');
+    sharedPreviewCanvas.width = 360;
+    sharedPreviewCanvas.height = 202;
+  }
+  return sharedPreviewCanvas;
+}
 
 async function drainSharedPreviewQueue() {
   if (sharedPreviewRendering) return;
   sharedPreviewRendering = true;
   try {
     if (!sharedPreviewRenderer) sharedPreviewRenderer = new VideoRenderer();
-
+    const surface = getSharedPreviewSurface();
     while (sharedPreviewRequests.size) {
       const iterator = sharedPreviewRequests.entries().next();
       if (iterator.done) break;
-      const [canvas, next] = iterator.value;
-      sharedPreviewRequests.delete(canvas);
+      const [targetCanvas, request] = iterator.value;
+      sharedPreviewRequests.delete(targetCanvas);
       try {
-        await sharedPreviewRenderer.drawFrame(canvas, next.project, next.time, {
+        await sharedPreviewRenderer.drawFrame(surface, request.project, request.time, {
           previewing: true,
           playing: false,
           isolatedPreview: true,
         });
+        targetCanvas.style.backgroundImage = `url("${surface.toDataURL('image/jpeg', 0.82)}")`;
+        targetCanvas.style.backgroundPosition = 'center';
+        targetCanvas.style.backgroundRepeat = 'no-repeat';
+        targetCanvas.style.backgroundSize = 'cover';
+        targetCanvas.style.backgroundColor = 'black';
       } catch {
-        /* A picker preview is non-critical; preserve the last good frame. */
+        /* A picker preview is non-critical; preserve its previous frame. */
       }
     }
   } finally {
@@ -170,29 +184,29 @@ async function drainSharedPreviewQueue() {
 }
 
 function useLatestPreviewRenderer() {
-  const render = useCallback(async (canvas: HTMLCanvasElement, project: VideoProject, time: number) => {
+  const render = useCallback(async (
+    targetCanvas: HTMLCanvasElement,
+    project: VideoProject,
+    time: number,
+  ) => {
     const maxPreviewEdge = 360;
     const edge = Math.max(project.canvas.width, project.canvas.height);
     const scale = edge > maxPreviewEdge ? maxPreviewEdge / edge : 1;
-    const previewProject: VideoProject = scale < 1
-      ? {
-          ...project,
-          canvas: {
-            ...project.canvas,
-            width: Math.max(1, Math.round(project.canvas.width * scale)),
-            height: Math.max(1, Math.round(project.canvas.height * scale)),
-          },
-        }
-      : project;
-
-    /* Latest request wins globally. The cards all preview the same source,
-       so there is no benefit in decoding them concurrently. */
-    sharedPreviewRequests.set(canvas, { project: previewProject, time });
+    const previewProject: VideoProject = scale < 1 ? {
+      ...project,
+      canvas: {
+        ...project.canvas,
+        width: Math.max(1, Math.round(project.canvas.width * scale)),
+        height: Math.max(1, Math.round(project.canvas.height * scale)),
+      },
+    } : project;
+    sharedPreviewRequests.set(targetCanvas, { project: previewProject, time });
     void drainSharedPreviewQueue();
   }, []);
 
   return { rendererRef: { current: sharedPreviewRenderer }, render };
 }
+
 type LookPreviewProps = {
   project: VideoProject;
   clipId: string;
