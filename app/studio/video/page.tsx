@@ -7829,6 +7829,7 @@ function VideoEditor() {
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Splice and blend"><Layers className="h-4 w-4" />Splice</button>
                     <button onClick={() => openTool('motion')} className={EDITOR_ACTION_PILL} aria-label="Animations"><Sparkles className="h-4 w-4" />Animations</button>
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Effects"><Sparkles className="h-4 w-4" />Effects</button>
+                    <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Mask">◯ Mask</button>
                     <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
