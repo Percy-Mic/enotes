@@ -51,9 +51,13 @@ export default function AdminPage() {
         window.location.href = '/auth/sign-in';
         return;
       }
-      const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).maybeSingle();
-      const isAdmin = !!(profile as { is_admin?: boolean } | null)?.is_admin;
-      setAllowed(isAdmin);
+      const { data: isAdmin, error: adminError } = await supabase.rpc('is_current_user_admin');
+      if (adminError) {
+        console.error(adminError);
+        setAllowed(false);
+        return;
+      }
+      setAllowed(!!isAdmin);
       if (!isAdmin) return;
 
       const [{ data: tpl }, { data: rep }, { data: cfg }] = await Promise.all([
@@ -277,6 +281,7 @@ export default function AdminPage() {
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800"><strong>Protected:</strong> <code>push_send_secret</code> is never selected or rendered by this page.</div>
           </div>
         )}
+      </div>
     </main>
   );
 }
