@@ -128,6 +128,8 @@ export interface VideoClip {
   trimEnd: number;
   speed: number;                 // 0.25 … 4
   volume: number;                // 0-1 (original audio)
+  /** Main-clip visual opacity. 1 is fully opaque; animated by opacity_kf when present. */
+  opacity?: number;
   muted: boolean;
   reverse?: boolean;
   /** Main-track media kind. Images use the same timeline/transform pipeline and hold for sourceDuration. */
@@ -407,7 +409,7 @@ export function resolveClipValues(
     offset_y: sampleKeyframes(kf?.pos_y_kf, timeIn, clip.transform.offset_y),
     scale: sampleKeyframes(kf?.scale_kf, timeIn, clip.transform.scale),
     rotation: sampleKeyframes(kf?.rotation_kf, timeIn, clip.transform.rotation),
-    opacity: Math.max(0, Math.min(1, sampleKeyframes(kf?.opacity_kf, timeIn, 1))),
+    opacity: Math.max(0, Math.min(1, sampleKeyframes(kf?.opacity_kf, timeIn, clip.opacity == null ? 1 : Number(clip.opacity)))),
     volume: Math.max(0, Math.min(1, sampleKeyframes(kf?.volume_kf, timeIn, clip.volume))),
   };
 }
