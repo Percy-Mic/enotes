@@ -133,7 +133,7 @@ function previewClipStart(project: VideoProject, clipId: string): number {
  */
 let sharedPreviewRenderer: VideoRenderer | null = null;
 let sharedPreviewRendering = false;
-let sharedPreviewRequest: { canvas: HTMLCanvasElement; project: VideoProject; time: number } | null = null;
+const sharedPreviewRequests = new Map<HTMLCanvasElement, { project: VideoProject; time: number }>();
 let sharedPreviewDrainScheduled = false;
 
 async function drainSharedPreviewQueue() {
@@ -142,11 +142,13 @@ async function drainSharedPreviewQueue() {
   try {
     if (!sharedPreviewRenderer) sharedPreviewRenderer = new VideoRenderer();
 
-    while (sharedPreviewRequest) {
-      const next = sharedPreviewRequest;
-      sharedPreviewRequest = null;
+    while (sharedPreviewRequests.size) {
+      const iterator = sharedPreviewRequests.entries().next();
+      if (iterator.done) break;
+      const [canvas, next] = iterator.value;
+      sharedPreviewRequests.delete(canvas);
       try {
-        await sharedPreviewRenderer.drawFrame(next.canvas, next.project, next.time, {
+        await sharedPreviewRenderer.drawFrame(canvas, next.project, next.time, {
           previewing: true,
           playing: false,
           isolatedPreview: true,
@@ -157,7 +159,7 @@ async function drainSharedPreviewQueue() {
     }
   } finally {
     sharedPreviewRendering = false;
-    if (sharedPreviewRequest && !sharedPreviewDrainScheduled) {
+    if (sharedPreviewRequests.size && !sharedPreviewDrainScheduled) {
       sharedPreviewDrainScheduled = true;
       queueMicrotask(() => {
         sharedPreviewDrainScheduled = false;
@@ -185,7 +187,7 @@ function useLatestPreviewRenderer() {
 
     /* Latest request wins globally. The cards all preview the same source,
        so there is no benefit in decoding them concurrently. */
-    sharedPreviewRequest = { canvas, project: previewProject, time };
+    sharedPreviewRequests.set(canvas, { project: previewProject, time });
     void drainSharedPreviewQueue();
   }, []);
 
