@@ -2631,13 +2631,16 @@ function VideoEditor() {
      */
     const preparedNarrations: Array<{ start: number; span: number; url: string } | null> = [];
     for (const action of safeActions) {
-      if (action.type !== 'speak_narration' || !action.object) {
-        preparedNarrations.push(null);
-        continue;
-      }
+      /* Keep this array indexed ONLY by narration actions. The placement loop
+         advances narrationIndex only for speak_narration, so non-narration
+         actions must never consume a slot or a later voiceover can silently
+         disappear. */
+      if (action.type !== 'speak_narration' || !action.object) continue;
+
       const obj = action.object;
       const wavBase64 = typeof obj.audioBase64Wav === 'string' ? obj.audioBase64Wav : '';
       if (!wavBase64 || !meId) {
+        actionFailures.push('speak_narration: missing synthesized audio or signed-in user');
         preparedNarrations.push(null);
         continue;
       }
@@ -2658,7 +2661,8 @@ function VideoEditor() {
         const uploadedUrl = await uploadStudioMedia(file);
         const span = realDuration > 0 ? realDuration : Math.max(2, String(obj.text || '').split(/\s+/).length / 2.6);
         preparedNarrations.push({ start: Math.max(0, Number(obj.start) || 0), span, url: uploadedUrl });
-      } catch {
+      } catch (error) {
+        actionFailures.push('speak_narration: ' + (error instanceof Error ? error.message : 'audio preparation failed'));
         preparedNarrations.push(null);
       }
     }
@@ -3149,7 +3153,13 @@ function VideoEditor() {
     } else if (actionFailures.length) {
       notify('No AI timeline changes were applied.');
     }
-    return { applied: safeActions.length, failed: actionFailures };
+    const failedNarrations = safeActions.reduce((count, action, index) => (
+      count + (action.type === 'speak_narration' && !preparedNarrations[
+        safeActions.slice(0, index + 1).filter((item) => item.type === 'speak_narration').length - 1
+      ] ? 1 : 0)
+    ), 0);
+    const appliedCount = Math.max(0, safeActions.length - failedNarrations);
+    return { applied: appliedCount, failed: actionFailures };
   }, [notify, updateProject]);
 
   const moveClip = (id: string, dir: -1 | 1) => {
