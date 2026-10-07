@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Check, ShieldAlert, X } from 'lucide-react';
+import { Check, Loader2, Save, ShieldAlert, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAlert } from '@/components/ui/Alert';
 
@@ -40,7 +40,8 @@ export default function AdminPage() {
   const [tab, setTab] = useState<'templates' | 'reports' | 'config'>('templates');
   const [pending, setPending] = useState<PendingTemplate[]>([]);
   const [reports, setReports] = useState<ReportRow[]>([]);
-  const [config, setConfig] = useState<{ key: string; value: unknown }[]>([]);
+  const [config, setConfig] = useState<Record<string, any>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function AdminPage() {
       ]);
       setPending((tpl || []) as unknown as PendingTemplate[]);
       setReports((rep || []) as unknown as ReportRow[]);
-      setConfig((cfg || []) as never);
+      setConfig(Object.fromEntries(((cfg || []) as { key: string; value: unknown }[]).map((row) => [row.key, row.value])));
     })();
   }, []);
 
@@ -220,25 +221,62 @@ export default function AdminPage() {
         )}
 
         {tab === 'config' && (
-          <div className="space-y-3">
-            <p className="text-xs text-[#6B6B6B]">
-              Platform configuration (commission, plans). Change values in SQL — the app reads them dynamically:
-            </p>
-            {config.map((row) => (
-              <div key={row.key} className="rounded-2xl border border-[#E8E2E4] bg-white p-4 shadow-sm">
-                <p className="text-sm font-bold">{row.key}</p>
-                <pre className="mt-1 overflow-x-auto rounded-lg bg-[#F3EFF0] p-2 text-[11px]">{JSON.stringify(row.value, null, 2)}</pre>
-              </div>
-            ))}
-            <div className="rounded-2xl border border-[#E8E2E4] bg-white p-4 text-xs leading-relaxed text-[#6B6B6B] shadow-sm">
-              <p className="font-semibold text-[#111111]">Update example</p>
-              <pre className="mt-1 overflow-x-auto rounded-lg bg-[#F3EFF0] p-2 text-[11px]">{`update public.platform_config
-set value = jsonb_set(value, '{commission_percent}', '10')
-where key = 'marketplace';`}</pre>
-            </div>
+          <div className="space-y-4">
+            <p className="text-xs text-[#6B6B6B]">Manage marketplace, plans, billing, and push delivery directly. Supabase RLS still requires platform-admin privileges.</p>
+            {(['marketplace', 'plans', 'billing', 'push_endpoint'] as const).map((key) => {
+              const value = config[key] as any;
+              if (value == null) return null;
+              const save = async () => {
+                setSavingKey(key);
+                const { error } = await supabase.from('platform_config').update({ value, updated_at: new Date().toISOString() }).eq('key', key);
+                setSavingKey(null);
+                if (error) void alert({ title: 'Save failed', message: error.message, tone: 'error' });
+                else void alert({ title: 'Saved', message: key + ' updated.', tone: 'success' });
+              };
+              return (
+                <section key={key} className="rounded-2xl border border-[#E8E2E4] bg-white p-4 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div><h2 className="text-sm font-bold capitalize">{key.replace('_', ' ')}</h2><p className="text-[11px] text-[#8D8588]">{key === 'marketplace' ? 'Creator payouts and commission.' : key === 'plans' ? 'Storage and export limits.' : key === 'billing' ? 'Pro pricing and checkout providers.' : 'Notification delivery endpoint.'}</p></div>
+                    <button onClick={() => void save()} disabled={savingKey === key} className="inline-flex items-center gap-1.5 rounded-lg bg-black px-3 py-2 text-xs font-bold text-[#FFB6C1] disabled:opacity-50">{savingKey === key ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save</button>
+                  </div>
+                  {key === 'marketplace' && (
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="text-xs font-semibold">Commission %<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" type="number" min="0" max="100" value={value.commission_percent ?? 15} onChange={(e) => setConfig(p => ({...p, marketplace:{...value, commission_percent:Number(e.target.value)}}))} /></label>
+                      <label className="text-xs font-semibold">Payout minimum<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" type="number" min="0" value={value.payout_minimum ?? 25} onChange={(e) => setConfig(p => ({...p, marketplace:{...value, payout_minimum:Number(e.target.value)}}))} /></label>
+                      <label className="text-xs font-semibold">Currency<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" value={value.currency ?? 'USD'} onChange={(e) => setConfig(p => ({...p, marketplace:{...value, currency:e.target.value.toUpperCase()}}))} /></label>
+                    </div>
+                  )}
+                  {key === 'plans' && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {(['free','pro'] as const).map(plan => (
+                        <div key={plan} className="rounded-xl border border-[#E8E2E4] p-3">
+                          <p className="mb-2 text-sm font-bold capitalize">{plan}</p>
+                          <label className="block text-xs font-semibold">Storage MB<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" type="number" min="0" value={value[plan]?.storage_mb ?? ''} onChange={(e) => setConfig(p => ({...p, plans:{...value, [plan]:{...(value[plan]||{}), storage_mb:Number(e.target.value)}}}))} /></label>
+                          <label className="mt-2 block text-xs font-semibold">Export max height<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" type="number" min="0" value={value[plan]?.export_max_height ?? ''} onChange={(e) => setConfig(p => ({...p, plans:{...value, [plan]:{...(value[plan]||{}), export_max_height:Number(e.target.value)}}}))} /></label>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {key === 'billing' && (
+                    <div className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <label className="text-xs font-semibold">Pro amount (cents)<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" type="number" min="0" value={value.pro?.amount_cents ?? ''} onChange={(e) => setConfig(p => ({...p, billing:{...value, pro:{...(value.pro||{}), amount_cents:Number(e.target.value)}}}))} /></label>
+                        <label className="text-xs font-semibold">Billing period (days)<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" type="number" min="1" value={value.pro?.billing_period_days ?? 30} onChange={(e) => setConfig(p => ({...p, billing:{...value, pro:{...(value.pro||{}), billing_period_days:Number(e.target.value)}}}))} /></label>
+                        <label className="text-xs font-semibold">Currency<input className="mt-1 w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" value={value.currency ?? 'PHP'} onChange={(e) => setConfig(p => ({...p, billing:{...value, currency:e.target.value.toUpperCase()}}))} /></label>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {Object.entries(value.providers || {}).map(([name, provider]: [string, any]) => <label key={name} className="flex items-center justify-between rounded-lg border border-[#E8E2E4] px-3 py-2 text-xs font-semibold">{name.toUpperCase()}<input type="checkbox" checked={provider?.enabled === true} onChange={(e) => setConfig(p => ({...p, billing:{...value, providers:{...(value.providers||{}), [name]:{...(provider||{}), enabled:e.target.checked}}}}))} /></label>)}
+                      </div>
+                      <p className="text-[11px] text-[#8D8588]">Payment API keys remain in Vercel environment variables.</p>
+                    </div>
+                  )}
+                  {key === 'push_endpoint' && <input className="w-full rounded-lg border border-[#E8E2E4] px-3 py-2 text-sm" value={typeof value === 'string' ? value : ''} onChange={(e) => setConfig(p => ({...p, push_endpoint:e.target.value}))} />}
+                </section>
+              );
+            })}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-800"><strong>Protected:</strong> <code>push_send_secret</code> is never selected or rendered by this page.</div>
           </div>
         )}
-      </div>
     </main>
   );
 }
