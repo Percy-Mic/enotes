@@ -8205,6 +8205,8 @@ function VideoEditor() {
             <VideoAIStudio
             projectId={projectId}
             project={project}
+            quickRequest={aiQuickRequest}
+            onQuickRequestConsumed={() => setAiQuickRequest(null)}
             selectedMediaUrl={selectedClip?.src || selectedElement?.src || null}
             selectedMediaType={
               selectedClip
