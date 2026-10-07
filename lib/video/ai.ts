@@ -3476,7 +3476,7 @@ Rules:
      *    fallback text with role-appropriate neutral copy — an opener for
      *    cues in the first part of the timeline, a closing CTA near the end
      *    — so the design slot survives with intentional-looking text. */
-    const placeholderText = /^(?:your message|your story|your brand|learn more|watch more|make every frame count|watch till the end)$/i;
+    const placeholderText = /^(?:your message|your story|your brand|learn more|watch more)$/i;
     plannedActions = plannedActions.filter((action: any) => {
       if (action.type !== 'add_text_element') return true;
       const text = typeof action.object?.text === 'string' ? action.object.text.trim() : '';
