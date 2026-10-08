@@ -2054,24 +2054,30 @@ export class VideoRenderer {
       canvas.height = H;
     }
 
-    /* Canvas background is part of the project recipe, so preview/export/template remixes all agree.
-       It sits underneath media and becomes visible when a clip is scaled, cropped, or letterboxed. */
+    /* Keep the previous valid frame on the visible canvas while the next
+       video frame is loading/decoding. Painting the background before awaits
+       caused mobile decoders to expose a black canvas during transient stalls.
+       Commit a new background only when this render has a drawable frame. */
     const background = project.background;
-    if (background?.type === 'gradient') {
-      const angle = ((Number(background.angle) || 0) * Math.PI) / 180;
-      const radius = Math.hypot(W, H);
-      const cx = W / 2;
-      const cy = H / 2;
-      const dx = Math.cos(angle) * radius;
-      const dy = Math.sin(angle) * radius;
-      const gradient = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
-      gradient.addColorStop(0, background.color || '#000000');
-      gradient.addColorStop(1, background.color2 || background.color || '#000000');
-      ctx.fillStyle = gradient;
-    } else {
-      ctx.fillStyle = background?.color || '#000000';
-    }
-    ctx.fillRect(0, 0, W, H);
+    let backgroundPainted = false;
+    const paintBackground = () => {
+      if (background?.type === 'gradient') {
+        const angle = ((Number(background.angle) || 0) * Math.PI) / 180;
+        const radius = Math.hypot(W, H);
+        const cx = W / 2;
+        const cy = H / 2;
+        const dx = Math.cos(angle) * radius;
+        const dy = Math.sin(angle) * radius;
+        const gradient = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+        gradient.addColorStop(0, background.color || '#000000');
+        gradient.addColorStop(1, background.color2 || background.color || '#000000');
+        ctx.fillStyle = gradient;
+      } else {
+        ctx.fillStyle = background?.color || '#000000';
+      }
+      ctx.fillRect(0, 0, W, H);
+      backgroundPainted = true;
+    };
 
     const resolved = resolveTime(project, time);
     if (resolved) {
@@ -2292,6 +2298,12 @@ export class VideoRenderer {
              void effectError;
            }
 
+           // Only replace the visible frame after the decoder produced usable pixels.
+           // If syncPlaybackVideo returns early during a transient stall, the previous
+           // canvas frame remains intact instead of flashing the project background.
+           if (!isCurrent()) return;
+           paintBackground();
+
            // The finished clip surface is now transformed into project space.
            ctx.save();
            ctx.translate(W / 2 + animated.offset_x + eff.dx, H / 2 + animated.offset_y + eff.dy);
@@ -2312,6 +2324,8 @@ export class VideoRenderer {
         // Source undecodable/unreachable (e.g. HEVC phone video, deleted file,
         // unfilled template placeholder). Surface WHY instead of a silent black
         // canvas — the editor reads lastSourceError to show a real explanation.
+        if (!isCurrent()) return;
+        if (!backgroundPainted) paintBackground();
         this.lastSourceError = clip.src;
         ctx.save();
         ctx.fillStyle = '#1a1a1a';
@@ -2327,6 +2341,10 @@ export class VideoRenderer {
         ctx.restore();
       }
     }
+
+    // A gap, background-only project, or image-less frame still needs its
+    // project background. Video renders paint it only after a valid frame exists.
+    if (!backgroundPainted && isCurrent()) paintBackground();
 
     // overlays sorted by z
     const overlays = project.elements
