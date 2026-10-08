@@ -1766,6 +1766,25 @@ export class VideoRenderer {
    */
   private clipFilterSurface: HTMLCanvasElement | null = null;
   private clipFilterSurfaceCtx: CanvasRenderingContext2D | null = null;
+  /* Reuse the clean-frame backup instead of allocating a full clip-sized
+     canvas on every frame. Per-frame canvas allocation caused substantial
+     GC and graphics-memory pressure on Android while editing. */
+  private effectBackupSurface: HTMLCanvasElement | null = null;
+  private effectBackupSurfaceCtx: CanvasRenderingContext2D | null = null;
+
+  private getEffectBackupSurface(width: number, height: number) {
+    const w = Math.max(1, Math.ceil(width));
+    const h = Math.max(1, Math.ceil(height));
+    if (!this.effectBackupSurface || !this.effectBackupSurfaceCtx ||
+        this.effectBackupSurface.width !== w || this.effectBackupSurface.height !== h) {
+      const canvas = this.effectBackupSurface || document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      this.effectBackupSurface = canvas;
+      this.effectBackupSurfaceCtx = canvas.getContext('2d');
+    }
+    return { canvas: this.effectBackupSurface, ctx: this.effectBackupSurfaceCtx };
+  }
 
   private getClipSurface(width: number, height: number) {
     const w = Math.max(1, Math.ceil(width));
@@ -2005,7 +2024,15 @@ export class VideoRenderer {
     opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean } = {}
   ) {
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      this.lastSourceError = 'The preview canvas is unavailable. Reopen the editor preview to recover rendering.';
+      return;
+    }
+    const contextState = ctx as CanvasRenderingContext2D & { isContextLost?: () => boolean };
+    if (typeof contextState.isContextLost === 'function' && contextState.isContextLost()) {
+      this.lastSourceError = 'The device temporarily lost its graphics canvas. Rendering will resume when the browser restores it.';
+      return;
+    }
     const token = (this.renderTokens.get(canvas) || 0) + 1;
     this.renderTokens.set(canvas, token);
     const isCurrent = () => this.renderTokens.get(canvas) === token;
@@ -2203,12 +2230,17 @@ export class VideoRenderer {
             * Keep an untouched raster backup, then restore it if any effect
             * fails. This also makes experimental effects safe to add later.
             */
-           const effectBackup = document.createElement('canvas');
-           effectBackup.width = surface.width;
-           effectBackup.height = surface.height;
-           const effectBackupCtx = effectBackup.getContext('2d');
-           if (effectBackupCtx) {
+           const backupState = this.getEffectBackupSurface(surface.width, surface.height);
+           const effectBackup = backupState.canvas;
+           const effectBackupCtx = backupState.ctx;
+           if (effectBackup && effectBackupCtx) {
+             effectBackupCtx.setTransform(1, 0, 0, 1, 0, 0);
+             effectBackupCtx.globalAlpha = 1;
+             effectBackupCtx.globalCompositeOperation = 'copy';
+             effectBackupCtx.filter = 'none';
+             effectBackupCtx.clearRect(0, 0, effectBackup.width, effectBackup.height);
              effectBackupCtx.drawImage(surface, 0, 0);
+             effectBackupCtx.globalCompositeOperation = 'source-over';
            }
 
            try {
