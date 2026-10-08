@@ -271,7 +271,7 @@ function FilterPreviewCard({
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
     const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
     void renderAt(base);
-    if (!active || playing) return;
+    return; // Render a still preview; avoid competing with the main editor's live playback.
     if (playing) return;
     const started = performance.now();
     const tick = () => {
@@ -324,7 +324,7 @@ function EffectPreviewCard({
     const duration = clip ? Math.max(0.1, clipDuration(clip)) : 1;
     const base = clip ? previewTimeForClip(project, clipId, playhead) : 0;
     void renderAt(base);
-    if (!active || playing) return;
+    return; // Render a still preview; avoid competing with the main editor's live playback.
     const started = performance.now();
     const tick = () => {
       const elapsed = ((performance.now() - started) / 1000) % Math.min(duration, 3);
