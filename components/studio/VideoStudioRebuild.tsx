@@ -549,11 +549,15 @@ export default function VideoStudioRebuild() {
     if (!rendererRef.current) rendererRef.current = new VideoRenderer();
     setBusy(true); setPanel('export'); setMessage(null);
     try {
+      // Export from the latest committed editor model, not the React render
+      // that created this handler. This prevents exporting a stale effect stack
+      // immediately after replacing a preset or restoring a project after refresh.
+      const exportSnapshot = normalizeProject(projectRef.current);
       const renderProject: VideoProject = {
-        ...project,
-        clips: project.clips.map((c) => localSources[c.src] ? { ...c, src: localSources[c.src] } : c),
-        audio: project.audio.map((a) => localSources[a.src] ? { ...a, src: localSources[a.src] } : a),
-        elements: project.elements.map((e) => localSources[e.src || ''] ? { ...e, src: localSources[e.src || ''] } : e),
+        ...exportSnapshot,
+        clips: exportSnapshot.clips.map((c) => localSources[c.src] ? { ...c, src: localSources[c.src] } : c),
+        audio: exportSnapshot.audio.map((a) => localSources[a.src] ? { ...a, src: localSources[a.src] } : a),
+        elements: exportSnapshot.elements.map((e) => localSources[e.src || ''] ? { ...e, src: localSources[e.src || ''] } : e),
       };
       const result = await rendererRef.current.export(renderProject, exportSettings, setExportProgress);
       const a = document.createElement('a');
