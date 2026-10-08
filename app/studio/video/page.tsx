@@ -1616,13 +1616,15 @@ function VideoEditor() {
         const resolvedAudio = resolveClipValues(clip, local);
         audio.volume = resolvedAudio.volume;
         ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
-        if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
+        const requested = previewAudioPlayRequestedRef.current.has(clipId);
+        // Keep the audio element on its own playback clock. Seeking on normal
+        // frame jitter repeatedly interrupts media decoding and causes gaps.
+        if (Math.abs(audio.currentTime - target) > 0.75 && (!shouldPlay || !requested)) {
           try { audio.currentTime = target; } catch { /* wait for metadata */ }
         }
         if (shouldPlay) {
           const ctx = previewAudioContextRef.current;
           if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
-          const requested = previewAudioPlayRequestedRef.current.has(clipId);
           if (audio.paused && !requested) {
             previewAudioPlayRequestedRef.current.add(clipId);
             void audio.play()
@@ -1679,10 +1681,11 @@ function VideoEditor() {
         : Math.max(trimStart, Math.min(trimEnd - 0.01, trimStart + local * speed));
       audio.playbackRate = speed;
       audio.volume = Math.max(0, Math.min(1, resolveElementValues(el, local).volume));
-      if (Math.abs(audio.currentTime - target) > 0.18 || audio.paused) {
+      const requested = previewAudioPlayRequestedRef.current.has(key);
+      if (Math.abs(audio.currentTime - target) > 0.75 && (!shouldPlay || !requested)) {
         try { audio.currentTime = target; } catch { /* wait for metadata */ }
       }
-      if (shouldPlay && audio.paused) {
+      if (shouldPlay && audio.paused && !requested) {
         const ctx = previewAudioContextRef.current;
         if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
         void audio.play()
@@ -1729,10 +1732,12 @@ function VideoEditor() {
         continue;
       }
 
-      if (Math.abs(audio.currentTime - target) > 0.18) {
+      const requested = previewAudioPlayRequestedRef.current.has(key);
+      // A 180 ms seek threshold is too small for independent audio/video
+      // clocks; don't interrupt continuous audio for normal scheduling jitter.
+      if (Math.abs(audio.currentTime - target) > 0.75 && !requested) {
         try { audio.currentTime = target; } catch { /* wait for metadata */ }
       }
-      const requested = previewAudioPlayRequestedRef.current.has(key);
       if (audio.paused && !requested) {
         previewAudioPlayRequestedRef.current.add(key);
         if (track.provider === 'feed' && track.providerId && !feedPlayReportedRef.current.has(track.id)) {
