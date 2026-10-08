@@ -1488,7 +1488,18 @@ function VideoEditor() {
         return;
       }
     }
-    if (ctx.state === 'suspended') void ctx.resume();
+    /* AudioContext may be suspended by Android/Chrome after tab focus,
+       screen lock, or a transient user-activation boundary. A MediaElementSource
+       routes sound exclusively through this context, so calling media.play()
+       alone can look successful while remaining silent. Retry resume whenever
+       the active audio graph is synchronized, and never treat the fire-and-
+       forget resume request as proof that output is live. */
+    if (ctx.state === 'suspended') {
+      void ctx.resume().catch(() => {
+        /* A later sync pass retries; native playback remains usable where no
+           Web Audio source has been attached yet. */
+      });
+    }
 
     if (!source) {
       try {
@@ -1508,7 +1519,11 @@ function VideoEditor() {
 
     const signature = JSON.stringify(activeEffects.map((e) => [e.id, e.type, e.amount, e.mix]));
     const existing = previewAudioGraphRef.current.get(key);
-    if (existing?.signature === signature) return;
+    if (existing?.signature === signature) {
+      /* Effects graph may be intact while Android suspended its AudioContext. */
+      if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
+      return;
+    }
 
     try {
       source.disconnect();
