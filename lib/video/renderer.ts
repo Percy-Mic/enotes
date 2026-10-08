@@ -2606,7 +2606,7 @@ export class VideoRenderer {
        * a real visual frame at its beginning instead of an empty/old canvas.
        */
       try {
-        await this.drawFrame(canvas, scaled, 0, { previewing: true, playing: true });
+        await this.drawFrame(canvas, scaled, 0, { previewing: true, playing: true, isolatedPreview: true });
       } catch (e) {
         throw e instanceof Error ? e : new Error('Unable to render the first video frame.');
       }
@@ -3041,7 +3041,7 @@ export class VideoRenderer {
           if (frameIndex !== lastFrameIndex) {
             const frameTime = Math.min(duration - 0.0001, frameIndex * frameDuration);
             try {
-              await this.drawFrame(canvas, scaled, frameTime, { previewing: true, playing: true });
+              await this.drawFrame(canvas, scaled, frameTime, { previewing: true, playing: true, isolatedPreview: true });
             } catch (e) {
               finishReject(e instanceof Error ? e : new Error('A frame failed to render.'));
               return;
