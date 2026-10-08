@@ -1463,10 +1463,15 @@ function VideoEditor() {
     let source = previewAudioSourcesRef.current.get(key);
 
     if (activeEffects.length === 0) {
+      const ctx = previewAudioContextRef.current;
       if (source) {
         try { source.disconnect(); } catch {}
-        if (AudioContextCtor && previewAudioContextRef.current?.state !== 'closed') {
-          try { source.connect(previewAudioContextRef.current.destination); } catch {}
+        if (ctx && ctx.state !== 'closed') {
+          /* A media element remains routed through Web Audio forever after
+             createMediaElementSource(). Even with effects bypassed, a suspended
+             context means the original clip becomes completely silent. */
+          try { source.connect(ctx.destination); } catch {}
+          if (ctx.state === 'suspended') void ctx.resume().catch(() => {});
         }
       }
       previewAudioGraphRef.current.delete(key);
@@ -1615,6 +1620,8 @@ function VideoEditor() {
           try { audio.currentTime = target; } catch { /* wait for metadata */ }
         }
         if (shouldPlay) {
+          const ctx = previewAudioContextRef.current;
+          if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
           const requested = previewAudioPlayRequestedRef.current.has(clipId);
           if (audio.paused && !requested) {
             previewAudioPlayRequestedRef.current.add(clipId);
@@ -1676,6 +1683,8 @@ function VideoEditor() {
         try { audio.currentTime = target; } catch { /* wait for metadata */ }
       }
       if (shouldPlay && audio.paused) {
+        const ctx = previewAudioContextRef.current;
+        if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
         void audio.play()
           .then(() => { previewAudioUnlockedRef.current = true; })
           .catch(() => { /* retried on the next user-initiated synchronization pass */ });
@@ -1734,6 +1743,8 @@ function VideoEditor() {
             body: JSON.stringify({ clipId: track.providerId, event: 'play' }),
           }).catch(() => {});
         }
+        const ctx = previewAudioContextRef.current;
+        if (ctx && ctx.state === 'suspended') void ctx.resume().catch(() => {});
         void audio.play()
           .then(() => {
             previewAudioUnlockedRef.current = true;
