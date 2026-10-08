@@ -196,6 +196,16 @@ async function syncPlaybackVideo(
      * frame during startup.
      */
     await waitForPresentedVideoFrame(video);
+  } else {
+    /*
+     * The timeline clock can advance faster than the decoder/compositor on
+     * mobile devices. Do not rasterize a playing <video> on an arbitrary
+     * requestAnimationFrame tick: wait for the next decoded/presented frame
+     * so the canvas doesn't intermittently repeat stale or black pixels.
+     * waitForPresentedVideoFrame has a bounded fallback for stalled decoders
+     * and browsers without requestVideoFrameCallback.
+     */
+    await waitForPresentedVideoFrame(video);
   }
 
   stateStore.set(video, { lastTarget: safeTarget, playing: true, rate });
