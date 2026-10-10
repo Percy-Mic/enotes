@@ -99,7 +99,7 @@ const TRANSFORM_EDGE_BAND = 0.16;
 /** Small canvas-space overshoot allowed when beginning a rotation outside the box. */
 const ROTATE_OUTSIDE_BAND = 28;
 
-const EDITOR_ACTION_PILL = "flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-white/[0.07] px-3 text-[10px] font-semibold text-white/80 active:bg-white/[0.13] focus-visible:ring-2 focus-visible:ring-[#FFB6C1]";
+const EDITOR_ACTION_PILL = "flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-white/[0.07] px-3 text-[10px] font-semibold text-white/80 active:bg-white/[0.13] focus-visible:ring-2 focus-visible:ring-[#7BE7D4]";
 function fmt(t: number): string {
   const s = Math.max(0, t);
   const m = Math.floor(s / 60);
@@ -286,11 +286,11 @@ function FilterPreviewCard({
   return (
     <button type="button" onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave}
       onClick={onApply} aria-pressed={active}
-      className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+      className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#53C8F0] bg-[#53C8F0]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
         <canvas ref={canvasRef} className="block h-full w-full object-cover" />
         <span className="absolute bottom-1 left-1 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold">{FILTER_PRESETS.find((item) => item.id === filter)?.name || filter}</span>
-        {active && <span className="absolute right-1 top-1 rounded-md bg-[#E5798F] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
+        {active && <span className="absolute right-1 top-1 rounded-md bg-[#53C8F0] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
       </div>
     </button>
   );
@@ -338,12 +338,12 @@ function EffectPreviewCard({
   return (
     <button type="button" onMouseEnter={onHover} onMouseLeave={onLeave} onFocus={onHover} onBlur={onLeave}
       onClick={onApply} aria-pressed={active}
-      className="group min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1.5 text-left transition hover:border-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+      className="group min-w-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04] p-1.5 text-left transition hover:border-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
         <canvas ref={canvasRef} className="block h-full w-full object-cover" />
         <div className="pointer-events-none absolute inset-x-1 bottom-1 flex items-end justify-between gap-1">
           <span className="rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-semibold text-white">{effect}</span>
-          {active && <span className="rounded-md bg-[#E5798F] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
+          {active && <span className="rounded-md bg-[#53C8F0] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
         </div>
       </div>
     </button>
@@ -378,10 +378,10 @@ function TransitionPreviewCard({ project, clipId, transition, duration, active, 
     return () => { if (timerRef.current !== null) window.clearTimeout(timerRef.current); timerRef.current = null; };
   }, [active, playing, renderAt]);
   return (
-    <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+    <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#53C8F0] bg-[#53C8F0]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black"><canvas ref={canvasRef} className="block h-full w-full object-cover" />
         <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white">{transition}</span>
-        {active && <span className="absolute right-1 top-1 rounded-md bg-[#E5798F] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
+        {active && <span className="absolute right-1 top-1 rounded-md bg-[#53C8F0] px-1.5 py-0.5 text-[8px] font-bold text-white">APPLIED</span>}
       </div>
     </button>
   );
@@ -464,7 +464,7 @@ function EffectRecipePreviewCard({ project, clipId, name, layers, active, playin
   }, [renderAt, project.clips, clipId]);
 
   return (
-    <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
+    <button type="button" onClick={onApply} className={`group overflow-hidden rounded-xl border p-1 text-left transition ${active ? 'border-[#53C8F0] bg-[#53C8F0]/10' : 'border-white/10 bg-white/[0.04] hover:border-white/25'}`}>
       <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
         <canvas ref={canvasRef} className="block h-full w-full object-cover" />
         <span className="absolute bottom-1 left-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[9px] font-semibold text-white">{name}</span>
@@ -500,7 +500,7 @@ function SoundPreviewPlayer({
         <button
           type="button"
           onClick={onToggle}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#E5798F] text-white shadow-sm transition hover:scale-105 active:scale-95"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#53C8F0] text-white shadow-sm transition hover:scale-105 active:scale-95"
           aria-label={playing ? `Pause preview of ${sound.title}` : `Play preview of ${sound.title}`}
         >
           {playing ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
@@ -538,7 +538,7 @@ function SoundPreviewPlayer({
           if (e.key === 'End') { e.preventDefault(); onSeek(duration - 0.05); }
         }}
       >
-        <div className="absolute inset-y-0 left-0 bg-[#E5798F]/25" style={{ width: `${pct * 100}%` }} />
+        <div className="absolute inset-y-0 left-0 bg-[#53C8F0]/25" style={{ width: `${pct * 100}%` }} />
         <div className="absolute inset-0 flex items-center justify-between gap-[2px] px-1.5">
           {Array.from({ length: 64 }, (_, i) => {
             const wave = 4 + Math.abs(Math.sin(i * 1.71) * 9 + Math.sin(i * 0.37) * 5);
@@ -800,6 +800,8 @@ async function detectBeatMarkers(audio: AudioTrack): Promise<number[]> {
 }
 
 
+let pendingVideoStartFiles: File[] = [];
+
 /* ------------------------------------------------------------------ */
 /* Geometry (shared with the renderer's clipDrawRect math)             */
 
@@ -998,7 +1000,7 @@ function VideoEditor() {
   const projectId = search.get('project');
   const soundParam = search.get('sound');
 
-  const history = useHistory<EditorDoc>({ title: 'Untitled project', project: emptyProject('9:16') });
+  const history = useHistory<EditorDoc>({ title: search.get('title')?.trim() || 'Untitled project', project: emptyProject('9:16') });
   const { state: doc, setState: setDoc } = history;
   const project = doc.project;
 
@@ -2395,6 +2397,12 @@ function VideoEditor() {
     [meId, notify, playheadRef, project.canvas.width, project.canvas.height, project.elements.length, project.tracks, saveNow, updateProject]
   );
 
+  useEffect(() => {
+    if (!meId || pendingVideoStartFiles.length === 0) return;
+    const files = pendingVideoStartFiles.splice(0, pendingVideoStartFiles.length);
+    void importFiles(files);
+  }, [meId, importFiles]);
+
   /* ---------- stock footage + GIF libraries ---------- */
   const searchStockVideos = useCallback(async (reset = true, providerOverride?: 'all' | 'pexels' | 'pixabay') => {
     setStockBusy(true); setStockError(null);
@@ -2439,11 +2447,12 @@ function VideoEditor() {
     setSelectedClipId(clip.id); setSelectedElementId(null); notify('Stock footage added to the main timeline.');
   }, [notify, stockPlaybackUrl, updateProject]);
 
-  const startPracticeProject = useCallback(async () => {
+  const startPracticeProject = useCallback(async (practiceTopic = 'cinematic story') => {
     setStockBusy(true);
     setStockError(null);
     try {
-      const queries = ['city night', 'person walking', 'nature landscape', 'close up hands', 'street movement'];
+      const topicQueries: Record<string, string[]> = { 'cinematic story': ['city night cinematic', 'person walking cinematic', 'nature landscape cinematic', 'close up hands cinematic', 'street movement cinematic'], 'travel film': ['tropical beach travel', 'city travel walking', 'mountain scenic landscape', 'local food market', 'sunset destination'], 'product ad': ['minimal product close up', 'hands using product', 'clean studio product', 'lifestyle product use', 'product detail macro'], 'food reel': ['fresh food close up', 'cooking hands kitchen', 'street food preparation', 'plated meal close up', 'food market ingredients'], 'daily vlog': ['morning routine home', 'person walking city', 'coffee shop lifestyle', 'commute city street', 'sunset everyday life'], 'music video': ['concert lights crowd', 'urban night movement', 'abstract colorful lights', 'slow motion dancing', 'city neon night'] };
+      const queries = topicQueries[practiceTopic] || topicQueries['cinematic story'];
       const results = await Promise.all(
         queries.map(async (query) => {
           // Pexels/Pixabay rank popular results, so page=1 + [0] returned
@@ -2473,7 +2482,7 @@ function VideoEditor() {
       const clips = uniqueResults.map((item: any) => {
         const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
         return {
-          id: makeVideoId('clip'), src: stockPlaybackUrl(String(item.url)), name: 'Practice · ' + (item.photographer || 'Pexels'),
+          id: makeVideoId('clip'), src: stockPlaybackUrl(String(item.url)), name: `${practiceTopic} · ${item.photographer || 'Stock footage'}`,
           sourceDuration, trimStart: 0, trimEnd: Math.min(sourceDuration, 6), speed: 1, volume: 1, muted: false,
           source_width: Number(item.width) || undefined, source_height: Number(item.height) || undefined,
           transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
@@ -2485,7 +2494,7 @@ function VideoEditor() {
       const practiceBase = emptyProject('original');
       setDoc((prev) => ({
         ...prev,
-        title: 'Cinematic Practice — Untitled',
+        title: `${practiceTopic.replace(/\\b\\w/g, (letter) => letter.toUpperCase())} — Practice`,
         project: normalizeProject({
           ...practiceBase,
           ...(firstPractice?.source_width && firstPractice?.source_height
@@ -2502,13 +2511,21 @@ function VideoEditor() {
       }), 'Create practice project');
       setSelectedClipId(clips[0].id);
       setSelectedElementId(null);
-      notify('Practice project created. The footage is raw — build the sequence yourself.');
+      notify(`Practice project created for “${practiceTopic}”. Use footage that supports the brief, then build the sequence yourself.`);
     } catch (error) {
       setStockError(error instanceof Error ? error.message : 'Could not create practice project.');
     } finally {
       setStockBusy(false);
     }
   }, [notify, setDoc, stockPlaybackUrl]);
+
+  const practiceLaunchHandled = useRef(false);
+  useEffect(() => {
+    const topic = search.get('practiceTopic');
+    if (!topic || practiceLaunchHandled.current || !meId) return;
+    practiceLaunchHandled.current = true;
+    void startPracticeProject(topic);
+  }, [meId, search, startPracticeProject]);
 
   useEffect(() => {
     if (tool === 'media' && stockVideos.length === 0) void searchStockVideos(true);
@@ -6981,7 +6998,7 @@ function VideoEditor() {
         main[data-clean-editor="true"] [class*="bg-violet-"] { background-color:rgba(255,255,255,.055) !important; }
         main[data-clean-editor="true"] [class*="border-violet-"] { border-color:rgba(255,255,255,.12) !important; }
         main[data-clean-editor="true"] [class*="text-violet-"] { color:rgba(255,255,255,.72) !important; }
-        main[data-clean-editor="true"] input[type="range"] { accent-color:#E5798F; }
+        main[data-clean-editor="true"] input[type="range"] { accent-color:#53C8F0; }
       `}</style>
       {/* fullscreen preview overlay (renders above everything when active) */}
       {fullscreen && (
@@ -6998,7 +7015,7 @@ function VideoEditor() {
       )}
       {/* ---------- top bar ---------- */}
       <header className="flex min-h-12 shrink-0 items-center gap-1.5 border-b border-white/10 px-2 sm:gap-2 sm:px-3 sm:py-2">
-        <Link href="/studio" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" aria-label="Back to studio">
+        <Link href="/studio" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]" aria-label="Back to studio">
           ←
         </Link>
         <input
@@ -7008,10 +7025,10 @@ function VideoEditor() {
           placeholder="Name your project…"
           className="min-w-0 flex-1 rounded-lg bg-transparent px-2 py-1.5 text-sm font-semibold outline-none placeholder:font-normal placeholder:text-white/30 focus:bg-white/10"
         />
-        <button onClick={history.undo} disabled={!history.canUndo} aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-30">
+        <button onClick={history.undo} disabled={!history.canUndo} aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#7BE7D4] disabled:opacity-30">
           <Undo2 className="h-4 w-4" />
         </button>
-        <button onClick={history.redo} disabled={!history.canRedo} aria-label="Redo (Ctrl+Shift+Z)" title="Redo (Ctrl+Shift+Z)" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-30">
+        <button onClick={history.redo} disabled={!history.canRedo} aria-label="Redo (Ctrl+Shift+Z)" title="Redo (Ctrl+Shift+Z)" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#7BE7D4] disabled:opacity-30">
           <Redo2 className="h-4 w-4" />
         </button>
         <span className="hidden text-[11px] text-white/40 sm:block">
@@ -7020,14 +7037,14 @@ function VideoEditor() {
         <button
           onClick={() => void saveNow()}
           disabled={saving || !history.dirty}
-          className="flex h-9 items-center gap-1.5 rounded-lg border border-white/20 px-2 sm:px-3 py-1.5 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40"
+          className="flex h-9 items-center gap-1.5 rounded-lg border border-white/20 px-2 sm:px-3 py-1.5 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#7BE7D4] disabled:opacity-40"
           title="Save (Ctrl+S)"
         >
           <Save className="h-3.5 w-3.5" /><span className="hidden sm:inline">Save</span>
         </button>
         <button
           onClick={() => { openTool('export'); }}
-          className="flex h-9 items-center gap-1.5 rounded-lg bg-[#E5798F] px-2 sm:px-3 py-1.5 text-xs font-bold text-white focus-visible:ring-2 focus-visible:ring-white"
+          className="flex h-9 items-center gap-1.5 rounded-lg bg-[#53C8F0] px-2 sm:px-3 py-1.5 text-xs font-bold text-white focus-visible:ring-2 focus-visible:ring-white"
           title="Export"
         >
           <Download className="h-3.5 w-3.5" /><span className="hidden sm:inline">Export</span>
@@ -7035,9 +7052,9 @@ function VideoEditor() {
       </header>
 
       {templateOriginId && (
-        <div className="shrink-0 border-b border-[#E5798F]/20 bg-[#E5798F]/10 px-3 py-2 text-[10px] text-white/75">
+        <div className="shrink-0 border-b border-[#53C8F0]/20 bg-[#53C8F0]/10 px-3 py-2 text-[10px] text-white/75">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center">
-            <span className="font-bold text-[#FFB6C1]">Template remix</span>
+            <span className="font-bold text-[#7BE7D4]">Template remix</span>
             <span>Transitions, effects, text, timing and sound processing stay locked into this project.</span>
             <span className="text-white/50">Replace the source media or sounds — the template's transitions, effects, text, timing and keyframes stay intact.</span>
             {templateMediaSlots.length > 0 && (
@@ -7088,9 +7105,9 @@ function VideoEditor() {
         }}
       >
         {fileDragActive && (
-          <div className="pointer-events-none absolute inset-2 z-[70] flex items-center justify-center rounded-2xl border-2 border-dashed border-[#E5798F] bg-[#E5798F]/15 backdrop-blur-sm">
+          <div className="pointer-events-none absolute inset-2 z-[70] flex items-center justify-center rounded-2xl border-2 border-dashed border-[#53C8F0] bg-[#53C8F0]/15 backdrop-blur-sm">
             <div className="rounded-2xl border border-white/20 bg-black/80 px-6 py-5 text-center shadow-2xl">
-              <Upload className="mx-auto h-8 w-8 text-[#FFB6C1]" />
+              <Upload className="mx-auto h-8 w-8 text-[#7BE7D4]" />
               <p className="mt-2 text-sm font-bold">Drop media to import</p>
               <p className="mt-1 text-[11px] text-white/55">Video and image files · originals remain untouched</p>
             </div>
@@ -7105,7 +7122,7 @@ function VideoEditor() {
                 onClick={() => setFullscreen(true)}
                 aria-label="Fullscreen preview"
                 title="Fullscreen preview (Esc to exit)"
-                className="absolute top-2 right-2 z-30 flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-2 sm:-top-11 sm:h-9 sm:px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                className="absolute top-2 right-2 z-30 flex h-8 items-center gap-1.5 rounded-lg bg-white/10 px-2 sm:-top-11 sm:h-9 sm:px-2.5 text-[10px] font-semibold text-white/80 hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]"
               >
                 <Maximize2 className="h-4 w-4" /><span className="hidden sm:inline">Fullscreen</span>
               </button>
@@ -7210,13 +7227,13 @@ function VideoEditor() {
               </p>
           {/* transport */}
           <div className="flex items-center justify-center gap-2 py-1.5 sm:gap-3">
-            <button onClick={() => seekTo(playheadRef.current - 1 / 30)} aria-label="Previous frame" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+            <button onClick={() => seekTo(playheadRef.current - 1 / 30)} aria-label="Previous frame" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
               <SkipBack className="h-4 w-4" />
             </button>
-            <button onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+            <button onClick={togglePlay} aria-label={playing ? 'Pause' : 'Play'} className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-black focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
               {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
             </button>
-            <button onClick={() => seekTo(playheadRef.current + 1 / 30)} aria-label="Next frame" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+            <button onClick={() => seekTo(playheadRef.current + 1 / 30)} aria-label="Next frame" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
               <SkipForward className="h-4 w-4" />
             </button>
             <span className="w-20 text-center text-[11px] tabular-nums text-white/70 sm:w-24 sm:text-xs" aria-live="off">
@@ -7225,7 +7242,7 @@ function VideoEditor() {
             <button
               onClick={() => stageRef.current?.requestFullscreen?.().catch(() => undefined)}
               aria-label="Fullscreen preview"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]"
             >
               <Sparkles className="h-4 w-4" />
             </button>
@@ -7275,7 +7292,7 @@ function VideoEditor() {
                   let acc = 0;
                   for (const c of project.clips) { if (c.id === clip.id) break; acc += clipDuration(c); }
                   return (
-                    <div key={clip.id} className="absolute h-2 rounded-sm bg-[#E5798F]/55" style={{ left: `${(acc / Math.max(duration, 0.001)) * 100}%`, width: `${Math.max(0.4, (clipDuration(clip) / Math.max(duration, 0.001)) * 100)}%`, top: 4 }} />
+                    <div key={clip.id} className="absolute h-2 rounded-sm bg-[#53C8F0]/55" style={{ left: `${(acc / Math.max(duration, 0.001)) * 100}%`, width: `${Math.max(0.4, (clipDuration(clip) / Math.max(duration, 0.001)) * 100)}%`, top: 4 }} />
                   );
                 })}
                 {project.elements.map((el) => (
@@ -7300,7 +7317,7 @@ function VideoEditor() {
                 }}
               />
               {/* playhead tick inside the minimap */}
-              <div className="pointer-events-none absolute inset-y-0 w-px bg-[#FFB6C1]" style={{ left: `${(playhead / Math.max(duration, 0.001)) * 100}%` }} />
+              <div className="pointer-events-none absolute inset-y-0 w-px bg-[#7BE7D4]" style={{ left: `${(playhead / Math.max(duration, 0.001)) * 100}%` }} />
             </div>
           )}
         </section>
@@ -7314,44 +7331,44 @@ function VideoEditor() {
             </p>
             <div className="flex min-w-0 items-center gap-1 overflow-x-auto no-scrollbar">
               <div className="flex items-center overflow-hidden rounded-lg border border-white/15" role="group" aria-label="Timeline zoom">
-                <button onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))} disabled={zoom <= 0.5} aria-label="Zoom out" className="px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40">−</button>
+                <button onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.25) * 100) / 100))} disabled={zoom <= 0.5} aria-label="Zoom out" className="px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-[#7BE7D4] disabled:opacity-40">−</button>
                 <span className="px-1 text-[10px] tabular-nums text-white/50">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))} disabled={zoom >= 3} aria-label="Zoom in" className="px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-40">+</button>
+                <button onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))} disabled={zoom >= 3} aria-label="Zoom in" className="px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-[#7BE7D4] disabled:opacity-40">+</button>
               </div>
               <button
                 onClick={() => setSnapEnabled((v) => !v)}
-                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${snapEnabled ? 'bg-[#E5798F]/20 text-[#FFB6C1]' : 'bg-white/10 text-white/55'}`}
+                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${snapEnabled ? 'bg-[#53C8F0]/20 text-[#7BE7D4]' : 'bg-white/10 text-white/55'}`}
                 aria-pressed={snapEnabled}
                 title="Snap clips and overlays to nearby clip edges, markers and beats"
               >Snap</button>
               <button
                 onClick={() => setRippleEnabled((v) => !v)}
-                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${rippleEnabled ? 'bg-[#E5798F]/20 text-[#FFB6C1]' : 'bg-white/10 text-white/55'}`}
+                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-semibold ${rippleEnabled ? 'bg-[#53C8F0]/20 text-[#7BE7D4]' : 'bg-white/10 text-white/55'}`}
                 aria-pressed={rippleEnabled}
                 title="Ripple delete selected clips"
               >Ripple</button>
               {selectedClipId && (
                 <>
-                  <button onClick={addAllMainClipKeyframes} className="flex items-center gap-1 rounded-lg bg-[#E5798F]/20 px-2.5 py-1.5 text-[11px] font-bold text-[#FFB6C1] hover:bg-[#E5798F]/30 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add transform keyframes at the current playhead">
+                  <button onClick={addAllMainClipKeyframes} className="flex items-center gap-1 rounded-lg bg-[#53C8F0]/20 px-2.5 py-1.5 text-[11px] font-bold text-[#7BE7D4] hover:bg-[#53C8F0]/30 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]" title="Add transform keyframes at the current playhead">
                     ◆ Keyframe
                   </button>
                   <button onClick={() => jumpToMainClipKeyframe(-1)} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] text-white/70 hover:bg-white/15" title="Previous keyframe" aria-label="Previous keyframe">‹◆</button>
                   <button onClick={() => jumpToMainClipKeyframe(1)} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] text-white/70 hover:bg-white/15" title="Next keyframe" aria-label="Next keyframe">◆›</button>
                 </>
               )}
-              <button onClick={addTimelineMarker} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Add marker at playhead">
+              <button onClick={addTimelineMarker} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]" title="Add marker at playhead">
                 <Plus className="h-3.5 w-3.5" /> Marker
               </button>
               <button onClick={() => jumpToBeat(-1)} disabled={!project.beatMarkers?.length} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] font-semibold text-white/70 disabled:opacity-30" title="Previous detected beat" aria-label="Previous beat">Beat ‹</button>
               <button onClick={() => jumpToBeat(1)} disabled={!project.beatMarkers?.length} className="rounded-lg bg-white/10 px-2 py-1.5 text-[11px] font-semibold text-white/70 disabled:opacity-30" title="Next detected beat" aria-label="Next beat">›</button>
               {project.beatMarkers?.length ? (
-                <span className="rounded-lg bg-[#E5798F]/10 px-2 py-1.5 text-[10px] font-semibold text-[#FFB6C1]" title="Detected beats are magnetic Snap points">
+                <span className="rounded-lg bg-[#53C8F0]/10 px-2 py-1.5 text-[10px] font-semibold text-[#7BE7D4]" title="Detected beats are magnetic Snap points">
                   {project.beatMarkers.length} beats
                 </span>
               ) : null}
               <button onClick={() => history.undo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Undo"><Undo2 className="h-3.5 w-3.5" /></button>
               <button onClick={() => history.redo()} className="rounded-lg bg-white/10 p-1.5 text-white/70 hover:bg-white/15" title="Redo"><Redo2 className="h-3.5 w-3.5" /></button>
-              <button onClick={addEditorTrack} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+              <button onClick={addEditorTrack} className="flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
                 <Plus className="h-3.5 w-3.5" /> Track
               </button>
             </div>
@@ -7376,7 +7393,7 @@ function VideoEditor() {
                 aria-valuenow={Math.round(playhead)}
                 aria-valuetext={fmt(playhead)}
               >
-                <div className="sticky left-0 z-10 flex w-16 shrink-0 items-center justify-center border-r border-white/10 bg-[#0c0c0c] text-[9px] font-bold tabular-nums text-[#FFB6C1]">
+                <div className="sticky left-0 z-10 flex w-16 shrink-0 items-center justify-center border-r border-white/10 bg-[#0c0c0c] text-[9px] font-bold tabular-nums text-[#7BE7D4]">
                   {fmt(playhead)}
                 </div>
                 <div className="relative flex-1">
@@ -7389,7 +7406,7 @@ function VideoEditor() {
                   {(project.beatMarkers || []).map((t, index) => (
                     <button key={`beat-${t}-${index}`} type="button"
                       onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); seekTo(t); }}
-                      className="absolute bottom-0 z-20 h-4 w-2 -translate-x-1/2 rounded-t bg-[#FFB6C1]/80 hover:bg-[#FFB6C1]"
+                      className="absolute bottom-0 z-20 h-4 w-2 -translate-x-1/2 rounded-t bg-[#7BE7D4]/80 hover:bg-[#7BE7D4]"
                       style={{ left: t * pxPerSec }}
                       title={`Beat at ${fmt(t)} — click to jump`}
                       aria-label={`Beat at ${fmt(t)}`}
@@ -7421,7 +7438,7 @@ function VideoEditor() {
                         key={clip.id}
                         data-timeline-item="true"
                         onPointerDown={(e) => { if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleSelectedId(clip.id); setSelectedClipId(clip.id); setSelectedElementId(null); return; } setSelectedIds([clip.id]); beginClipDrag(e, clip); }}
-                        className={`relative shrink-0 touch-none overflow-visible rounded-md border transition-shadow ${selected ? 'border-[#E5798F] bg-[#E5798F]/35 ring-1 ring-[#E5798F]/60' : 'border-white/15 bg-white/10'} ${dragging ? 'opacity-80 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
+                        className={`relative shrink-0 touch-none overflow-visible rounded-md border transition-shadow ${selected ? 'border-[#53C8F0] bg-[#53C8F0]/35 ring-1 ring-[#53C8F0]/60' : 'border-white/15 bg-white/10'} ${dragging ? 'opacity-80 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
                         style={{ width: w }}
                         role="button"
                         aria-label={`Clip ${clip.name}, ${fmt(clipDuration(clip))}${selected ? ', selected' : ''}`}
@@ -7486,7 +7503,7 @@ function VideoEditor() {
                         )}
                         {/* speed badge */}
                         {clip.speed !== 1 && (
-                          <span className="absolute right-0 top-0 z-20 rounded-bl bg-black/70 px-1 py-px text-[7px] font-bold text-[#FFB6C1]" title={`Speed ${clip.speed}×`}>
+                          <span className="absolute right-0 top-0 z-20 rounded-bl bg-black/70 px-1 py-px text-[7px] font-bold text-[#7BE7D4]" title={`Speed ${clip.speed}×`}>
                             {clip.speed}×
                           </span>
                         )}
@@ -7503,7 +7520,7 @@ function VideoEditor() {
                                 <button
                                   key={`kf-${clip.id}-${t}`}
                                   type="button"
-                                  className="pointer-events-auto absolute top-0 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border border-white/80 bg-[#FFB6C1] shadow-[0_0_7px_rgba(255,182,193,.75)]"
+                                  className="pointer-events-auto absolute top-0 h-3 w-3 -translate-x-1/2 rotate-45 rounded-[2px] border border-white/80 bg-[#7BE7D4] shadow-[0_0_7px_rgba(255,182,193,.75)]"
                                   style={{ left: `${pct}%`, opacity: active ? 1 : 0.8 }}
                                   onPointerDown={(e) => {
                                     e.preventDefault();
@@ -7533,14 +7550,14 @@ function VideoEditor() {
                         <span
                           data-timeline-handle="true"
                           onPointerDown={(e) => startTrim(e, clip, 'start')}
-                          className="absolute inset-y-0 left-0 z-30 w-3.5 sm:w-2.5 cursor-ew-resize touch-none bg-gradient-to-r from-[#FFB6C1]/90 to-transparent"
+                          className="absolute inset-y-0 left-0 z-30 w-3.5 sm:w-2.5 cursor-ew-resize touch-none bg-gradient-to-r from-[#7BE7D4]/90 to-transparent"
                           role="slider"
                           aria-label={`Trim start of ${clip.name}`}
                         />
                         <span
                           data-timeline-handle="true"
                           onPointerDown={(e) => startTrim(e, clip, 'end')}
-                          className="absolute inset-y-0 right-0 z-30 w-3.5 sm:w-2.5 cursor-ew-resize touch-none bg-gradient-to-l from-[#FFB6C1]/90 to-transparent"
+                          className="absolute inset-y-0 right-0 z-30 w-3.5 sm:w-2.5 cursor-ew-resize touch-none bg-gradient-to-l from-[#7BE7D4]/90 to-transparent"
                           role="slider"
                           aria-label={`Trim end of ${clip.name}`}
                         />
@@ -7581,7 +7598,7 @@ function VideoEditor() {
                          <button onClick={() => toggleTrackFlag(track.id, 'locked')} className={`rounded p-1 ${track.locked ? 'bg-amber-500/30 text-amber-200' : 'text-white/35 hover:text-white'}`} aria-label={track.locked ? 'Unlock track' : 'Lock track'}><Lock className="h-3 w-3" /></button>
                        </div>
                       {project.tracks.length > 1 && (
-                        <button onClick={() => deleteEditorTrack(track.id)} className="rounded p-1 text-white/25 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" title="Remove track" aria-label={`Remove ${track.name}`}>
+                        <button onClick={() => deleteEditorTrack(track.id)} className="rounded p-1 text-white/25 hover:text-red-300 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]" title="Remove track" aria-label={`Remove ${track.name}`}>
                           <X className="h-3 w-3" />
                         </button>
                       )}
@@ -7595,7 +7612,7 @@ function VideoEditor() {
                             key={el.id}
                             data-timeline-item="true"
                             onPointerDown={(e) => beginOverlayItemDrag(e, el)}
-                            className={`absolute top-1 flex h-9 touch-none items-center overflow-hidden rounded border px-1 text-left text-[9px] ${selected ? 'z-20 border-white bg-[#E5798F]/50 ring-1 ring-white/60' : 'z-10 border-white/15 bg-[#7b5cff]/30'} ${dragging ? 'opacity-85 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
+                            className={`absolute top-1 flex h-9 touch-none items-center overflow-hidden rounded border px-1 text-left text-[9px] ${selected ? 'z-20 border-white bg-[#53C8F0]/50 ring-1 ring-white/60' : 'z-10 border-white/15 bg-[#7b5cff]/30'} ${dragging ? 'opacity-85 ring-2 ring-white/40' : 'cursor-grab active:cursor-grabbing'}`}
                             style={{ left: el.start * pxPerSec, width: Math.max(14, (el.end - el.start) * pxPerSec) }}
                             role="button"
                             aria-label={`${el.kind} overlay from ${fmt(el.start)} to ${fmt(el.end)}${selected ? ', selected' : ''}`}
@@ -7829,10 +7846,10 @@ function VideoEditor() {
 
               {/* playhead line across all lanes */}
               <div
-                className="pointer-events-none absolute inset-y-0 z-50 w-px bg-[#FFB6C1] shadow-[0_0_8px_rgba(255,182,193,.8)]"
+                className="pointer-events-none absolute inset-y-0 z-50 w-px bg-[#7BE7D4] shadow-[0_0_8px_rgba(255,182,193,.8)]"
                 style={{ left: LABEL_W + playhead * pxPerSec }}
               >
-                <div className="absolute -left-1.5 top-0 h-3 w-3 rounded-full bg-[#FFB6C1]" />
+                <div className="absolute -left-1.5 top-0 h-3 w-3 rounded-full bg-[#7BE7D4]" />
               </div>
             </div>
           </div>
@@ -7953,7 +7970,7 @@ function VideoEditor() {
                         { label: 'Magic', icon: <Sparkles className="h-4 w-4" />, action: () => { openTool('motion'); notify('Magic tools are ready in Motion — keyframes, speed and transform stay on-canvas.'); } },
                         { label: 'Captions', icon: <Type className="h-4 w-4" />, action: () => { addCaptionElement(); } },
                       ].map((item) => (
-                        <button key={item.label} onClick={item.action} className="flex min-w-[64px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 text-[9px] font-semibold text-white/65 active:bg-white/10 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]" aria-label={item.label}>
+                        <button key={item.label} onClick={item.action} className="flex min-w-[64px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl px-2.5 py-2 text-[9px] font-semibold text-white/65 active:bg-white/10 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]" aria-label={item.label}>
                           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.07] text-white/90">{item.icon}</span>{item.label}
                         </button>
                       ))}
@@ -7970,7 +7987,7 @@ function VideoEditor() {
                       <button onClick={() => openTool('media')} className={EDITOR_ACTION_PILL}><Film className="h-4 w-4" />Replace</button>
                       <button onClick={() => deleteClip(selectedClip.id)} className={EDITOR_ACTION_PILL + ' text-red-300'}><Trash2 className="h-4 w-4" />Delete</button>
                       <button onClick={() => { setClipSpeedMenuOpen((v) => !v); setClipSoundMenuOpen(false); }} className={EDITOR_ACTION_PILL}><SkipForward className="h-4 w-4" />Speed {selectedClip.speed}×</button>
-                      {clipSpeedMenuOpen && <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-[#181818] p-1">{SPEED_OPTIONS.map((speed) => <button key={speed} onClick={() => { updateClip(selectedClip.id, { speed }, 'Change speed', `speed-${selectedClip.id}`); setClipSpeedMenuOpen(false); }} className={`rounded-lg px-2.5 py-2 text-[10px] font-bold ${selectedClip.speed === speed ? 'bg-[#E5798F] text-white' : 'text-white/60 hover:bg-white/10'}`}>{speed}×</button>)}</div>}
+                      {clipSpeedMenuOpen && <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-[#181818] p-1">{SPEED_OPTIONS.map((speed) => <button key={speed} onClick={() => { updateClip(selectedClip.id, { speed }, 'Change speed', `speed-${selectedClip.id}`); setClipSpeedMenuOpen(false); }} className={`rounded-lg px-2.5 py-2 text-[10px] font-bold ${selectedClip.speed === speed ? 'bg-[#53C8F0] text-white' : 'text-white/60 hover:bg-white/10'}`}>{speed}×</button>)}</div>}
                       <button onClick={startClipCrop} className={EDITOR_ACTION_PILL}><Crop className="h-4 w-4" />Crop</button>
                       <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL}>{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Mute'}</button>
                       <button onClick={() => duplicateClip(selectedClip)} className={EDITOR_ACTION_PILL}><Copy className="h-4 w-4" />Duplicate</button>
@@ -8030,7 +8047,7 @@ function VideoEditor() {
               <button
                 type="button"
                 onClick={() => { setContextDrawerLabel(null); setToolDrawerOpen(false); }}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white/70 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]"
                 aria-label="Close tools"
                 title="Close"
               >
@@ -8047,7 +8064,7 @@ function VideoEditor() {
               </div>
             )}
             <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => void startPracticeProject()} disabled={stockBusy} className="rounded-xl border border-[#E5798F]/40 bg-[#E5798F]/10 px-3 py-3 text-left text-xs font-bold text-white disabled:opacity-50">
+              <button type="button" onClick={() => void startPracticeProject()} disabled={stockBusy} className="rounded-xl border border-[#53C8F0]/40 bg-[#53C8F0]/10 px-3 py-3 text-left text-xs font-bold text-white disabled:opacity-50">
                 <span className="block">Practice project</span>
                 <span className="mt-1 block text-[9px] font-normal text-white/45">Free stock footage, ready to edit</span>
               </button>
@@ -8057,7 +8074,7 @@ function VideoEditor() {
               </Link>
             </div>
 
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#E5798F] py-6 text-sm font-bold text-white shadow-lg transition hover:bg-[#d96a81]">
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#53C8F0] py-6 text-sm font-bold text-white shadow-lg transition hover:bg-[#d96a81]">
               <Upload className="h-5 w-5" /> Import raw video
               <input
                 type="file"
@@ -8074,7 +8091,7 @@ function VideoEditor() {
               <div className="rounded-xl bg-white/10 p-3 text-xs">
                 <p className="mb-1 truncate">{importing.name}</p>
                 <div className="h-1.5 overflow-hidden rounded bg-white/20">
-                  <div className="h-full bg-[#E5798F] transition-all" style={{ width: `${importing.percent}%` }} />
+                  <div className="h-full bg-[#53C8F0] transition-all" style={{ width: `${importing.percent}%` }} />
                 </div>
               </div>
             )}
@@ -8099,11 +8116,11 @@ function VideoEditor() {
                 ))}
               </div>
               <div className="flex gap-2">
-                <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" /><input value={stockQuery} onChange={(e) => setStockQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void searchStockVideos(true); }} placeholder="Search footage…" className="w-full rounded-lg bg-white/10 py-2 pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-[#E5798F]" /></div>
+                <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" /><input value={stockQuery} onChange={(e) => setStockQuery(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void searchStockVideos(true); }} placeholder="Search footage…" className="w-full rounded-lg bg-white/10 py-2 pl-9 pr-3 text-xs outline-none focus:ring-1 focus:ring-[#53C8F0]" /></div>
                 <select value={stockOrientation} onChange={(e) => { const v = e.target.value as typeof stockOrientation; setStockOrientation(v); window.setTimeout(() => void searchStockVideos(true), 0); }} className="rounded-lg bg-white/10 px-2 text-xs outline-none"><option value="all" className="text-black">All</option><option value="portrait" className="text-black">Portrait</option><option value="landscape" className="text-black">Landscape</option><option value="square" className="text-black">Square</option></select>
               </div>
               {stockError && <p className="mt-2 rounded-lg bg-red-500/10 p-2 text-[10px] text-red-200">{stockError}</p>}
-              {stockBusy && stockVideos.length === 0 ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-[#FFB6C1]" /></div> : <div className="mt-2 grid max-h-56 grid-cols-3 gap-1.5 overflow-y-auto overscroll-contain">{stockVideos.map((v) => <button key={v.id} type="button" onClick={() => addStockVideo(v)} className="group relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black text-left" title={'Add footage by ' + v.photographer}>{v.thumbnail ? <img src={v.thumbnail} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /> : <video src={v.url} muted preload="metadata" className="h-full w-full object-cover" />}<span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1.5 py-1 text-[8px] text-white">{v.duration ? fmt(v.duration) : 'video'} · {v.photographer}</span></button>)}</div>}
+              {stockBusy && stockVideos.length === 0 ? <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-[#7BE7D4]" /></div> : <div className="mt-2 grid max-h-56 grid-cols-3 gap-1.5 overflow-y-auto overscroll-contain">{stockVideos.map((v) => <button key={v.id} type="button" onClick={() => addStockVideo(v)} className="group relative aspect-video overflow-hidden rounded-lg border border-white/10 bg-black text-left" title={'Add footage by ' + v.photographer}>{v.thumbnail ? <img src={v.thumbnail} alt="" className="h-full w-full object-cover transition group-hover:scale-105" /> : <video src={v.url} muted preload="metadata" className="h-full w-full object-cover" />}<span className="absolute inset-x-0 bottom-0 truncate bg-black/65 px-1.5 py-1 text-[8px] text-white">{v.duration ? fmt(v.duration) : 'video'} · {v.photographer}</span></button>)}</div>}
               {stockVideos.length > 0 && <button type="button" onClick={() => void searchStockVideos(false)} disabled={stockBusy} className="mt-2 w-full rounded-lg border border-white/15 py-2 text-[10px] font-semibold disabled:opacity-40">{stockBusy ? 'Loading…' : 'Load more footage'}</button>}
               <p className="mt-2 text-center text-[9px] text-white/35">Stock footage provided by Pexels and Pixabay · keep the provider/creator attribution visible.</p>
             </div>
@@ -8146,7 +8163,7 @@ function VideoEditor() {
                     key={a.id}
                     onClick={() => setAspect(a.id)}
                     aria-pressed={project.aspect === a.id}
-                    className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${project.aspect === a.id ? 'bg-[#E5798F] text-white' : 'bg-white/10 text-white/80'}`}
+                    className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#7BE7D4] ${project.aspect === a.id ? 'bg-[#53C8F0] text-white' : 'bg-white/10 text-white/80'}`}
                   >
                     {a.label}
                   </button>
@@ -8166,12 +8183,12 @@ function VideoEditor() {
                 <button
                   type="button"
                   onClick={() => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), type: 'color' } }), 'Canvas background color')}
-                  className={`rounded-lg border px-2 py-2 text-[10px] font-semibold ${project.background?.type !== 'gradient' ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
+                  className={`rounded-lg border px-2 py-2 text-[10px] font-semibold ${project.background?.type !== 'gradient' ? 'border-[#53C8F0] bg-[#53C8F0]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
                 >Color</button>
                 <button
                   type="button"
-                  onClick={() => updateProject((p) => ({ ...p, background: { type: 'gradient', color: p.background?.color || '#000000', color2: p.background?.color2 || '#E5798F', angle: p.background?.angle ?? 0 } }), 'Canvas gradient')}
-                  className={`rounded-lg border px-2 py-2 text-[10px] font-semibold ${project.background?.type === 'gradient' ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
+                  onClick={() => updateProject((p) => ({ ...p, background: { type: 'gradient', color: p.background?.color || '#000000', color2: p.background?.color2 || '#53C8F0', angle: p.background?.angle ?? 0 } }), 'Canvas gradient')}
+                  className={`rounded-lg border px-2 py-2 text-[10px] font-semibold ${project.background?.type === 'gradient' ? 'border-[#53C8F0] bg-[#53C8F0]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
                 >Gradient</button>
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -8183,12 +8200,12 @@ function VideoEditor() {
                 {project.background?.type === 'gradient' ? (
                   <MobileColorField
                     label="Second color"
-                    value={project.background?.color2 || '#E5798F'}
+                    value={project.background?.color2 || '#53C8F0'}
                     onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000' }), type: 'gradient', color2: value } }), 'Canvas gradient color')}
                   />
                 ) : (
                   <div className="grid grid-cols-4 gap-1.5 pt-5">
-                    {['#000000','#FFFFFF','#FFB6C1','#E5798F','#1E90FF','#FFD166','#06D6A0','#7C3AED'].map((color) => (
+                    {['#000000','#FFFFFF','#7BE7D4','#53C8F0','#1E90FF','#FFD166','#06D6A0','#7C3AED'].map((color) => (
                       <button key={color} type="button" onClick={() => updateProject((p) => ({ ...p, background: { type: 'color', color } }), 'Canvas background color')} className="h-8 rounded-lg border border-white/10" style={{ background: color }} aria-label={`Use ${color} canvas background`} />
                     ))}
                   </div>
@@ -8196,7 +8213,7 @@ function VideoEditor() {
               </div>
               {project.background?.type === 'gradient' && (
                 <div className="mt-2">
-                  <Slider label="Gradient angle" min={-180} max={180} value={project.background.angle ?? 0} onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000', color2: '#E5798F' }), type: 'gradient', angle: value } }), 'Canvas gradient angle', 'canvas-gradient-angle')} />
+                  <Slider label="Gradient angle" min={-180} max={180} value={project.background.angle ?? 0} onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000', color2: '#53C8F0' }), type: 'gradient', angle: value } }), 'Canvas gradient angle', 'canvas-gradient-angle')} />
                 </div>
               )}
             </div>
@@ -8205,7 +8222,7 @@ function VideoEditor() {
 
         {tool === 'text' && (
           <div className="space-y-3">
-            <button onClick={addTextElement} className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-bold text-black focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+            <button onClick={addTextElement} className="flex w-full items-center justify-center gap-2 rounded-xl bg-white py-3 text-sm font-bold text-black focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
               <Type className="h-4 w-4" /> Add text at playhead
             </button>
             {legacyAiElements.length > 0 && (
@@ -8235,13 +8252,13 @@ function VideoEditor() {
 
         {tool === 'ai' && (
           <>
-            <div className="mb-3 rounded-2xl border border-[#E5798F]/25 bg-[#E5798F]/[0.06] p-3">
+            <div className="mb-3 rounded-2xl border border-[#53C8F0]/25 bg-[#53C8F0]/[0.06] p-3">
               <div className="mb-2 flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold">AI Effects & Generation</p>
                   <p className="text-[9px] leading-snug text-white/40">Free-first AI: the editor, effects, masks and Gemini editing assistant work without fal.ai. Cloud media generation/voice tools are optional and activate when a provider key is added.</p>
                 </div>
-                <Sparkles className="h-4 w-4 text-[#FFB6C1]" />
+                <Sparkles className="h-4 w-4 text-[#7BE7D4]" />
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 {[
@@ -8421,7 +8438,7 @@ function VideoEditor() {
               <p className="text-sm font-bold">Layers & overlays</p>
               <p className="mt-1 text-[10px] leading-4 text-white/45">Add video and image layers above the main edit. Every layer remains editable, transformable and keyframe-ready.</p>
             </div>
-            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#E5798F]/40 py-4 text-xs font-semibold text-white/80">
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed border-[#53C8F0]/40 py-4 text-xs font-semibold text-white/80">
               <Film className="h-4 w-4" /> Add video overlay
               <input
                 type="file"
@@ -8442,7 +8459,7 @@ function VideoEditor() {
             {selectedElement && selectedElement.kind === 'video' && (
               <button
                 onClick={() => moveVideoOverlayToMainTrack(selectedElement)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#E5798F] px-3 py-2.5 text-xs font-bold focus-visible:ring-2 focus-visible:ring-white"
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#53C8F0] px-3 py-2.5 text-xs font-bold focus-visible:ring-2 focus-visible:ring-white"
               >
                 <Film className="h-4 w-4" /> Move video to main track
               </button>
@@ -8485,7 +8502,7 @@ function VideoEditor() {
                             : [...effects, { id: makeVideoId('ae'), type: preset.id, amount: 0.8, mix: 0.8 } as AudioEffect];
                           updateClip(selectedClip.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(selectedClip.audioProcessing || {}), effects: next } }, active ? 'Remove audio effect' : 'Add audio effect');
                         }}
-                        className={`min-h-12 rounded-lg border px-1.5 py-2 text-center text-[9px] font-bold transition ${active ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.035] text-white/60 hover:text-white'}`}>
+                        className={`min-h-12 rounded-lg border px-1.5 py-2 text-center text-[9px] font-bold transition ${active ? 'border-[#53C8F0] bg-[#53C8F0]/20 text-white' : 'border-white/10 bg-white/[0.035] text-white/60 hover:text-white'}`}>
                         {preset.name}
                         <span className="mt-0.5 block text-[7px] font-normal text-white/35">{active ? 'ON' : preset.hint}</span>
                       </button>
@@ -8506,7 +8523,7 @@ function VideoEditor() {
             <div className="flex gap-2">
               <button
                 onClick={recording ? stopVoiceover : startVoiceover}
-                className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${recording ? 'bg-red-500 text-white' : 'bg-white text-black'}`}
+                className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold focus-visible:ring-2 focus-visible:ring-[#7BE7D4] ${recording ? 'bg-red-500 text-white' : 'bg-white text-black'}`}
               >
                 {recording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
                 {recording ? 'Stop recording' : 'Record voiceover'}
@@ -8608,9 +8625,9 @@ function VideoEditor() {
                   <form onSubmit={(e) => { e.preventDefault(); void searchFeedMusic(soundQuery, 1, false); }} className="flex gap-2">
                     <div className="relative min-w-0 flex-1">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-                      <input value={soundQuery} onChange={(e) => setSoundQuery(e.target.value)} placeholder="Search artist, song, OPM…" aria-label="Search licensed music" className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]" />
+                      <input value={soundQuery} onChange={(e) => setSoundQuery(e.target.value)} placeholder="Search artist, song, OPM…" aria-label="Search licensed music" className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#53C8F0]" />
                     </div>
-                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">Search</button>
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold disabled:opacity-50">Search</button>
                   </form>
                   <div className="flex gap-1.5 overflow-x-auto pb-1">
                     {['Trending', 'Popular', 'OPM / Filipino', 'Viral', 'Love', 'R&B', 'Hip-hop', 'Chill'].map((tag) => (
@@ -8630,7 +8647,7 @@ function VideoEditor() {
                               <p className="truncate text-xs font-semibold">{s.title}</p>
                               <p className="mt-0.5 truncate text-[10px] text-white/45">{s.artist} · {fmt(s.duration_seconds)} · Licensed</p>
                             </div>
-                            <button type="button" onClick={() => addSoundTrack({ title: s.title, url: s.url, duration_seconds: s.duration_seconds, provider: s.provider, providerId: s.providerId, sourceUrl: s.source, license: s.license, creator: s.artist }, 'music')} className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold">Add</button>
+                            <button type="button" onClick={() => addSoundTrack({ title: s.title, url: s.url, duration_seconds: s.duration_seconds, provider: s.provider, providerId: s.providerId, sourceUrl: s.source, license: s.license, creator: s.artist }, 'music')} className="shrink-0 rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold">Add</button>
                           </div>
                           <SoundPreviewPlayer sound={s} playing={previewingSoundId === s.id} currentTime={previewingSoundId === s.id ? previewSoundTime : 0} onToggle={() => toggleSoundPreview(s)} onSeek={(time) => { if (previewingSoundId !== s.id) toggleSoundPreview(s); window.setTimeout(() => seekSoundPreview(time), 0); }} />
                         </div>
@@ -8670,10 +8687,10 @@ function VideoEditor() {
                         onChange={(e) => setSoundQuery(e.target.value)}
                         placeholder="Search sound effects, ambience, music…"
                         aria-label="Search Freesound"
-                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#53C8F0]"
                       />
                     </div>
-                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
                       Search
                     </button>
                   </form>
@@ -8689,7 +8706,7 @@ function VideoEditor() {
                           setSoundCategory(category);
                           void searchFreesound(soundQuery, 1, false, category);
                         }}
-                        className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold transition ${soundCategory === category ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
+                        className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold transition ${soundCategory === category ? 'border-[#53C8F0] bg-[#53C8F0]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
                       >
                         {category}
                       </button>
@@ -8727,7 +8744,7 @@ function VideoEditor() {
                                 license: s.license,
                                 creator: s.artist,
                               }, 'music')}
-                              className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold focus-visible:ring-2 focus-visible:ring-white"
+                              className="shrink-0 rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold focus-visible:ring-2 focus-visible:ring-white"
                             >
                               Add
                             </button>
@@ -8753,7 +8770,7 @@ function VideoEditor() {
                                 href={s.source}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="shrink-0 text-[9px] font-semibold text-[#FFB6C1] hover:underline"
+                                className="shrink-0 text-[9px] font-semibold text-[#7BE7D4] hover:underline"
                               >
                                 View source
                               </a>
@@ -8808,10 +8825,10 @@ function VideoEditor() {
                         onChange={(e) => setSoundQuery(e.target.value)}
                         placeholder="Search cinematic, chill, piano, dreamy…"
                         aria-label="Search Coverr music"
-                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#53C8F0]"
                       />
                     </div>
-                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
                       Search
                     </button>
                   </form>
@@ -8846,7 +8863,7 @@ function VideoEditor() {
                       {sounds.map((sound) => (
                         <div key={sound.id} className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5">
                           <div className="flex items-start gap-2">
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#E5798F]/15 text-[#FFB6C1]">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-[#53C8F0]/15 text-[#7BE7D4]">
                               <Music className="h-4 w-4" />
                             </div>
                             <div className="min-w-0 flex-1">
@@ -8866,7 +8883,7 @@ function VideoEditor() {
                                 license: sound.license,
                                 creator: sound.artist,
                               }, 'music')}
-                              className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-40"
+                              className="shrink-0 rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold disabled:opacity-40"
                             >
                               Add
                             </button>
@@ -8927,14 +8944,14 @@ function VideoEditor() {
                         onChange={(e) => setSoundQuery(e.target.value)}
                         placeholder="Search songs, artists, albums, genres…"
                         aria-label="Search Jamendo music"
-                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#E5798F]"
+                        className="w-full rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-xs outline-none focus:border-[#53C8F0]"
                       />
                     </div>
                     <select
                       value={jamendoSearchMode}
                       onChange={(e) => setJamendoSearchMode(e.target.value as typeof jamendoSearchMode)}
                       aria-label="Jamendo search type"
-                      className="rounded-lg border border-white/10 bg-[#171017] px-2 text-[10px] font-semibold text-white/75 outline-none focus:border-[#E5798F]"
+                      className="rounded-lg border border-white/10 bg-[#171017] px-2 text-[10px] font-semibold text-white/75 outline-none focus:border-[#53C8F0]"
                     >
                       <option value="all">Everything</option>
                       <option value="title">Song title</option>
@@ -8942,7 +8959,7 @@ function VideoEditor() {
                       <option value="album">Album</option>
                       <option value="genre">Genre / tag</option>
                     </select>
-                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
+                    <button type="submit" disabled={soundBusy} className="rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold disabled:opacity-50">
                       Search
                     </button>
                   </form>
@@ -8965,7 +8982,7 @@ function VideoEditor() {
                             void searchJamendo('', 1, false, 'All', 'all', next);
                           }
                         }}
-                        className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold ${jamendoFeed === feed ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
+                        className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold ${jamendoFeed === feed ? 'border-[#53C8F0] bg-[#53C8F0]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50'}`}
                       >
                         {label}
                       </button>
@@ -8997,7 +9014,7 @@ function VideoEditor() {
                               void searchJamendo(queryCategory, 1, false, queryCategory, 'genre');
                             }
                           }}
-                          className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold transition ${soundCategory === queryCategory ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
+                          className={`shrink-0 rounded-full border px-2.5 py-1.5 text-[9px] font-semibold transition ${soundCategory === queryCategory ? 'border-[#53C8F0] bg-[#53C8F0]/20 text-white' : 'border-white/10 bg-white/[0.03] text-white/50 hover:text-white'}`}
                         >
                           {category}
                         </button>
@@ -9040,7 +9057,7 @@ function VideoEditor() {
                                 license: s.license,
                                 creator: s.artist,
                               }, 'music')}
-                              className="shrink-0 rounded-lg bg-[#E5798F] px-3 py-2 text-[10px] font-bold focus-visible:ring-2 focus-visible:ring-white"
+                              className="shrink-0 rounded-lg bg-[#53C8F0] px-3 py-2 text-[10px] font-bold focus-visible:ring-2 focus-visible:ring-white"
                             >
                               Add
                             </button>
@@ -9062,7 +9079,7 @@ function VideoEditor() {
                               {s.tags?.slice(0, 4).join(' · ') || 'Jamendo'}
                             </div>
                             {s.source && (
-                              <a href={s.source} target="_blank" rel="noreferrer" className="shrink-0 text-[9px] font-semibold text-[#FFB6C1] hover:underline">
+                              <a href={s.source} target="_blank" rel="noreferrer" className="shrink-0 text-[9px] font-semibold text-[#7BE7D4] hover:underline">
                                 View source
                               </a>
                             )}
@@ -9116,7 +9133,7 @@ function VideoEditor() {
                             }}
                           />
                         </div>
-                        <button onClick={() => addSoundTrack(s, 'music')} className="rounded-lg bg-[#E5798F] px-3 py-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white">
+                        <button onClick={() => addSoundTrack(s, 'music')} className="rounded-lg bg-[#53C8F0] px-3 py-2 text-[11px] font-bold focus-visible:ring-2 focus-visible:ring-white">
                           Add
                         </button>
                       </li>
@@ -9157,7 +9174,7 @@ function VideoEditor() {
                     <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-2.5">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <div><p className="text-[11px] font-bold text-white">Audio effects</p><p className="text-[9px] text-white/35">Live preview · stacks · no AI/API required</p></div>
-                        <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[8px] font-bold text-[#FFB6C1]">{a.audioProcessing?.effects?.length || 0} active</span>
+                        <span className="rounded-full bg-[#53C8F0]/15 px-2 py-1 text-[8px] font-bold text-[#7BE7D4]">{a.audioProcessing?.effects?.length || 0} active</span>
                       </div>
                       <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4">
                         {AUDIO_EFFECT_PRESETS.filter((preset) => preset.id !== 'none').map((preset) => {
@@ -9168,7 +9185,7 @@ function VideoEditor() {
                               const next = active ? effects.filter((effect) => effect.type !== preset.id) : [...effects, { id: makeVideoId('ae'), type: preset.id, amount: 0.8, mix: 0.8 } as AudioEffect];
                               updateAudio(a.id, { audioProcessing: { ...DEFAULT_AUDIO_PROCESSING, ...(a.audioProcessing || {}), effects: next } }, active ? `Remove ${preset.name}` : `Add ${preset.name}`);
                             }}
-                              className={`min-h-12 rounded-lg border px-1.5 py-2 text-center transition ${active ? 'border-[#E5798F] bg-[#E5798F]/20 text-white' : 'border-white/10 bg-white/[0.035] text-white/60 hover:border-white/25 hover:text-white'}`}
+                              className={`min-h-12 rounded-lg border px-1.5 py-2 text-center transition ${active ? 'border-[#53C8F0] bg-[#53C8F0]/20 text-white' : 'border-white/10 bg-white/[0.035] text-white/60 hover:border-white/25 hover:text-white'}`}
                               title={preset.hint} aria-pressed={active}>
                               <span className="block text-[9px] font-bold">{preset.name}</span>
                               <span className="mt-0.5 block text-[7px] text-white/35">{active ? 'ON' : preset.hint}</span>
@@ -9242,7 +9259,7 @@ function VideoEditor() {
                       role="tab"
                       aria-selected={frameMode === id}
                       onClick={() => setFrameMode(id)}
-                      className={`shrink-0 rounded-xl px-3 py-2 text-[10px] font-bold ${frameMode === id ? 'bg-[#E5798F] text-white' : 'bg-white/[0.05] text-white/50'}`}
+                      className={`shrink-0 rounded-xl px-3 py-2 text-[10px] font-bold ${frameMode === id ? 'bg-[#53C8F0] text-white' : 'bg-white/[0.05] text-white/50'}`}
                     >
                       {label}
                     </button>
@@ -9250,9 +9267,9 @@ function VideoEditor() {
                 </div>
                 {frameMode === 'motion' && (
                   <div className="space-y-2">
-                    <div className="rounded-2xl border border-[#E5798F]/20 bg-gradient-to-br from-[#E5798F]/10 to-white/[0.03] p-3">
+                    <div className="rounded-2xl border border-[#53C8F0]/20 bg-gradient-to-br from-[#53C8F0]/10 to-white/[0.03] p-3">
                       <div className="flex items-start gap-3">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E5798F]/15 text-[#FFB6C1]">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#53C8F0]/15 text-[#7BE7D4]">
                           <Move className="h-5 w-5" />
                         </div>
                         <div className="min-w-0">
@@ -9292,7 +9309,7 @@ function VideoEditor() {
                           <p className="text-[11px] font-bold text-white">Motion keyframes</p>
                           <p className="text-[9px] text-white/35">Capture the transform directly from the canvas.</p>
                         </div>
-                        <span className="text-[9px] text-[#FFB6C1]">{fmt(selectedClipTimeIn)}</span>
+                        <span className="text-[9px] text-[#7BE7D4]">{fmt(selectedClipTimeIn)}</span>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5">
                         {([
@@ -9310,7 +9327,7 @@ function VideoEditor() {
                               key={prop}
                               type="button"
                               onClick={() => active ? removeMainClipKeyframe(prop) : addMainClipKeyframe(prop)}
-                              className={`flex min-h-9 items-center justify-between rounded-lg border px-2.5 text-[9px] font-semibold transition active:scale-[.98] ${active ? 'border-[#E5798F]/60 bg-[#E5798F]/15 text-[#FFB6C1]' : 'border-white/10 bg-white/[.04] text-white/55'}`}
+                              className={`flex min-h-9 items-center justify-between rounded-lg border px-2.5 text-[9px] font-semibold transition active:scale-[.98] ${active ? 'border-[#53C8F0]/60 bg-[#53C8F0]/15 text-[#7BE7D4]' : 'border-white/10 bg-white/[.04] text-white/55'}`}
                             >
                               <span>{uniqueLabel}</span>
                               <span className="text-sm">{active ? '◆' : '◇'}</span>
@@ -9330,12 +9347,12 @@ function VideoEditor() {
                   </div>
                 )}
                 {(frameMode === 'ai-drawing' || frameMode === 'ai-portrait') && (
-                  <div className="rounded-xl border border-[#E5798F]/20 bg-[#E5798F]/10 p-3">
+                  <div className="rounded-xl border border-[#53C8F0]/20 bg-[#53C8F0]/10 p-3">
                     <p className="text-xs font-bold">{frameMode === 'ai-drawing' ? 'AI Drawing' : 'AI Portrait'}</p>
                     <p className="mt-1 text-[10px] leading-4 text-white/50">
                       This is an AI generation operation rather than a normal editor effect. Connect an AI video/image provider to generate the processed media, then add the result as a new editable layer.
                     </p>
-                    <button type="button" onClick={() => openTool('ai')} className="mt-2 w-full rounded-xl bg-[#E5798F] py-2.5 text-[10px] font-bold">
+                    <button type="button" onClick={() => openTool('ai')} className="mt-2 w-full rounded-xl bg-[#53C8F0] py-2.5 text-[10px] font-bold">
                       Open Editing Assistant
                     </button>
                   </div>
@@ -9388,7 +9405,7 @@ function VideoEditor() {
                       <p className="text-xs font-semibold">Keyframes</p>
                       <p className="text-[10px] text-white/40">At {fmt(selectedClipTimeIn)} inside this clip</p>
                     </div>
-                    <span className="text-[10px] text-[#FFB6C1]">◇ motion</span>
+                    <span className="text-[10px] text-[#7BE7D4]">◇ motion</span>
                   </div>
                   <div className="space-y-1.5">
                     {KEYFRAMABLE_PROPERTIES.map((p) => {
@@ -9402,7 +9419,7 @@ function VideoEditor() {
                           <button
                             type="button"
                             onClick={() => atPlayhead ? removeMainClipKeyframe(p.id) : addMainClipKeyframe(p.id)}
-                            className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold ${atPlayhead ? 'bg-[#E5798F] text-white' : 'bg-white/10 text-white/75'}`}
+                            className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold ${atPlayhead ? 'bg-[#53C8F0] text-white' : 'bg-white/10 text-white/75'}`}
                           >
                             {atPlayhead ? 'Remove' : 'Add ◇'}
                           </button>
@@ -9436,7 +9453,7 @@ function VideoEditor() {
                         key={s}
                         onClick={() => updateClip(selectedClip.id, { speed: s }, 'Change speed')}
                         aria-pressed={selectedClip.speed === s}
-                        className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1] ${selectedClip.speed === s ? 'bg-[#E5798F] text-white' : 'bg-white/10'}`}
+                        className={`rounded-lg px-3 py-2 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#7BE7D4] ${selectedClip.speed === s ? 'bg-[#53C8F0] text-white' : 'bg-white/10'}`}
                       >
                         {s}×
                       </button>
@@ -9477,7 +9494,7 @@ function VideoEditor() {
                             },
                           },
                         }, 'Set mask')}
-                        className={`rounded-lg bg-white/10 px-2 py-2 text-[9px] font-semibold ${selectedClip.transform.mask?.shape === shape || (shape === 'none' && !selectedClip.transform.mask) ? 'bg-[#E5798F] text-white' : 'text-white/65'}`}
+                        className={`rounded-lg bg-white/10 px-2 py-2 text-[9px] font-semibold ${selectedClip.transform.mask?.shape === shape || (shape === 'none' && !selectedClip.transform.mask) ? 'bg-[#53C8F0] text-white' : 'text-white/65'}`}
                       >
                         {label}
                       </button>
@@ -9508,14 +9525,14 @@ function VideoEditor() {
                   <p className="mb-1.5 text-xs font-semibold text-white/60">Crop</p>
                   <button
                     onClick={startClipCrop}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 py-2.5 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/10 py-2.5 text-xs font-semibold focus-visible:ring-2 focus-visible:ring-[#7BE7D4]"
                   >
                     <Crop className="h-4 w-4" /> {selectedClip.transform.crop ? 'Edit crop' : 'Crop this video'}
                   </button>
                   {selectedClip.transform.crop && (
                     <button
                       onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, crop: null } }, 'Reset crop')}
-                      className="mt-1.5 w-full rounded-lg bg-white/5 py-2 text-[11px] text-white/60 focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                      className="mt-1.5 w-full rounded-lg bg-white/5 py-2 text-[11px] text-white/60 focus-visible:ring-2 focus-visible:ring-[#7BE7D4]"
                     >
                       Remove crop
                     </button>
@@ -9582,13 +9599,13 @@ function VideoEditor() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_h: !selectedClip.transform.flip_h } }, 'Flip H')} aria-pressed={selectedClip.transform.flip_h} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+                  <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_h: !selectedClip.transform.flip_h } }, 'Flip H')} aria-pressed={selectedClip.transform.flip_h} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
                     <FlipHorizontal className="h-3.5 w-3.5" /> Flip H
                   </button>
-                  <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_v: !selectedClip.transform.flip_v } }, 'Flip V')} aria-pressed={selectedClip.transform.flip_v} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+                  <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_v: !selectedClip.transform.flip_v } }, 'Flip V')} aria-pressed={selectedClip.transform.flip_v} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
                     <FlipVertical className="h-3.5 w-3.5" /> Flip V
                   </button>
-                  <button onClick={() => updateClip(selectedClip.id, { transform: { ...DEFAULT_TRANSFORM, crop: selectedClip.transform.crop }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none' }, 'Reset look')} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-[#FFB6C1]">
+                  <button onClick={() => updateClip(selectedClip.id, { transform: { ...DEFAULT_TRANSFORM, crop: selectedClip.transform.crop }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none' }, 'Reset look')} className="flex items-center gap-1 rounded-lg bg-white/10 px-3 py-2 text-xs focus-visible:ring-2 focus-visible:ring-[#7BE7D4]">
                     <RotateCw className="h-3.5 w-3.5" /> Reset
                   </button>
                 </div>
@@ -9601,7 +9618,7 @@ function VideoEditor() {
                     <button
                       onClick={() => updateClip(selectedClip.id, { audioProcessing: { ...(selectedClip.audioProcessing || DEFAULT_AUDIO_PROCESSING), compressor: !(selectedClip.audioProcessing?.compressor ?? false) } }, 'Toggle compressor')}
                       aria-pressed={selectedClip.audioProcessing?.compressor ?? false}
-                      className={`rounded-lg px-3 py-2 text-[10px] font-semibold focus-visible:ring-2 focus-visible:ring-white ${selectedClip.audioProcessing?.compressor ? 'bg-[#E5798F]' : 'bg-white/10'}`}
+                      className={`rounded-lg px-3 py-2 text-[10px] font-semibold focus-visible:ring-2 focus-visible:ring-white ${selectedClip.audioProcessing?.compressor ? 'bg-[#53C8F0]' : 'bg-white/10'}`}
                     >
                       Compressor {selectedClip.audioProcessing?.compressor ? 'On' : 'Off'}
                     </button>
@@ -9615,7 +9632,7 @@ function VideoEditor() {
                       <p className="text-xs font-semibold text-white">Advanced Effect Stack</p>
                       <p className="text-[10px] text-white/40">Build a stack instead of choosing only one effect. Every layer previews on your footage and exports through the same compositor.</p>
                     </div>
-                    <span className="rounded-full bg-[#E5798F]/15 px-2 py-1 text-[9px] font-semibold text-[#ffb6c1]">
+                    <span className="rounded-full bg-[#53C8F0]/15 px-2 py-1 text-[9px] font-semibold text-[#ffb6c1]">
                       {selectedClip.effects?.length || (selectedClip.effect !== 'none' ? 1 : 0)} LAYERS
                     </span>
                   </div>
@@ -9852,7 +9869,7 @@ function VideoEditor() {
               <div className="rounded-xl bg-white/10 p-3 text-xs">
                 <p className="mb-1 capitalize">{exportProgress.phase} — {exportProgress.message}</p>
                 <div className="h-1.5 overflow-hidden rounded bg-white/20">
-                  <div className="h-full bg-[#E5798F] transition-all" style={{ width: `${exportProgress.percent}%` }} />
+                  <div className="h-full bg-[#53C8F0] transition-all" style={{ width: `${exportProgress.percent}%` }} />
                 </div>
               </div>
             )}
@@ -9863,14 +9880,14 @@ function VideoEditor() {
                   <button
                     onClick={runExport}
                     disabled={exporting}
-                    className="flex-1 rounded-xl bg-white py-3 text-sm font-bold text-black focus-visible:ring-2 focus-visible:ring-[#FFB6C1] disabled:opacity-50"
+                    className="flex-1 rounded-xl bg-white py-3 text-sm font-bold text-black focus-visible:ring-2 focus-visible:ring-[#7BE7D4] disabled:opacity-50"
                   >
                     {exporting ? 'Rendering… keep this tab open' : 'Export video'}
                   </button>
                   {exporting && (
                     <button
                       onClick={() => rendererRef.current.cancelExport()}
-                      className="rounded-xl border border-white/25 px-4 py-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[#FFB6C1]"
+                      className="rounded-xl border border-white/25 px-4 py-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[#7BE7D4]"
                     >
                       Cancel
                     </button>
@@ -9900,7 +9917,7 @@ function VideoEditor() {
                   <a href={exportResult.url} download={`${doc.title || 'video'}.${exportResult.format}`} className="flex items-center justify-center gap-2 rounded-xl bg-white py-2.5 text-xs font-bold text-black">
                     <Download className="h-4 w-4" /> Download
                   </a>
-                  <button onClick={postExport} className="flex items-center justify-center gap-2 rounded-xl bg-[#E5798F] py-2.5 text-xs font-bold text-white">
+                  <button onClick={postExport} className="flex items-center justify-center gap-2 rounded-xl bg-[#53C8F0] py-2.5 text-xs font-bold text-white">
                     <Share2 className="h-4 w-4" /> Post to feed
                   </button>
                 </div>
@@ -10006,43 +10023,43 @@ function VideoEditor() {
       >
         {selectedClip ? (
           <>
-            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#FFB6C1]/30 bg-[#FFB6C1]/10 px-2 py-1.5 text-[9px] font-bold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
-            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Music className="h-5 w-5" />Audio</button>
-            <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Effects</button>
-            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Move className="h-5 w-5" />Motion</button>
-            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Gauge className="h-5 w-5" />Opacity</button>
-            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Move className="h-5 w-5" />Motion</button>
-            <button type="button" onClick={addTextElement} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Type className="h-5 w-5" />Text</button>
-            <button type="button" onClick={startClipCrop} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Crop className="h-5 w-5" />Crop</button>
-            <button type="button" onClick={splitAtPlayhead} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Scissors className="h-5 w-5" />Split</button>
-            <button type="button" onClick={() => deleteClip(selectedClip.id)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Trash2 className="h-5 w-5" />Delete</button>
+            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#7BE7D4]/30 bg-[#7BE7D4]/10 px-2 py-1.5 text-[9px] font-bold text-[#7BE7D4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
+            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Music className="h-5 w-5" />Audio</button>
+            <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Sparkles className="h-5 w-5" />Effects</button>
+            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Move className="h-5 w-5" />Motion</button>
+            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Gauge className="h-5 w-5" />Opacity</button>
+            <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Move className="h-5 w-5" />Motion</button>
+            <button type="button" onClick={addTextElement} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Type className="h-5 w-5" />Text</button>
+            <button type="button" onClick={startClipCrop} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Crop className="h-5 w-5" />Crop</button>
+            <button type="button" onClick={splitAtPlayhead} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Scissors className="h-5 w-5" />Split</button>
+            <button type="button" onClick={() => deleteClip(selectedClip.id)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Trash2 className="h-5 w-5" />Delete</button>
           </>
         ) : selectedElement ? (
           <>
-            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#FFB6C1]/30 bg-[#FFB6C1]/10 px-2 py-1.5 text-[9px] font-bold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
-            <button type="button" onClick={() => openTool(selectedElement.kind === 'text' ? 'text' : 'overlays')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Type className="h-5 w-5" />Edit</button>
+            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#7BE7D4]/30 bg-[#7BE7D4]/10 px-2 py-1.5 text-[9px] font-bold text-[#7BE7D4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
+            <button type="button" onClick={() => openTool(selectedElement.kind === 'text' ? 'text' : 'overlays')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#7BE7D4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Type className="h-5 w-5" />Edit</button>
             {selectedElement.kind === 'text' ? (
               <>
-                <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Animate</button>
+                <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Sparkles className="h-5 w-5" />Animate</button>
               </>
             ) : (
               <>
-                <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Sparkles className="h-5 w-5" />Motion</button>
-                <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><SlidersHorizontal className="h-5 w-5" />Effects</button>
-                {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button type="button" onClick={startElementCrop} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Crop className="h-5 w-5" />Crop</button>}
+                <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Sparkles className="h-5 w-5" />Motion</button>
+                <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><SlidersHorizontal className="h-5 w-5" />Effects</button>
+                {(selectedElement.kind === 'image' || selectedElement.kind === 'video') && <button type="button" onClick={startElementCrop} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Crop className="h-5 w-5" />Crop</button>}
               </>
             )}
-            <button type="button" onClick={() => duplicateElement(selectedElement)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Copy className="h-5 w-5" />Duplicate</button>
-            <button type="button" onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate selected overlay')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><RotateCcw className="h-5 w-5" />Rotate</button>
-            <button type="button" onClick={() => deleteElement(selectedElement.id)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Trash2 className="h-5 w-5" />Delete</button>
+            <button type="button" onClick={() => duplicateElement(selectedElement)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Copy className="h-5 w-5" />Duplicate</button>
+            <button type="button" onClick={() => updateElement(selectedElement.id, { rotation: selectedElement.rotation - 90 }, 'Rotate selected overlay')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><RotateCcw className="h-5 w-5" />Rotate</button>
+            <button type="button" onClick={() => deleteElement(selectedElement.id)} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Trash2 className="h-5 w-5" />Delete</button>
           </>
         ) : selectedAudio ? (
           <>
-            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#FFB6C1]/30 bg-[#FFB6C1]/10 px-2 py-1.5 text-[9px] font-bold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
-            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#FFB6C1] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Music className="h-5 w-5" />Audio</button>
-            <button type="button" onClick={() => audioReplaceInputRef.current?.click()} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Film className="h-5 w-5" />Replace</button>
-            <button type="button" onClick={async () => { if (beatBusy) return; setBeatBusy(true); try { const markers = await detectBeatMarkers(selectedAudio); updateProject((p) => ({ ...p, beatMarkers: markers }), 'Detect audio beats'); notify(markers.length ? 'Detected ' + markers.length + ' beat markers.' : 'No strong beats were detected.'); } catch (error) { notify(error instanceof Error ? error.message : 'Beat detection failed.'); } finally { setBeatBusy(false); } }} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]" disabled={beatBusy}>{beatBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}Beats</button>
-            <button type="button" onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1]"><Trash2 className="h-5 w-5" />Delete</button>
+            <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#7BE7D4]/30 bg-[#7BE7D4]/10 px-2 py-1.5 text-[9px] font-bold text-[#7BE7D4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
+            <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#7BE7D4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Music className="h-5 w-5" />Audio</button>
+            <button type="button" onClick={() => audioReplaceInputRef.current?.click()} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Film className="h-5 w-5" />Replace</button>
+            <button type="button" onClick={async () => { if (beatBusy) return; setBeatBusy(true); try { const markers = await detectBeatMarkers(selectedAudio); updateProject((p) => ({ ...p, beatMarkers: markers }), 'Detect audio beats'); notify(markers.length ? 'Detected ' + markers.length + ' beat markers.' : 'No strong beats were detected.'); } catch (error) { notify(error instanceof Error ? error.message : 'Beat detection failed.'); } finally { setBeatBusy(false); } }} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]" disabled={beatBusy}>{beatBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}Beats</button>
+            <button type="button" onClick={() => updateProject((p) => ({ ...p, audio: p.audio.filter((x) => x.id !== selectedAudio.id) }), 'Remove audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-red-300 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Trash2 className="h-5 w-5" />Delete</button>
           </>
         ) : (
           (
@@ -10069,7 +10086,7 @@ function VideoEditor() {
                 if (tool === id && toolDrawerOpen) setToolDrawerOpen(false);
                 else openTool(id);
               }}
-              className={`relative flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#FFB6C1] ${tool === id ? 'text-[#FFB6C1]' : 'text-white/50'} md:min-w-0 md:rounded-none md:px-0 md:py-2 md:text-[10px]`}
+              className={`relative flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4] ${tool === id ? 'text-[#7BE7D4]' : 'text-white/50'} md:min-w-0 md:rounded-none md:px-0 md:py-2 md:text-[10px]`}
               aria-current={tool === id}
             >
               {icon}
@@ -10097,7 +10114,7 @@ function MobileColorField({ label, value, onChange }: {
 }) {
   const [open, setOpen] = useState(false);
   const safe = /^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#FFFFFF';
-  const presets = ['#FFFFFF','#000000','#FFB6C1','#E5798F','#1E90FF','#FFD166','#06D6A0','#EF476F','#7C3AED','#22D3EE','#F97316','#A3E635'];
+  const presets = ['#FFFFFF','#000000','#7BE7D4','#53C8F0','#1E90FF','#FFD166','#06D6A0','#EF476F','#7C3AED','#22D3EE','#F97316','#A3E635'];
 
   return (
     <div className="relative">
@@ -10143,7 +10160,7 @@ function MobileColorField({ label, value, onChange }: {
                 onBlur={() => {
                   if (!/^#[0-9a-fA-F]{6}$/.test(value || '')) onChange(safe);
                 }}
-                className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 font-mono text-[11px] font-semibold uppercase text-white outline-none focus:border-[#E5798F]"
+                className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 font-mono text-[11px] font-semibold uppercase text-white outline-none focus:border-[#53C8F0]"
                 aria-label={`${label} hex value`}
               />
             </div>
@@ -10161,7 +10178,7 @@ function MobileColorField({ label, value, onChange }: {
                   onClick={() => onChange(color)}
                   aria-label={`Use ${color}`}
                   aria-pressed={safe === color}
-                  className={`h-8 rounded-lg border transition active:scale-95 ${safe === color ? 'border-white ring-2 ring-[#E5798F]/70 ring-offset-1 ring-offset-[#171717]' : 'border-white/10'}`}
+                  className={`h-8 rounded-lg border transition active:scale-95 ${safe === color ? 'border-white ring-2 ring-[#53C8F0]/70 ring-offset-1 ring-offset-[#171717]' : 'border-white/10'}`}
                   style={{ background: color }}
                 />
               ))}
@@ -10220,8 +10237,8 @@ function Slider({ label, min, max, step = 1, value, onChange }: {
         className="group relative h-7 w-full touch-none cursor-pointer"
       >
         <span className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-white/10" />
-        <span className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#E5798F]" style={{ width: `${((value - min) / Math.max(0.0001, max - min)) * 100}%` }} />
-        <span className="absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white bg-[#E5798F] shadow-lg transition-transform group-active:scale-110" style={{ left: `${((value - min) / Math.max(0.0001, max - min)) * 100}%` }} />
+        <span className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#53C8F0]" style={{ width: `${((value - min) / Math.max(0.0001, max - min)) * 100}%` }} />
+        <span className="absolute top-1/2 h-4 w-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-white bg-[#53C8F0] shadow-lg transition-transform group-active:scale-110" style={{ left: `${((value - min) / Math.max(0.0001, max - min)) * 100}%` }} />
       </div>
     </label>
   );
@@ -10298,7 +10315,7 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, aspectRa
     >
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.07] text-[#FFB6C1]">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.07] text-[#7BE7D4]">
             <Crop className="h-4 w-4" />
           </div>
           <div className="min-w-0">
@@ -10324,7 +10341,7 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, aspectRa
               aria-pressed={active}
               className={'flex h-10 min-w-[58px] shrink-0 items-center justify-center rounded-xl border px-3 text-[10px] font-bold transition ' + (
                 active
-                  ? 'border-[#FFB6C1] bg-[#E5798F] text-white'
+                  ? 'border-[#7BE7D4] bg-[#53C8F0] text-white'
                   : 'border-white/10 bg-white/[0.045] text-white/65 active:bg-white/[0.1]'
               )}
             >
@@ -10353,7 +10370,7 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, aspectRa
         <button type="button" onClick={onCancel} className="h-10 flex-1 rounded-xl bg-white/[0.07] text-xs font-bold text-white/75">
           Cancel
         </button>
-        <button type="button" onClick={onApply} className="h-10 flex-[1.35] rounded-xl bg-[#E5798F] text-xs font-black text-white shadow-lg shadow-[#E5798F]/20">
+        <button type="button" onClick={onApply} className="h-10 flex-[1.35] rounded-xl bg-[#53C8F0] text-xs font-black text-white shadow-lg shadow-[#53C8F0]/20">
           Done
         </button>
       </div>
@@ -10526,7 +10543,7 @@ function CropOverlay({ base, crop, rotation = 0, aspectRatio, onChange, onRotate
       role="slider"
       aria-label={'Crop ' + mode}
     >
-      <span className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-[4px] border-2 border-white bg-[#E5798F] shadow-[0_2px_12px_rgba(0,0,0,.55)]" />
+      <span className="absolute left-1/2 top-1/2 h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-[4px] border-2 border-white bg-[#53C8F0] shadow-[0_2px_12px_rgba(0,0,0,.55)]" />
     </span>
   );
 
@@ -10643,7 +10660,7 @@ function TextMotionPreview({ animation, label, active, onClick }: {
   if (animation === 'split-reveal' || animation === 'mask-wipe') opacity = ease;
   return (
     <button type="button" onClick={onClick}
-      className={`relative overflow-hidden rounded-xl border p-2 text-left transition ${active ? 'border-[#E5798F] bg-[#E5798F]/15 shadow-[0_0_0_1px_rgba(229,121,143,.2)]' : 'border-white/10 bg-white/[0.035] hover:border-white/25'}`}
+      className={`relative overflow-hidden rounded-xl border p-2 text-left transition ${active ? 'border-[#53C8F0] bg-[#53C8F0]/15 shadow-[0_0_0_1px_rgba(229,121,143,.2)]' : 'border-white/10 bg-white/[0.035] hover:border-white/25'}`}
       aria-pressed={active}>
       <div className="flex h-12 items-center justify-center overflow-hidden rounded-lg bg-black/35">
         <span className="max-w-full truncate px-1 text-[11px] font-black text-white transition-none"
@@ -10716,7 +10733,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                   <button
                     onClick={() => (atPlayhead ? removeKeyframeAt(p.id) : addKeyframe(p.id))}
                     aria-pressed={atPlayhead}
-                    className={`rounded px-2 py-1 text-[10px] font-semibold ${atPlayhead ? 'bg-[#E5798F] text-white' : 'bg-white/10 text-white/80'}`}
+                    className={`rounded px-2 py-1 text-[10px] font-semibold ${atPlayhead ? 'bg-[#53C8F0] text-white' : 'bg-white/10 text-white/80'}`}
                     title={atPlayhead ? 'Remove keyframe at playhead' : 'Capture value at playhead'}
                   >
                     {atPlayhead ? 'Remove' : 'Add'}
@@ -10741,7 +10758,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
               value={el.content}
               onChange={(e) => onChange({ content: e.target.value }, 'Edit text', `txt-${el.id}`)}
               rows={5}
-              className="min-h-32 w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none transition focus:border-[#E5798F]/70 focus:ring-2 focus:ring-[#E5798F]/20"
+              className="min-h-32 w-full resize-y rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white outline-none transition focus:border-[#53C8F0]/70 focus:ring-2 focus:ring-[#53C8F0]/20"
               aria-label="Text content"
               placeholder="Type your title, caption, subtitle, or body text…"
             />
@@ -10764,7 +10781,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                   key={style.id}
                   type="button"
                   onClick={() => onChange({ ...style.patch, text_preset: style.id as TimelineElement['text_preset'] }, 'Apply text style')}
-                  className="rounded-lg border border-white/10 bg-white/[0.035] px-2 py-2 text-left transition hover:border-[#E5798F]/50 hover:bg-[#E5798F]/10"
+                  className="rounded-lg border border-white/10 bg-white/[0.035] px-2 py-2 text-left transition hover:border-[#53C8F0]/50 hover:bg-[#53C8F0]/10"
                 >
                   <span className="block text-[11px] font-black text-white">{style.label}</span>
                   <span className="mt-0.5 block text-[8px] text-white/35">{style.id === 'caption' ? 'Subtitle-ready' : style.id === 'impact' ? 'High contrast' : 'Instant preset'}</span>
@@ -10780,7 +10797,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                   <p className="text-[11px] font-bold tracking-wide text-white">Typography</p>
                   <p className="text-[9px] text-white/35">Build the text style, then fine-tune it.</p>
                 </div>
-                <Type className="h-4 w-4 text-[#E5798F]" />
+                <Type className="h-4 w-4 text-[#53C8F0]" />
               </div>
 
               <div className="space-y-3 p-3">
@@ -10807,15 +10824,15 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                           aria-pressed={active}
                           className={`group relative min-h-[58px] overflow-hidden rounded-xl border px-2 py-2 text-left transition-all ${
                             active
-                              ? 'border-[#E5798F] bg-[#E5798F]/15 shadow-[0_0_0_1px_rgba(229,121,143,.25)]'
+                              ? 'border-[#53C8F0] bg-[#53C8F0]/15 shadow-[0_0_0_1px_rgba(229,121,143,.25)]'
                               : 'border-white/10 bg-black/20 hover:border-white/25 hover:bg-white/[0.06]'
                           }`}
                         >
                           <span className={`block truncate text-[13px] font-black leading-5 ${
-                            style.id === 'neon' ? 'text-[#FFB6C1]' : style.id === 'retro' ? 'font-serif text-[#FFF3D6]' : ''
+                            style.id === 'neon' ? 'text-[#7BE7D4]' : style.id === 'retro' ? 'font-serif text-[#FFF3D6]' : ''
                           }`}>{style.sample}</span>
                           <span className="block text-[8px] font-medium text-white/35">{style.label}</span>
-                          {active && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#E5798F]" />}
+                          {active && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-[#53C8F0]" />}
                         </button>
                       );
                     })}
@@ -10828,7 +10845,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                     <select
                       value={el.font_family || 'Poppins, sans-serif'}
                       onChange={(e) => onChange({ font_family: e.target.value }, 'Text font')}
-                      className="h-9 w-full rounded-xl border border-white/10 bg-black/30 px-2.5 text-[11px] font-semibold text-white outline-none transition focus:border-[#E5798F]/70"
+                      className="h-9 w-full rounded-xl border border-white/10 bg-black/30 px-2.5 text-[11px] font-semibold text-white outline-none transition focus:border-[#53C8F0]/70"
                       aria-label="Font family"
                     >
                       {['Poppins, sans-serif', 'Inter, sans-serif', 'Arial, sans-serif', 'Helvetica, sans-serif', 'Georgia, serif', 'Times New Roman, serif', 'Courier New, monospace', 'Impact, sans-serif'].map((f) => (
@@ -10841,7 +10858,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                     <select
                       value={el.font_weight || 700}
                       onChange={(e) => onChange({ font_weight: Number(e.target.value) }, 'Text weight')}
-                      className="h-9 w-full rounded-xl border border-white/10 bg-black/30 px-2.5 text-[11px] font-semibold text-white outline-none transition focus:border-[#E5798F]/70"
+                      className="h-9 w-full rounded-xl border border-white/10 bg-black/30 px-2.5 text-[11px] font-semibold text-white outline-none transition focus:border-[#53C8F0]/70"
                       aria-label="Font weight"
                     >
                       {[300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w} className="text-black">{w}</option>)}
@@ -10866,7 +10883,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                           aria-pressed={el.align === item.id}
                           aria-label={item.label}
                           className={`relative flex items-center justify-center text-[17px] leading-none transition ${
-                            el.align === item.id ? 'bg-[#E5798F] text-white' : 'text-white/45 hover:bg-white/[0.06] hover:text-white'
+                            el.align === item.id ? 'bg-[#53C8F0] text-white' : 'text-white/45 hover:bg-white/[0.06] hover:text-white'
                           }`}
                         >
                           <span className={index === 0 ? 'translate-x-[-2px]' : index === 2 ? 'translate-x-[2px]' : ''}>{item.icon}</span>
@@ -10897,7 +10914,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                   <p className="text-[11px] font-bold tracking-wide text-white">Appearance</p>
                   <p className="text-[9px] text-white/35">Effects, shadow and caption treatment.</p>
                 </div>
-                <Sparkles className="h-4 w-4 text-[#E5798F]" />
+                <Sparkles className="h-4 w-4 text-[#53C8F0]" />
               </div>
               <div className="space-y-3 p-3">
                 <div>
@@ -10924,7 +10941,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                         aria-pressed={(el.text_effect || 'none') === id}
                         className={`min-h-[34px] rounded-lg border px-1.5 py-1 text-[9px] font-semibold transition ${
                           (el.text_effect || 'none') === id
-                            ? 'border-[#E5798F] bg-[#E5798F]/15 text-white'
+                            ? 'border-[#53C8F0] bg-[#53C8F0]/15 text-white'
                             : 'border-white/10 bg-black/20 text-white/45 hover:border-white/20 hover:text-white'
                         }`}
                       >
@@ -10940,22 +10957,22 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                     onClick={() => onChange({ shadow: !el.shadow }, 'Toggle text shadow')}
                     aria-pressed={!!el.shadow}
                     className={`flex h-9 items-center justify-between rounded-xl border px-3 text-[10px] font-semibold transition ${
-                      el.shadow ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/20 text-white/45'
+                      el.shadow ? 'border-[#53C8F0] bg-[#53C8F0]/15 text-white' : 'border-white/10 bg-black/20 text-white/45'
                     }`}
                   >
                     <span>Shadow</span>
-                    <span className={`h-2 w-2 rounded-full ${el.shadow ? 'bg-[#E5798F]' : 'bg-white/20'}`} />
+                    <span className={`h-2 w-2 rounded-full ${el.shadow ? 'bg-[#53C8F0]' : 'bg-white/20'}`} />
                   </button>
                   <button
                     type="button"
                     onClick={() => onChange({ background: el.background ? null : '#000000' }, el.background ? 'Clear text background' : 'Set text background')}
                     aria-pressed={!!el.background}
                     className={`flex h-9 items-center justify-between rounded-xl border px-3 text-[10px] font-semibold transition ${
-                      el.background ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/20 text-white/45'
+                      el.background ? 'border-[#53C8F0] bg-[#53C8F0]/15 text-white' : 'border-white/10 bg-black/20 text-white/45'
                     }`}
                   >
                     <span>Text background</span>
-                    <span className={`h-2 w-2 rounded-full ${el.background ? 'bg-[#E5798F]' : 'bg-white/20'}`} />
+                    <span className={`h-2 w-2 rounded-full ${el.background ? 'bg-[#53C8F0]' : 'bg-white/20'}`} />
                   </button>
                 </div>
 
@@ -10985,7 +11002,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                         onClick={() => onChange({ text_case: id as TimelineElement['text_case'] }, 'Text case')}
                         aria-pressed={(el.text_case || 'none') === id}
                         className={`text-[10px] font-bold transition ${
-                          (el.text_case || 'none') === id ? 'bg-[#E5798F] text-white' : 'text-white/45 hover:bg-white/[0.06] hover:text-white'
+                          (el.text_case || 'none') === id ? 'bg-[#53C8F0] text-white' : 'text-white/45 hover:bg-white/[0.06] hover:text-white'
                         }`}
                       >
                         {label}
@@ -11002,7 +11019,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                   <p className="text-[11px] font-bold tracking-wide text-white">Text motion</p>
                   <p className="text-[9px] text-white/35">Entrance, exit and looping animation.</p>
                 </div>
-                <Sparkles className="h-4 w-4 text-[#E5798F]" />
+                <Sparkles className="h-4 w-4 text-[#53C8F0]" />
               </div>
               <div className="space-y-3 p-3">
                 <div>
@@ -11025,14 +11042,14 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                     <span className="text-[9px] font-semibold text-white/45">Entrance duration</span>
                     <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_in_duration ?? 0.55}
                       onChange={(e) => onChange({ animation_in_duration: Number(e.target.value) }, 'Text entrance duration', `tin-${el.id}`)}
-                      className="w-full accent-[#E5798F]" />
+                      className="w-full accent-[#53C8F0]" />
                     <span className="block text-[8px] tabular-nums text-white/25">{(el.animation_in_duration ?? 0.55).toFixed(2)}s</span>
                   </label>
                   <label className="space-y-1">
                     <span className="text-[9px] font-semibold text-white/45">Exit duration</span>
                     <input type="range" min="0.08" max="2.5" step="0.01" value={el.animation_out_duration ?? 0.35}
                       onChange={(e) => onChange({ animation_out_duration: Number(e.target.value) }, 'Text exit duration', `tout-${el.id}`)}
-                      className="w-full accent-[#E5798F]" />
+                      className="w-full accent-[#53C8F0]" />
                     <span className="block text-[8px] tabular-nums text-white/25">{(el.animation_out_duration ?? 0.35).toFixed(2)}s</span>
                   </label>
                 </div>
@@ -11046,7 +11063,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                         type="button"
                         onClick={() => onChange({ animation_out: preset.id }, 'Text exit animation')}
                         className={`rounded-lg border px-2 py-2 text-[9px] font-semibold transition ${
-                          (el.animation_out ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/[0.02] text-white/45 hover:border-white/20 hover:text-white'
+                          (el.animation_out ?? 'none') === preset.id ? 'border-[#53C8F0] bg-[#53C8F0]/15 text-white' : 'border-white/10 bg-black/[0.02] text-white/45 hover:border-white/20 hover:text-white'
                         }`}
                       >
                         {preset.name}
@@ -11064,7 +11081,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
                         type="button"
                         onClick={() => onChange({ animation_loop: preset.id }, 'Text loop animation')}
                         className={`rounded-lg border px-2 py-2 text-[9px] font-semibold transition ${
-                          (el.animation_loop ?? 'none') === preset.id ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-black/[0.02] text-white/45 hover:border-white/20 hover:text-white'
+                          (el.animation_loop ?? 'none') === preset.id ? 'border-[#53C8F0] bg-[#53C8F0]/15 text-white' : 'border-white/10 bg-black/[0.02] text-white/45 hover:border-white/20 hover:text-white'
                         }`}
                       >
                         {preset.name}
@@ -11082,7 +11099,7 @@ function ElementInspector({ el, duration, playhead, updateElement, onChange, onD
         <Slider label="End (s)" min={el.start + 0.2} max={Math.max(duration, 1)} step={0.1} value={el.end} onChange={(v) => onChange({ end: v }, 'Overlay end', `en-${el.id}`)} />
         <div className="col-span-2 rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <Move className="h-4 w-4 shrink-0 text-[#E5798F]" />
+            <Move className="h-4 w-4 shrink-0 text-[#53C8F0]" />
             <div className="min-w-0">
               <p className="text-[10px] font-bold text-white">Transform on canvas</p>
               <p className="text-[9px] leading-4 text-white/40">Drag inside to move · drag outward from an edge to resize · drag around the edge to rotate · pinch or twist on touch.</p>
@@ -11163,7 +11180,7 @@ function FullscreenPreview(props: {
           value={props.playhead}
           onChange={(e) => props.onSeek(Number(e.target.value))}
           aria-label="Seek"
-          className="w-full accent-[#FFB6C1]"
+          className="w-full accent-[#7BE7D4]"
           onClick={(e) => e.stopPropagation()}
         />
         <div className="mt-2 flex items-center justify-center gap-5">
@@ -11197,10 +11214,66 @@ function FullscreenPreview(props: {
   );
 }
 
-export default function StudioVideoPage() {
+function VideoProjectStart() {
+  const router = useRouter();
+  const [title, setTitle] = useState('');
+  const [mode, setMode] = useState<'clips' | 'practice'>('clips');
+  const [files, setFiles] = useState<File[]>([]);
+  const [topic, setTopic] = useState('cinematic story');
+  const topics = [
+    { id: 'cinematic story', name: 'Cinematic story', detail: 'Build a short scene with an opening, tension, and a clear ending.', brief: 'Tell a tiny story in 20–40 seconds. Use an establishing shot, a detail shot, and a movement shot.' },
+    { id: 'travel film', name: 'Travel film', detail: 'Turn a place into an atmospheric travel edit.', brief: 'Mix wide scenery, movement, and small local details to make viewers feel present.' },
+    { id: 'product ad', name: 'Product ad', detail: 'Create a focused promo for one product.', brief: 'Introduce the product, show its best details, then end with a memorable hero shot.' },
+    { id: 'food reel', name: 'Food reel', detail: 'Make a sensory, fast-paced food or cooking video.', brief: 'Use ingredient, preparation, and final-dish shots. Keep cuts rhythmic and appetizing.' },
+    { id: 'daily vlog', name: 'Daily vlog', detail: 'Shape everyday moments into a personal mini-vlog.', brief: 'Show a beginning, a few moments from the day, and a personal closing moment.' },
+    { id: 'music video', name: 'Music video', detail: 'Cut visuals to a mood and a beat.', brief: 'Choose a mood, cut on musical accents, and use transitions to support the rhythm.' },
+  ];
+  const selectedTopic = topics.find((item) => item.id === topic) || topics[0];
+  const begin = () => {
+    const projectTitle = title.trim() || (mode === 'practice' ? selectedTopic.name + ' Practice' : 'Untitled edit');
+    const params = new URLSearchParams({ title: projectTitle });
+    if (mode === 'practice') params.set('practiceTopic', topic);
+    else { if (!files.length) return; pendingVideoStartFiles = [...files]; }
+    router.push('/studio/video?' + params.toString());
+  };
   return (
-    <Suspense fallback={<main className="flex min-h-[100dvh] items-center justify-center bg-[#111111] text-sm text-white/60">Loading editor…</main>}>
-      <VideoEditor />
-    </Suspense>
+    <main className="min-h-[100dvh] bg-[#090D14] px-4 py-6 text-slate-100 sm:px-8 sm:py-10">
+      <div className="mx-auto max-w-5xl">
+        <header className="mb-8 flex items-center justify-between gap-4">
+          <button onClick={() => router.push('/studio')} className="inline-flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm text-slate-300 transition hover:border-white/25 hover:text-white"><ArrowLeft className="h-4 w-4" /> Studio</button>
+          <span className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300"><Film className="h-4 w-4" /> ENOTES / VIDEO</span>
+        </header>
+        <div className="mb-8 max-w-2xl">
+          <p className="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">New project · Step 1 of 2</p>
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-5xl">What are we making today?</h1>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400 sm:text-base">Name your edit first, then choose footage or start with a guided creative brief. Your editing workspace opens when you’re ready.</p>
+        </div>
+        <label className="mb-7 block max-w-2xl"><span className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-400">Project title</span><input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100} placeholder="e.g. Siargao summer recap" className="w-full rounded-xl border border-white/10 bg-[#111824] px-4 py-3.5 text-base text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:ring-2 focus:ring-cyan-300/10" autoFocus /></label>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className={`rounded-2xl border p-5 transition sm:p-6 ${mode === 'clips' ? 'border-cyan-300/70 bg-cyan-300/[0.07] ring-1 ring-cyan-300/20' : 'border-white/10 bg-[#101722]'}`}>
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-300/10 text-cyan-300"><Upload className="h-6 w-6" /></div>
+            <h2 className="text-lg font-semibold">Start with your clips</h2><p className="mt-2 text-sm leading-6 text-slate-400">Choose videos or images. The first video sets the canvas orientation and your clips are added to the timeline.</p>
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-cyan-300 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-cyan-200"><Plus className="h-4 w-4" /> {files.length ? `${files.length} files selected` : 'Choose clips'}<input type="file" accept="video/*,image/*" multiple className="hidden" onClick={() => setMode('clips')} onChange={(e) => { setFiles(Array.from(e.target.files || [])); setMode('clips'); }} /></label>
+              <span className="text-xs text-slate-500">Video and image files</span>
+            </div>
+            {files.length > 0 && <p className="mt-3 text-xs text-cyan-200">{files.slice(0,3).map(f => f.name).join(' · ')}{files.length > 3 ? ` · +${files.length - 3} more` : ''}</p>}
+          </section>
+          <button type="button" onClick={() => setMode('practice')} className={`rounded-2xl border p-5 text-left transition sm:p-6 ${mode === 'practice' ? 'border-violet-300/70 bg-violet-300/[0.07] ring-1 ring-violet-300/20' : 'border-white/10 bg-[#101722] hover:border-white/20'}`}>
+            <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-violet-400/10 text-violet-300"><Sparkles className="h-6 w-6" /></div><h2 className="text-lg font-semibold">Practice with a creative brief</h2><p className="mt-2 text-sm leading-6 text-slate-400">Choose a concept first. We’ll find related practice footage and give you a clear editing goal before the timeline opens.</p><p className="mt-5 text-sm font-semibold text-violet-200">Topic · shot list · editing goal</p>
+          </button>
+        </div>
+        {mode === 'practice' && <section className="mt-5 rounded-2xl border border-violet-300/20 bg-[#101722] p-5 sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.2em] text-violet-300">Practice brief</p><h2 className="mt-2 text-xl font-semibold">Pick a concept to edit</h2><p className="mt-1 text-sm text-slate-400">Practice footage is searched for your selected topic instead of mixing unrelated clips.</p><div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{topics.map(item => <button key={item.id} onClick={() => setTopic(item.id)} className={`rounded-xl border p-3 text-left transition ${topic === item.id ? 'border-violet-300/60 bg-violet-300/[0.08]' : 'border-white/10 hover:border-white/20'}`}><span className="block text-sm font-semibold">{item.name}</span><span className="mt-1 block text-xs leading-5 text-slate-400">{item.detail}</span></button>)}</div><div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Your brief</p><p className="mt-2 text-sm leading-6 text-slate-200">{selectedTopic.brief}</p></div></section>}
+        <footer className="mt-7 flex flex-col-reverse gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs leading-5 text-slate-500">Your original files stay yours. Media is uploaded into your project before editing begins.</p><button onClick={begin} disabled={mode === 'clips' && files.length === 0} className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-300 px-6 py-3 text-sm font-bold text-slate-950 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-35">{mode === 'practice' ? 'Create practice project' : 'Create project & edit'} <ArrowLeft className="h-4 w-4 rotate-180" /></button></footer>
+      </div>
+    </main>
   );
+}
+function StudioVideoRoute() {
+  const search = useSearchParams();
+  if (search.get('new') === '1') return <VideoProjectStart />;
+  return <VideoEditor />;
+}
+export default function StudioVideoPage() {
+  return <Suspense fallback={<main className="flex min-h-[100dvh] items-center justify-center bg-[#090D14] text-sm text-white/60">Loading editor…</main>}><StudioVideoRoute /></Suspense>;
 }
