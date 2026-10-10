@@ -577,6 +577,8 @@ export interface CanvasBackground {
   angle?: number;
   /** Optional image layer rendered behind all timeline clips and overlays. */
   imageSrc?: string;
+  /** Optional looping video layer, composited above the background image but behind timeline media. */
+  videoSrc?: string;
   /** cover fills the canvas (cropping edges); contain keeps the full image visible. */
   imageFit?: 'cover' | 'contain';
 }
@@ -712,6 +714,7 @@ export function normalizeProject(input: unknown): VideoProject {
     ...(typeof backgroundRaw.color2 === 'string' && backgroundRaw.color2 ? { color2: backgroundRaw.color2 } : {}),
     ...(Number.isFinite(Number(backgroundRaw.angle)) ? { angle: Number(backgroundRaw.angle) } : {}),
     ...(typeof backgroundRaw.imageSrc === 'string' && /^https?:\/\//i.test(backgroundRaw.imageSrc) ? { imageSrc: backgroundRaw.imageSrc.slice(0, 4096) } : {}),
+    ...(typeof backgroundRaw.videoSrc === 'string' && /^https?:\/\//i.test(backgroundRaw.videoSrc) ? { videoSrc: backgroundRaw.videoSrc.slice(0, 4096) } : {}),
     imageFit: backgroundRaw.imageFit === 'contain' ? 'contain' : 'cover',
   };
 
