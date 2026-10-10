@@ -2737,6 +2737,23 @@ export class VideoRenderer {
         }
 
         const media = document.createElement('audio');
+        const clipIndex = project.clips.findIndex((item) => item.id === clip.id);
+        const nextClip = clipIndex >= 0 ? project.clips[clipIndex + 1] : undefined;
+        const fadeInDuration = clip.transitionIn?.type === 'crossfade'
+          ? Math.min(clipDurationSec, Math.max(0, clip.transitionIn.duration))
+          : 0;
+        const fadeOutDuration = nextClip?.transitionIn?.type === 'crossfade'
+          ? Math.min(clipDurationSec, Math.max(0, nextClip.transitionIn.duration))
+          : 0;
+        const transitionGainAt = (local: number) => {
+          const fadeIn = fadeInDuration > 0 && local < fadeInDuration
+            ? Math.max(0, Math.min(1, local / fadeInDuration))
+            : 1;
+          const fadeOut = fadeOutDuration > 0 && local > clipDurationSec - fadeOutDuration
+            ? Math.max(0, Math.min(1, (clipDurationSec - local) / fadeOutDuration))
+            : 1;
+          return fadeIn * fadeOut;
+        };
         media.crossOrigin = 'anonymous';
         media.preload = 'auto';
         media.volume = 1;
@@ -2847,7 +2864,8 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const local = u * clipDurationSec;
+                    const value = resolveClipValues(clip, local).volume * transitionGainAt(local);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }
@@ -2867,7 +2885,8 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const local = u * clipDurationSec;
+                    const value = resolveClipValues(clip, local).volume * transitionGainAt(local);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }
