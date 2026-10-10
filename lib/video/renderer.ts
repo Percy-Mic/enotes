@@ -2475,6 +2475,9 @@ export class VideoRenderer {
     }
 
     const activeSources = new Set<string>();
+    // Background video is a first-class active layer. Without registering it
+    // here, pauseInactiveVideos would pause it at the end of every playing frame.
+    if (background?.videoSrc) activeSources.add(background.videoSrc);
     if (resolved?.clip.src) activeSources.add(resolved.clip.src);
     for (const el of overlays) {
       if (el.src && (el.kind === 'video' || el.media_type === 'video')) activeSources.add(el.src);
