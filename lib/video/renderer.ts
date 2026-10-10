@@ -2105,8 +2105,27 @@ export class VideoRenderer {
        Commit a new background only when this render has a drawable frame. */
     const background = project.background;
     let backgroundImage: HTMLImageElement | null = null;
+    let backgroundVideo: HTMLVideoElement | null = null;
     if (background?.imageSrc) {
       try { backgroundImage = await loadImage(background.imageSrc); } catch { backgroundImage = null; }
+    }
+    if (background?.videoSrc) {
+      try {
+        backgroundVideo = opts.isolatedPreview
+          ? await this.loadIsolatedVideo(background.videoSrc)
+          : await loadVideo(background.videoSrc);
+        const duration = Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
+          ? backgroundVideo.duration
+          : 1;
+        const target = ((Math.max(0, time) % duration) + duration) % duration;
+        if (opts.isolatedPreview) {
+          await this.syncIsolatedVideo(backgroundVideo, background.videoSrc, target, !!opts.previewing, !!opts.playing, false, 1, false);
+        } else {
+          await syncPlaybackVideo(backgroundVideo, background.videoSrc, target, !!opts.playing, false, 1, false);
+        }
+      } catch {
+        backgroundVideo = null;
+      }
     }
     let backgroundPainted = false;
     const paintBackground = () => {
@@ -2125,13 +2144,21 @@ export class VideoRenderer {
         ctx.fillStyle = background?.color || '#000000';
       }
       ctx.fillRect(0, 0, W, H);
-      if (backgroundImage && backgroundImage.naturalWidth > 0 && backgroundImage.naturalHeight > 0) {
-        const iw = backgroundImage.naturalWidth;
-        const ih = backgroundImage.naturalHeight;
+      const movingBackground = backgroundVideo && backgroundVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+        && backgroundVideo.videoWidth > 0 && backgroundVideo.videoHeight > 0
+        ? backgroundVideo
+        : null;
+      const stillBackground = backgroundImage && backgroundImage.naturalWidth > 0 && backgroundImage.naturalHeight > 0
+        ? backgroundImage
+        : null;
+      const source = movingBackground || stillBackground;
+      if (source) {
+        const iw = movingBackground ? movingBackground.videoWidth : (source as HTMLImageElement).naturalWidth;
+        const ih = movingBackground ? movingBackground.videoHeight : (source as HTMLImageElement).naturalHeight;
         const scale = background?.imageFit === 'contain' ? Math.min(W / iw, H / ih) : Math.max(W / iw, H / ih);
         const dw = iw * scale;
         const dh = ih * scale;
-        ctx.drawImage(backgroundImage, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        ctx.drawImage(source, (W - dw) / 2, (H - dh) / 2, dw, dh);
       }
       backgroundPainted = true;
     };
