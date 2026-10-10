@@ -780,6 +780,51 @@ function clipMotionTransform(clip: VideoClip, timeIn: number, dur: number) {
   }
 }
 
+function applyChromaKeyPixels(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  settings: NonNullable<VideoClip['chromaKey']>,
+) {
+  if (!settings.enabled || width < 1 || height < 1) return;
+  const match = /^#?([0-9a-f]{6})$/i.exec(settings.color || '#00ff00');
+  if (!match) return;
+  const hex = match[1];
+  const kr = parseInt(hex.slice(0, 2), 16);
+  const kg = parseInt(hex.slice(2, 4), 16);
+  const kb = parseInt(hex.slice(4, 6), 16);
+  const tolerance = Math.max(0, Math.min(255, Number(settings.tolerance) || 0));
+  const softness = Math.max(0.001, Math.min(255, Number(settings.softness) || 1));
+  const spill = Math.max(0, Math.min(1, Number(settings.spill) || 0));
+  const pixels = ctx.getImageData(0, 0, width, height);
+  const data = pixels.data;
+  const inner = tolerance;
+  const outer = tolerance + softness;
+  const keyIsGreen = kg >= kr && kg >= kb;
+  const keyIsRed = kr >= kg && kr >= kb;
+  const keyIsBlue = kb >= kr && kb >= kg;
+  for (let p = 0; p < data.length; p += 4) {
+    const dr = data[p] - kr;
+    const dg = data[p + 1] - kg;
+    const db = data[p + 2] - kb;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (distance <= inner) {
+      data[p + 3] = 0;
+      continue;
+    }
+    if (distance < outer) {
+      const edge = (distance - inner) / (outer - inner);
+      data[p + 3] = Math.round(data[p + 3] * edge);
+      if (spill > 0 && edge < 1) {
+        if (keyIsGreen) data[p + 1] = Math.min(data[p + 1], Math.round(Math.max(data[p], data[p + 2]) + (data[p + 1] - Math.max(data[p], data[p + 2])) * (1 - spill * (1 - edge))));
+        else if (keyIsRed) data[p] = Math.min(data[p], Math.round(Math.max(data[p + 1], data[p + 2]) + (data[p] - Math.max(data[p + 1], data[p + 2])) * (1 - spill * (1 - edge))));
+        else if (keyIsBlue) data[p + 2] = Math.min(data[p + 2], Math.round(Math.max(data[p], data[p + 1]) + (data[p + 2] - Math.max(data[p], data[p + 1])) * (1 - spill * (1 - edge))));
+      }
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+}
+
 function effectFilterCss(clip: VideoClip, timeIn: number): string {
   const parts: string[] = [];
   for (const layer of effectLayers(clip)) {
@@ -2202,6 +2247,15 @@ export class VideoRenderer {
                sctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, 0, 0, surface.width, surface.height);
              }
              if (maskSaved) sctx.restore();
+             /* Chroma key runs on the same raster surface used by live preview
+                and export, before motion and visual effects are composited. */
+             if (clip.chromaKey?.enabled) {
+               try {
+                 applyChromaKeyPixels(sctx, surface.width, surface.height, clip.chromaKey);
+               } catch {
+                 /* A tainted/cross-origin frame must not blank the preview. */
+               }
+             }
              sctx.filter = 'none';
              sctx.restore();
 
