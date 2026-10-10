@@ -35,8 +35,21 @@ async function pexels(query: string, page: number, orientation: string, key: str
   const videos = (Array.isArray(data?.videos) ? data.videos : [])
     .map((video: any) => {
       const files = Array.isArray(video?.video_files) ? video.video_files : [];
+      // Canvas rendering/export requires a directly decodable progressive file.
+      // Some provider variants expose non-MP4 formats or stream manifests which
+      // may play in a standalone player but fail in the canvas compositor.
       const usable = files
-        .filter((f: any) => typeof f?.link === 'string')
+        .filter((f: any) => {
+          if (typeof f?.link !== 'string') return false;
+          try {
+            const link = new URL(f.link);
+            return link.protocol === 'https:' &&
+              (link.hostname === 'videos.pexels.com' || link.hostname.endsWith('.pexels.com')) &&
+              (!f.file_type || String(f.file_type).toLowerCase().includes('mp4'));
+          } catch {
+            return false;
+          }
+        })
         .sort((a: any, b: any) => {
           const aa = Number(a?.width || 0) * Number(a?.height || 0);
           const ba = Number(b?.width || 0) * Number(b?.height || 0);
