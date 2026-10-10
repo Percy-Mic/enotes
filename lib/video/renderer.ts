@@ -1781,6 +1781,8 @@ export class VideoRenderer {
   private isolatedVideoCache = new Map<string, HTMLVideoElement>();
   private isolatedVideoLoading = new Map<string, Promise<HTMLVideoElement>>();
   private isolatedPlaybackState: PlaybackStateStore = new Map();
+  /** Reused outgoing-frame surfaces for deterministic clip-boundary dissolves. */
+  private transitionCanvases = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 
   /* Reused clip compositor surface. Creating a large canvas every playback
      frame causes allocation/GC spikes, especially with animated effects. */
@@ -2332,11 +2334,44 @@ export class VideoRenderer {
            ctx.drawImage(surface, -surface.width / 2, -surface.height / 2);
            ctx.restore();
 
-          // transition INTO this clip; motion transitions transform the
-          // freshly painted frame before overlays render
-          const transition = applyTransition(ctx, clip.transitionIn.type, clip.transitionIn.duration, timeIn, W, H);
-          if (transition.incoming) {
-            applyTransitionFrame(ctx, transition.incoming, W, H);
+          // Boundary dissolve: blend the outgoing clip's tail over the incoming
+          // frame. This is deterministic for scrubbing, preview and export; it
+          // does not depend on whatever frame happened to be painted previously.
+          if (clip.transitionIn.type === 'crossfade' && clip.transitionIn.duration > 0 && timeIn < clip.transitionIn.duration && acc > 0) {
+            const clipIndex = project.clips.findIndex((item) => item.id === clip.id);
+            const outgoing = clipIndex > 0 ? project.clips[clipIndex - 1] : null;
+            if (outgoing) {
+              let outgoingCanvas = this.transitionCanvases.get(canvas);
+              if (!outgoingCanvas) {
+                outgoingCanvas = document.createElement('canvas');
+                this.transitionCanvases.set(canvas, outgoingCanvas);
+              }
+              if (outgoingCanvas.width !== W) outgoingCanvas.width = W;
+              if (outgoingCanvas.height !== H) outgoingCanvas.height = H;
+              const outgoingProject: VideoProject = {
+                ...project,
+                clips: [{ ...outgoing, transitionIn: { type: 'none', duration: 0 } }],
+                elements: [],
+                audio: [],
+                tracks: [],
+              };
+              const outgoingLocal = Math.max(0, clipDuration(outgoing) - clip.transitionIn.duration + timeIn);
+              await this.drawFrame(outgoingCanvas, outgoingProject, outgoingLocal, {
+                previewing: opts.previewing,
+                playing: opts.playing,
+              });
+              if (!isCurrent()) return;
+              const progress = Math.max(0, Math.min(1, timeIn / clip.transitionIn.duration));
+              ctx.save();
+              ctx.globalAlpha = 1 - progress;
+              ctx.drawImage(outgoingCanvas, 0, 0, W, H);
+              ctx.restore();
+            }
+          } else {
+            const transition = applyTransition(ctx, clip.transitionIn.type, clip.transitionIn.duration, timeIn, W, H);
+            if (transition.incoming) {
+              applyTransitionFrame(ctx, transition.incoming, W, H);
+            }
           }
         }
       } catch {
