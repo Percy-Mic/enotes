@@ -247,6 +247,25 @@ function pauseInactiveVideos(activeSources: Set<string>) {
   videoCache.forEach((video, src) => {
     if (!activeSources.has(src) && !video.paused) video.pause();
   });
+
+  // Keep only a small working set of decoded video elements. Mobile browsers
+  // retain decoder/GPU buffers even after pause(), so old timeline clips must
+  // release their media source once they are no longer active.
+  const MAX_CACHED_VIDEOS = 3;
+  while (videoCache.size > MAX_CACHED_VIDEOS) {
+    const candidate = Array.from(videoCache.entries()).find(([src]) => !activeSources.has(src));
+    if (!candidate) break; // Multiple simultaneously visible video overlays are active.
+    const [src, video] = candidate;
+    videoCache.delete(src);
+    playbackState.delete(video);
+    try {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    } catch {
+      // Releasing an already-disposed decoder is best-effort.
+    }
+  }
 }
 
 /**
@@ -1456,6 +1475,25 @@ export interface TransitionResult {
   incoming?: { scale?: number; dx?: number; dy?: number; rotate?: number; blurPx?: number };
 }
 
+const transitionFrameSnapshots = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+const transitionEffectSnapshots = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+
+function reusableTransitionSnapshot(
+  sourceMap: WeakMap<HTMLCanvasElement, HTMLCanvasElement>,
+  sourceCanvas: HTMLCanvasElement,
+  width: number,
+  height: number
+): HTMLCanvasElement | null {
+  let snapshot = sourceMap.get(sourceCanvas);
+  if (!snapshot) {
+    snapshot = document.createElement('canvas');
+    sourceMap.set(sourceCanvas, snapshot);
+  }
+  if (snapshot.width !== width) snapshot.width = width;
+  if (snapshot.height !== height) snapshot.height = height;
+  return snapshot;
+}
+
 function applyTransitionFrame(
   ctx: CanvasRenderingContext2D,
   hint: NonNullable<TransitionResult['incoming']>,
@@ -1467,11 +1505,17 @@ function applyTransitionFrame(
   /* Snapshot first. Drawing ctx.canvas onto itself can yield undefined
      feedback on some GPU/browser combinations and is a common source of
      transition flashes and black preview frames. */
-  const source = document.createElement('canvas');
-  source.width = canvasW; source.height = canvasH;
+  const source = reusableTransitionSnapshot(transitionFrameSnapshots, ctx.canvas, canvasW, canvasH);
+  if (!source) return;
   const sourceCtx = source.getContext('2d');
   if (!sourceCtx) return;
+  sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sourceCtx.globalAlpha = 1;
+  sourceCtx.globalCompositeOperation = 'copy';
+  sourceCtx.filter = 'none';
+  sourceCtx.clearRect(0, 0, canvasW, canvasH);
   sourceCtx.drawImage(ctx.canvas, 0, 0, canvasW, canvasH);
+  sourceCtx.globalCompositeOperation = 'source-over';
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1504,11 +1548,17 @@ function applyTransition(
   let source: HTMLCanvasElement | null = null;
   const needsSource = type === 'crossfade' || type === 'slide' || type === 'zoom-blur' || type === 'whip-pan' || type === 'glitch-cut' || type === 'blur';
   if (needsSource) {
-    source = document.createElement('canvas');
-    source.width = W; source.height = H;
+    source = reusableTransitionSnapshot(transitionEffectSnapshots, ctx.canvas, W, H);
+    if (!source) return { overlayAlpha: 0 };
     const sourceCtx = source.getContext('2d');
     if (!sourceCtx) return { overlayAlpha: 0 };
+    sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sourceCtx.globalAlpha = 1;
+    sourceCtx.globalCompositeOperation = 'copy';
+    sourceCtx.filter = 'none';
+    sourceCtx.clearRect(0, 0, W, H);
     sourceCtx.drawImage(ctx.canvas, 0, 0, W, H);
+    sourceCtx.globalCompositeOperation = 'source-over';
   }
 
   switch (type) {
@@ -1762,6 +1812,8 @@ export class VideoRenderer {
   private isolatedVideoCache = new Map<string, HTMLVideoElement>();
   private isolatedVideoLoading = new Map<string, Promise<HTMLVideoElement>>();
   private isolatedPlaybackState: PlaybackStateStore = new Map();
+  /** Reused outgoing-frame surfaces for deterministic clip-boundary dissolves. */
+  private transitionCanvases = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
 
   /* Reused clip compositor surface. Creating a large canvas every playback
      frame causes allocation/GC spikes, especially with animated effects. */
@@ -2031,7 +2083,7 @@ export class VideoRenderer {
     canvas: HTMLCanvasElement,
     project: VideoProject,
     time: number,
-    opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean } = {}
+    opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean; preserveOtherPlayback?: boolean } = {}
   ) {
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -2313,11 +2365,49 @@ export class VideoRenderer {
            ctx.drawImage(surface, -surface.width / 2, -surface.height / 2);
            ctx.restore();
 
-          // transition INTO this clip; motion transitions transform the
-          // freshly painted frame before overlays render
-          const transition = applyTransition(ctx, clip.transitionIn.type, clip.transitionIn.duration, timeIn, W, H);
-          if (transition.incoming) {
-            applyTransitionFrame(ctx, transition.incoming, W, H);
+          // Boundary dissolve: blend the outgoing clip's tail over the incoming
+          // frame. This is deterministic for scrubbing, preview and export; it
+          // does not depend on whatever frame happened to be painted previously.
+          if (clip.transitionIn.type === 'crossfade' && clip.transitionIn.duration > 0 && timeIn < clip.transitionIn.duration && acc > 0) {
+            const clipIndex = project.clips.findIndex((item) => item.id === clip.id);
+            const outgoing = clipIndex > 0 ? project.clips[clipIndex - 1] : null;
+            if (outgoing) {
+              let outgoingCanvas = this.transitionCanvases.get(canvas);
+              if (!outgoingCanvas) {
+                outgoingCanvas = document.createElement('canvas');
+                this.transitionCanvases.set(canvas, outgoingCanvas);
+              }
+              if (outgoingCanvas.width !== W) outgoingCanvas.width = W;
+              if (outgoingCanvas.height !== H) outgoingCanvas.height = H;
+              const outgoingProject: VideoProject = {
+                ...project,
+                clips: [{ ...outgoing, transitionIn: { type: 'none', duration: 0 } }],
+                elements: [],
+                audio: [],
+                tracks: [],
+              };
+              const outgoingLocal = Math.max(0, clipDuration(outgoing) - clip.transitionIn.duration + timeIn);
+              await this.drawFrame(outgoingCanvas, outgoingProject, outgoingLocal, {
+                previewing: opts.previewing,
+                playing: opts.playing,
+                // This offscreen boundary render shares the decoder cache with
+                // the main preview. Do not pause the incoming clip while drawing
+                // the outgoing frame; the outer render will clean up inactive
+                // decoders after the composite is complete.
+                preserveOtherPlayback: true,
+              });
+              if (!isCurrent()) return;
+              const progress = Math.max(0, Math.min(1, timeIn / clip.transitionIn.duration));
+              ctx.save();
+              ctx.globalAlpha = 1 - progress;
+              ctx.drawImage(outgoingCanvas, 0, 0, W, H);
+              ctx.restore();
+            }
+          } else {
+            const transition = applyTransition(ctx, clip.transitionIn.type, clip.transitionIn.duration, timeIn, W, H);
+            if (transition.incoming) {
+              applyTransitionFrame(ctx, transition.incoming, W, H);
+            }
           }
         }
       } catch {
@@ -2388,13 +2478,7 @@ export class VideoRenderer {
       if (el.src && (el.kind === 'video' || el.media_type === 'video')) activeSources.add(el.src);
     }
     if (!isCurrent()) return;
-    if (!opts.playing) {
-      videoCache.forEach((video, src) => {
-        if (!activeSources.has(src) && !video.paused) video.pause();
-      });
-    } else {
-      pauseInactiveVideos(activeSources);
-    }
+    if (!opts.preserveOtherPlayback) pauseInactiveVideos(activeSources);
 
     /* vignette effect darkens the composed frame (clip + overlays) */
     if (resolved && resolved.clip.effect === 'vignette') {
@@ -2689,6 +2773,23 @@ export class VideoRenderer {
         }
 
         const media = document.createElement('audio');
+        const clipIndex = project.clips.findIndex((item) => item.id === clip.id);
+        const nextClip = clipIndex >= 0 ? project.clips[clipIndex + 1] : undefined;
+        const fadeInDuration = clip.transitionIn?.type === 'crossfade'
+          ? Math.min(clipDurationSec, Math.max(0, clip.transitionIn.duration))
+          : 0;
+        const fadeOutDuration = nextClip?.transitionIn?.type === 'crossfade'
+          ? Math.min(clipDurationSec, Math.max(0, nextClip.transitionIn.duration))
+          : 0;
+        const transitionGainAt = (local: number) => {
+          const fadeIn = fadeInDuration > 0 && local < fadeInDuration
+            ? Math.max(0, Math.min(1, local / fadeInDuration))
+            : 1;
+          const fadeOut = fadeOutDuration > 0 && local > clipDurationSec - fadeOutDuration
+            ? Math.max(0, Math.min(1, (clipDurationSec - local) / fadeOutDuration))
+            : 1;
+          return fadeIn * fadeOut;
+        };
         media.crossOrigin = 'anonymous';
         media.preload = 'auto';
         media.volume = 1;
@@ -2697,7 +2798,7 @@ export class VideoRenderer {
         // Match the source clip's rate while keeping pitch natural in browsers
         // that support native pitch correction. The clip's speed remains the
         // single authority for both the video clock and its embedded audio.
-        media.preservesPitch = true;
+        media.preservesPitch = clip.preservePitch !== false;
         media.src = clip.src;
 
         const waitForMetadata = new Promise<void>((resolve, reject) => {
@@ -2729,7 +2830,8 @@ export class VideoRenderer {
 
         for (let i = 0; i <= audioSteps; i++) {
           const u = i / audioSteps;
-          const value = resolveClipValues(clip, u * clipDurationSec).volume;
+          const local = u * clipDurationSec;
+          const value = resolveClipValues(clip, local).volume * transitionGainAt(local);
           const at = audioStart + u * clipDurationSec;
           if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
           else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), at);
@@ -2773,8 +2875,25 @@ export class VideoRenderer {
 
       if (!scaled.masterMuted) {
         let clipStart = 0;
-        for (const clip of scaled.clips) {
+        for (let clipIndex = 0; clipIndex < scaled.clips.length; clipIndex++) {
+          const clip = scaled.clips[clipIndex];
           const clipDurationSec = clipDuration(clip);
+          const nextClip = scaled.clips[clipIndex + 1];
+          const fadeInDuration = clip.transitionIn?.type === 'crossfade'
+            ? Math.min(clipDurationSec, Math.max(0, clip.transitionIn.duration))
+            : 0;
+          const fadeOutDuration = nextClip?.transitionIn?.type === 'crossfade'
+            ? Math.min(clipDurationSec, Math.max(0, nextClip.transitionIn.duration))
+            : 0;
+          const transitionGainAt = (local: number) => {
+            const fadeIn = fadeInDuration > 0 && local < fadeInDuration
+              ? Math.max(0, Math.min(1, local / fadeInDuration))
+              : 1;
+            const fadeOut = fadeOutDuration > 0 && local > clipDurationSec - fadeOutDuration
+              ? Math.max(0, Math.min(1, (clipDurationSec - local) / fadeOutDuration))
+              : 1;
+            return fadeIn * fadeOut;
+          };
           if (clip.media_type !== 'image' && !clip.muted && clip.volume > 0 && !isPlaceholder(clip.src)) {
             try {
               const res = await fetch(clip.src);
@@ -2799,7 +2918,8 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const local = u * clipDurationSec;
+                    const value = resolveClipValues(clip, local).volume * transitionGainAt(local);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }
@@ -2819,7 +2939,8 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const local = u * clipDurationSec;
+                    const value = resolveClipValues(clip, local).volume * transitionGainAt(local);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }

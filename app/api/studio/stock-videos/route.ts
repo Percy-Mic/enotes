@@ -36,10 +36,20 @@ async function pexels(query: string, page: number, orientation: string, key: str
     .map((video: any) => {
       const files = Array.isArray(video?.video_files) ? video.video_files : [];
       const usable = files
-        .filter((f: any) => typeof f?.link === 'string')
+        .filter((f: any) => {
+          if (typeof f?.link !== 'string') return false;
+          const width = Number(f?.width || video?.width || 0);
+          const height = Number(f?.height || video?.height || 0);
+          if (!width || !height || !fits(width, height, orientation as any)) return false;
+          try {
+            const link = new URL(f.link);
+            return link.protocol === 'https:' &&
+              (link.hostname === 'videos.pexels.com' || link.hostname.endsWith('.pexels.com'));
+          } catch { return false; }
+        })
         .sort((a: any, b: any) => {
-          const aa = Number(a?.width || 0) * Number(a?.height || 0);
-          const ba = Number(b?.width || 0) * Number(b?.height || 0);
+          const aa = Number(a?.width || video?.width || 0) * Number(a?.height || video?.height || 0);
+          const ba = Number(b?.width || video?.width || 0) * Number(b?.height || video?.height || 0);
           return Math.abs(aa - 1920 * 1080) - Math.abs(ba - 1920 * 1080);
         })[0];
       if (!video?.id || !usable?.link) return null;

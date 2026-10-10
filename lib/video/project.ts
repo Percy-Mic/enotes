@@ -127,6 +127,8 @@ export interface VideoClip {
   trimStart: number;
   trimEnd: number;
   speed: number;                 // 0.25 … 4
+  /** Whether native preview/export audio should attempt to preserve pitch while changing playback speed. */
+  preservePitch?: boolean;
   volume: number;                // 0-1 (original audio)
   /** Main-clip visual opacity. 1 is fully opaque; animated by opacity_kf when present. */
   opacity?: number;
@@ -723,6 +725,7 @@ export function normalizeProject(input: unknown): VideoProject {
     return {
       id: String(clip.id || makeVideoId('clip')), src: String(clip.src || ''), name: String(clip.name || 'Untitled clip'),
       sourceDuration, trimStart, trimEnd, speed: Math.max(0.05, Number(clip.speed) || 1),
+      preservePitch: clip.preservePitch !== false,
       media_type: clip.media_type === 'image' ? 'image' : 'video',
       volume: Math.max(0, Math.min(1, clip.volume == null ? 1 : Number(clip.volume))), muted: Boolean(clip.muted),
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
