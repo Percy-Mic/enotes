@@ -2745,7 +2745,7 @@ export class VideoRenderer {
         // Match the source clip's rate while keeping pitch natural in browsers
         // that support native pitch correction. The clip's speed remains the
         // single authority for both the video clock and its embedded audio.
-        media.preservesPitch = true;
+        media.preservesPitch = clip.preservePitch !== false;
         media.src = clip.src;
 
         const waitForMetadata = new Promise<void>((resolve, reject) => {
