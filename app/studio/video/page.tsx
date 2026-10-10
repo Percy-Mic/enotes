@@ -8259,6 +8259,70 @@ function VideoEditor() {
                   </div>
                 )}
               </div>
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-white/80">Background image</p>
+                    <p className="text-[9px] text-white/40">Sits behind keyed clips and overlays.</p>
+                  </div>
+                  <label className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 text-[10px] font-bold text-black hover:bg-white/90">
+                    <Upload className="h-3.5 w-3.5" /> {project.background?.imageSrc ? 'Replace' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={async (event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = '';
+                        if (!file) return;
+                        if (!meId) { notify('Sign in again before uploading a background image.'); return; }
+                        try {
+                          const uploaded = await uploadFile(file, 'studio-media', meId);
+                          updateProject((p) => ({
+                            ...p,
+                            background: {
+                              ...(p.background || { type: 'color', color: '#000000' }),
+                              imageSrc: uploaded.url,
+                              imageFit: p.background?.imageFit || 'cover',
+                            },
+                          }), 'Set canvas background image');
+                          notify('Background image added.');
+                        } catch (error) {
+                          notify(error instanceof Error ? error.message : 'Background image upload failed.');
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {project.background?.imageSrc && (
+                  <>
+                    <div className="mb-2 flex gap-1.5">
+                      {(['cover', 'contain'] as const).map((fit) => (
+                        <button
+                          key={fit}
+                          type="button"
+                          onClick={() => updateProject((p) => ({
+                            ...p,
+                            background: { ...(p.background || { type: 'color', color: '#000000' }), imageFit: fit },
+                          }), fit === 'cover' ? 'Fill background image' : 'Fit background image')}
+                          className={`flex-1 rounded-lg border px-2 py-2 text-[10px] font-semibold ${(project.background?.imageFit || 'cover') === fit ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}
+                        >{fit === 'cover' ? 'Fill canvas' : 'Fit image'}</button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => updateProject((p) => {
+                          const background = { ...(p.background || { type: 'color' as const, color: '#000000' }) };
+                          delete background.imageSrc;
+                          delete background.imageFit;
+                          return { ...p, background };
+                        }, 'Remove canvas background image')}
+                        className="rounded-lg border border-red-300/20 px-2.5 py-2 text-[10px] font-semibold text-red-200 hover:bg-red-400/10"
+                      >Remove</button>
+                    </div>
+                    <p className="break-all text-[9px] text-white/35">Image is stored with this project and rendered by the shared preview/export compositor.</p>
+                  </>
+                )}
+              </div>
               {project.background?.type === 'gradient' && (
                 <div className="mt-2">
                   <Slider label="Gradient angle" min={-180} max={180} value={project.background.angle ?? 0} onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000', color2: '#E5798F' }), type: 'gradient', angle: value } }), 'Canvas gradient angle', 'canvas-gradient-angle')} />
