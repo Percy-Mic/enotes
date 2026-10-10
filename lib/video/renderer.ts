@@ -2111,7 +2111,12 @@ export class VideoRenderer {
     let backgroundImage: HTMLImageElement | null = null;
     let backgroundVideo: HTMLVideoElement | null = null;
     if (background?.imageSrc) {
-      try { backgroundImage = await loadImage(background.imageSrc); } catch { backgroundImage = null; }
+      try {
+        backgroundImage = await loadImage(background.imageSrc);
+      } catch {
+        backgroundImage = null;
+        this.lastRenderWarning = 'The canvas background image could not be loaded. Check that the file still exists and its URL is accessible, then re-upload it if needed.';
+      }
     }
     if (background?.videoSrc) {
       try {
@@ -2136,6 +2141,7 @@ export class VideoRenderer {
         );
       } catch {
         backgroundVideo = null;
+        this.lastRenderWarning ||= 'The canvas background video could not be loaded or decoded. Check the source URL and browser video format support, then re-upload it if needed.';
       }
     }
     let backgroundPainted = false;
