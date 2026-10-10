@@ -8389,6 +8389,45 @@ function VideoEditor() {
                   </>
                 )}
               </div>
+              {(project.background?.imageSrc || project.background?.videoSrc) && (
+                <div className="mt-3 space-y-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-white/80">Background framing</p>
+                      <p className="text-[9px] text-white/40">Position and zoom the image/video behind your keyed subject.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateProject((p) => ({
+                        ...p,
+                        background: { ...(p.background || { type: 'color', color: '#000000' }), mediaScale: 1, mediaOffsetX: 0, mediaOffsetY: 0 },
+                      }), 'Reset background framing')}
+                      className="shrink-0 rounded-md border border-white/10 px-2 py-1.5 text-[10px] font-semibold text-white/60 hover:bg-white/5"
+                    >Reset</button>
+                  </div>
+                  <Slider
+                    label={`Zoom · ${Math.round((project.background?.mediaScale ?? 1) * 100)}%`}
+                    min={25}
+                    max={400}
+                    value={Math.round((project.background?.mediaScale ?? 1) * 100)}
+                    onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), mediaScale: value / 100 } }), 'Background media zoom', 'background-media-zoom')}
+                  />
+                  <Slider
+                    label={`Horizontal position · ${Math.round((project.background?.mediaOffsetX ?? 0) * 100)}%`}
+                    min={-100}
+                    max={100}
+                    value={Math.round((project.background?.mediaOffsetX ?? 0) * 100)}
+                    onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), mediaOffsetX: value / 100 } }), 'Background horizontal position', 'background-media-x')}
+                  />
+                  <Slider
+                    label={`Vertical position · ${Math.round((project.background?.mediaOffsetY ?? 0) * 100)}%`}
+                    min={-100}
+                    max={100}
+                    value={Math.round((project.background?.mediaOffsetY ?? 0) * 100)}
+                    onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), mediaOffsetY: value / 100 } }), 'Background vertical position', 'background-media-y')}
+                  />
+                </div>
+              )}
               {project.background?.type === 'gradient' && (
                 <div className="mt-2">
                   <Slider label="Gradient angle" min={-180} max={180} value={project.background.angle ?? 0} onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000', color2: '#E5798F' }), type: 'gradient', angle: value } }), 'Canvas gradient angle', 'canvas-gradient-angle')} />
