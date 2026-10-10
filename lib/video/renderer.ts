@@ -2119,7 +2119,7 @@ export class VideoRenderer {
           : 1;
         const target = ((Math.max(0, time) % duration) + duration) % duration;
         if (opts.isolatedPreview) {
-          await this.syncIsolatedVideo(backgroundVideo, background.videoSrc, target, !!opts.previewing, !!opts.playing, false, 1, false);
+          await this.syncIsolatedVideo(backgroundVideo, background.videoSrc, target, !!opts.playing, false, 1, false);
         } else {
           await syncPlaybackVideo(backgroundVideo, background.videoSrc, target, !!opts.playing, false, 1, false);
         }
