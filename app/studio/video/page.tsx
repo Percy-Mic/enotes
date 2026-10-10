@@ -9276,6 +9276,17 @@ function VideoEditor() {
                 </div>
                 {frameMode === 'motion' && (
                   <div className="space-y-2">
+                    {selectedClip.freezeFrame && (
+                      <div className="rounded-xl border border-[#E5798F]/25 bg-[#E5798F]/[0.07] p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <label htmlFor="freeze-frame-duration" className="text-xs font-semibold text-white">Freeze-frame duration</label>
+                          <span className="text-xs tabular-nums text-white/60">{selectedClip.freezeFrame.duration.toFixed(2)}s</span>
+                        </div>
+                        <input id="freeze-frame-duration" type="range" min="0.25" max="5" step="0.25" value={selectedClip.freezeFrame.duration}
+                          onChange={(event) => updateClip(selectedClip.id, { freezeFrame: { ...selectedClip.freezeFrame!, duration: Number(event.target.value) } }, 'Adjust freeze-frame duration', `freeze-${selectedClip.id}`)}
+                          className="w-full accent-[#E5798F]" aria-label="Freeze-frame duration" />
+                      </div>
+                    )}
                     <div className="rounded-2xl border border-[#E5798F]/20 bg-gradient-to-br from-[#E5798F]/10 to-white/[0.03] p-3">
                       <div className="flex items-start gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E5798F]/15 text-[#FFB6C1]">
