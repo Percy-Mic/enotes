@@ -150,6 +150,8 @@ export interface VideoClip {
   /** Template media slot metadata. `template_duration` controls the initial fill length, then normal editing can change it. */
   template_slot?: number;
   template_duration?: number;
+  /** Optional non-destructive freeze hold inserted at a clip-local timeline position. */
+  freezeFrame?: { at: number; sourceTime: number; duration: number };
   /** transition INTO this clip (plays over the previous clip's tail) */
   transitionIn: { type: TransitionType; duration: number };
   /** Optional transform/audio keyframes for professional motion control. */
@@ -1030,7 +1032,25 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
 /** Effective on-timeline duration of a clip (trim × speed). */
 export function clipDuration(clip: VideoClip): number {
   const trimmed = Math.max(0.1, clip.trimEnd - clip.trimStart);
-  return trimmed / Math.max(clip.speed, 0.05);
+  const base = trimmed / Math.max(clip.speed, 0.05);
+  const freeze = clip.freezeFrame;
+  return base + (freeze && Number.isFinite(freeze.duration) ? Math.max(0, freeze.duration) : 0);
+}
+
+/** Resolve source time while accounting for an inserted freeze hold. */
+export function clipSourceTimeAtLocal(clip: VideoClip, localTime: number): number {
+  const local = Math.max(0, localTime);
+  const freeze = clip.freezeFrame;
+  let sourceOffset = local;
+  if (freeze && Number.isFinite(freeze.at) && Number.isFinite(freeze.duration) && freeze.duration > 0) {
+    const at = Math.max(0, freeze.at);
+    const end = at + freeze.duration;
+    if (local >= at && local < end) return Math.max(clip.trimStart, Math.min(clip.trimEnd, freeze.sourceTime));
+    if (local >= end) sourceOffset = local - freeze.duration;
+  }
+  const speed = Math.max(clip.speed, 0.05);
+  const sourceTime = clip.reverse ? clip.trimEnd - sourceOffset * speed : clip.trimStart + sourceOffset * speed;
+  return Math.max(clip.trimStart, Math.min(clip.trimEnd, sourceTime));
 }
 
 export function projectDuration(project: VideoProject): number {
@@ -1061,7 +1081,7 @@ export function resolveTime(project: VideoProject, t: number): { clip: VideoClip
     const d = clipDuration(clip);
     if (t < acc + d) {
       const local = t - acc;
-      return { clip, sourceTime: clip.trimStart + local * clip.speed };
+      return { clip, sourceTime: clipSourceTimeAtLocal(clip, local) };
     }
     acc += d;
   }
