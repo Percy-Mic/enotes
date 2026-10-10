@@ -247,6 +247,25 @@ function pauseInactiveVideos(activeSources: Set<string>) {
   videoCache.forEach((video, src) => {
     if (!activeSources.has(src) && !video.paused) video.pause();
   });
+
+  // Keep only a small working set of decoded video elements. Mobile browsers
+  // retain decoder/GPU buffers even after pause(), so old timeline clips must
+  // release their media source once they are no longer active.
+  const MAX_CACHED_VIDEOS = 3;
+  while (videoCache.size > MAX_CACHED_VIDEOS) {
+    const candidate = Array.from(videoCache.entries()).find(([src]) => !activeSources.has(src));
+    if (!candidate) break; // Multiple simultaneously visible video overlays are active.
+    const [src, video] = candidate;
+    videoCache.delete(src);
+    playbackState.delete(video);
+    try {
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    } catch {
+      // Releasing an already-disposed decoder is best-effort.
+    }
+  }
 }
 
 /**
@@ -2388,13 +2407,7 @@ export class VideoRenderer {
       if (el.src && (el.kind === 'video' || el.media_type === 'video')) activeSources.add(el.src);
     }
     if (!isCurrent()) return;
-    if (!opts.playing) {
-      videoCache.forEach((video, src) => {
-        if (!activeSources.has(src) && !video.paused) video.pause();
-      });
-    } else {
-      pauseInactiveVideos(activeSources);
-    }
+    pauseInactiveVideos(activeSources);
 
     /* vignette effect darkens the composed frame (clip + overlays) */
     if (resolved && resolved.clip.effect === 'vignette') {
