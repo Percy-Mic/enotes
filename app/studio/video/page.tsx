@@ -1050,6 +1050,7 @@ function VideoEditor() {
   const drawingRef = useRef(false);
   const pendingRef = useRef<number | null>(null);
   const lastSrcErrRef = useRef<string | null>(null);
+  const lastRenderWarningRef = useRef<string | null>(null);
 
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
@@ -1844,6 +1845,14 @@ function VideoEditor() {
           notify('A clip in the timeline cannot be played in this browser — see the preview for which one.');
         } else if (!err) {
           lastSrcErrRef.current = null;
+        }
+
+        const warning = rendererRef.current.lastRenderWarning;
+        if (warning && warning !== lastRenderWarningRef.current) {
+          lastRenderWarningRef.current = warning;
+          notify(warning);
+        } else if (!warning) {
+          lastRenderWarningRef.current = null;
         }
 
         nextTime = pendingRef.current;
