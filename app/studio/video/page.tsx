@@ -10359,6 +10359,12 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, aspectRa
     { label: '4:3', value: 4 / 3 },
     { label: '3:2', value: 3 / 2 },
   ];
+  const visibleW = Math.max(0.001, 1 - (crop?.left ?? 0) - (crop?.right ?? 0));
+  const visibleH = Math.max(0.001, 1 - (crop?.top ?? 0) - (crop?.bottom ?? 0));
+  const currentAspect = sourceAspect * visibleW / visibleH;
+  const ratioLabel = Number.isFinite(currentAspect) && currentAspect > 0
+    ? currentAspect.toFixed(2) + ':1'
+    : 'Original';
 
   const setRot = (value: number) => {
     const next = normalizeCropAngle(value);
@@ -10367,73 +10373,123 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, aspectRa
   };
 
   return (
-    <div
-      className="relative z-[56] mx-auto w-full max-w-[720px] border-t border-white/10 bg-[#0b0b0b] px-2 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 text-white shadow-[0_-12px_36px_rgba(0,0,0,.35)] sm:rounded-2xl sm:border sm:border-white/10 sm:px-3 sm:pb-3"
-      style={{ touchAction: 'pan-y' }}
-      aria-label="Crop controls"
+    <section
+      className="relative z-[56] mx-auto w-full max-w-[720px] border-t border-white/10 bg-[#111111] px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-3 text-white shadow-[0_-12px_36px_rgba(0,0,0,.35)] sm:rounded-2xl sm:border sm:border-white/10 sm:px-4 sm:pb-4"
+      aria-label="Crop and straighten controls"
     >
-      <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.07] text-[#FFB6C1]">
-            <Crop className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold">Crop</p>
-            <p className="hidden text-[9px] text-white/40 sm:block">Drag the frame · pinch to zoom · choose a ratio</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-white">
+          <Crop className="h-4 w-4" />
         </div>
-        <button type="button" onClick={onCancel} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-white/70" aria-label="Cancel crop">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold tracking-tight">Crop</p>
+          <p className="mt-0.5 text-[10px] text-white/45">Adjust the frame, straighten, or flip your video</p>
+        </div>
+        <div className="rounded-md bg-white/[0.07] px-2 py-1 text-[10px] font-medium tabular-nums text-white/70">
+          {ratioLabel}
+        </div>
+        <button type="button" onClick={onCancel} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/55 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70" aria-label="Cancel crop" title="Cancel">
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-        {aspectPresets.map((preset) => {
-          const active = preset.value == null
-            ? aspectRatio == null && crop == null
-            : aspectRatio != null && Math.abs(aspectRatio - preset.value) < 0.001;
-          return (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => onAspect(preset.value)}
-              aria-pressed={active}
-              className={'flex h-10 min-w-[58px] shrink-0 items-center justify-center rounded-xl border px-3 text-[10px] font-bold transition ' + (
-                active
-                  ? 'border-[#FFB6C1] bg-[#E5798F] text-white'
-                  : 'border-white/10 bg-white/[0.045] text-white/65 active:bg-white/[0.1]'
-              )}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold text-white/80">Aspect ratio</p>
+          <button type="button" onClick={() => onAspect(null)} className="text-[10px] font-medium text-white/50 underline-offset-2 hover:text-white hover:underline">
+            Original
+          </button>
+        </div>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+          {aspectPresets.map((preset) => {
+            const active = preset.value == null
+              ? aspectRatio == null && crop == null
+              : aspectRatio != null && Math.abs(aspectRatio - preset.value) < 0.001;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => onAspect(preset.value)}
+                aria-pressed={active}
+                className={'flex h-[54px] min-w-[62px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg border text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ' + (
+                  active
+                    ? 'border-white bg-white/[0.12] text-white'
+                    : 'border-white/10 bg-white/[0.035] text-white/55 hover:border-white/30 hover:text-white/85'
+                )}
+              >
+                <span className="flex h-5 w-7 items-center justify-center">
+                  {preset.value == null ? (
+                    <span className="h-4 w-6 rounded-[2px] border border-current" />
+                  ) : (
+                    <span
+                      className="block max-h-5 max-w-7 rounded-[2px] border border-current"
+                      style={{
+                        width: preset.value >= 1 ? 25 : Math.max(8, 25 * preset.value),
+                        height: preset.value >= 1 ? Math.max(8, 18 / preset.value) : 18,
+                      }}
+                    />
+                  )}
+                </span>
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="mt-2 flex items-center gap-1.5">
-        <button type="button" onClick={() => setRot(rotation - 90)} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          <RotateCcw className="h-4 w-4" /> 90°
+      <div className="mt-4 border-t border-white/10 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold text-white/80">Straighten</p>
+          <div className="flex items-center gap-2">
+            <span className="min-w-10 rounded-md bg-white/[0.07] px-2 py-1 text-center text-[10px] tabular-nums text-white/75">{Math.round(rotation)}°</span>
+            <button type="button" onClick={() => setRot(0)} className="text-[10px] font-medium text-white/50 hover:text-white">Reset</button>
+          </div>
+        </div>
+        <input
+          type="range"
+          min={-180}
+          max={180}
+          step={1}
+          value={rotation}
+          onChange={(event) => setRot(Number(event.target.value))}
+          aria-label="Straighten rotation"
+          className="h-5 w-full cursor-pointer accent-white"
+        />
+        <div className="mt-1 flex justify-between text-[9px] tabular-nums text-white/35">
+          <span>-180°</span><span>-90°</span><span>0°</span><span>90°</span><span>180°</span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-white/10 pt-3">
+        <button type="button" onClick={() => setRot(rotation - 90)} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <RotateCcw className="h-3.5 w-3.5" /> Rotate left
         </button>
-        <button type="button" onClick={() => setRot(rotation + 90)} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          <RotateCw className="h-4 w-4" /> 90°
+        <button type="button" onClick={() => setRot(rotation + 90)} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <RotateCw className="h-3.5 w-3.5" /> Rotate right
         </button>
-        <button type="button" onClick={() => onFlip('horizontal')} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          <FlipHorizontal className="h-4 w-4" /> Flip
+        <button type="button" onClick={() => onReset()} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <RotateCcw className="h-3.5 w-3.5" /> Reset crop
         </button>
-        <button type="button" onClick={onReset} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          Reset
+        <button type="button" onClick={() => onFlip('horizontal')} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <FlipHorizontal className="h-3.5 w-3.5" /> Flip horizontal
+        </button>
+        <button type="button" onClick={() => onFlip('vertical')} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <FlipVertical className="h-3.5 w-3.5" /> Flip vertical
+        </button>
+        <button type="button" onClick={() => onAspect(null)} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <Maximize2 className="h-3.5 w-3.5" /> Original frame
         </button>
       </div>
 
-      <div className="mt-2 flex gap-1.5 border-t border-white/10 pt-2">
-        <button type="button" onClick={onCancel} className="h-10 flex-1 rounded-xl bg-white/[0.07] text-xs font-bold text-white/75">
+      <div className="mt-4 flex gap-2 border-t border-white/10 pt-3">
+        <button type="button" onClick={onCancel} className="h-10 flex-1 rounded-lg border border-white/15 bg-transparent text-xs font-semibold text-white/70 transition hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
           Cancel
         </button>
-        <button type="button" onClick={onApply} className="h-10 flex-[1.35] rounded-xl bg-[#E5798F] text-xs font-black text-white shadow-lg shadow-[#E5798F]/20">
-          Done
+        <button type="button" onClick={onApply} className="h-10 flex-[1.35] rounded-lg bg-white text-xs font-bold text-black transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
+          Apply crop
         </button>
       </div>
-    </div>
+    </section>
   );
 }
 
