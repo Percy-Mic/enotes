@@ -1624,6 +1624,7 @@ function VideoEditor() {
               )
             );
         audio.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
+        try { (audio as HTMLMediaElement & { preservesPitch?: boolean; mozPreservesPitch?: boolean; webkitPreservesPitch?: boolean }).preservesPitch = clip.preservePitch !== false; } catch {}
         /*
          * The canvas renderer uses a muted video element for pixels. This
          * separate element is the authoritative audible copy of the clip.
@@ -9707,6 +9708,11 @@ function VideoEditor() {
                   <p className="mt-1 text-[10px] text-white/40">
                     Clip plays {fmt(clipDuration(selectedClip))} on the timeline · speed applies to preview, audio and the exported file.
                   </p>
+                  <label className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.035] p-3 text-xs">
+                    <span><span className="block font-semibold text-white/85">Preserve pitch</span><span className="mt-0.5 block text-[10px] text-white/40">Keep voices closer to their original pitch when changing speed.</span></span>
+                    <input type="checkbox" className="h-4 w-4 accent-[#53C8F0]" checked={selectedClip.preservePitch !== false}
+                      onChange={(e) => updateClip(selectedClip.id, { preservePitch: e.target.checked }, 'Change pitch preservation')} />
+                  </label>
                 </div>
 
                 {/* MASKS — non-destructive compositing masks, also controllable by AI. */}
@@ -10316,6 +10322,8 @@ function VideoEditor() {
               ['text', <Type key="t" className="h-5 w-5" />],
               ['overlays', <Layers key="o" className="h-5 w-5" />],
               ['audio', <Music key="m" className="h-5 w-5" />],
+              ['transitions', <Film key="tr" className="h-5 w-5" />],
+              ['adjust', <SlidersHorizontal key="ad" className="h-5 w-5" />],
               ['motion', <Sparkles key="mo" className="h-5 w-5" />],
               ['look', <SlidersHorizontal key="l" className="h-5 w-5" />],
               ['captions', <Captions key="cap" className="h-5 w-5" />],
