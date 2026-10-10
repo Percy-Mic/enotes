@@ -826,14 +826,43 @@ function clipBoxRect(clip: VideoClip, canvasW: number, canvasH: number) {
 function clipControlState(clip: VideoClip, time: number) {
   const timeIn = Math.max(0, Math.min(clipDuration(clip), time));
   const v = resolveClipValues(clip, timeIn);
+  /* The canvas selection frame must describe the rendered frame, including
+     built-in motion presets. Otherwise Spin/Zoom/Float visibly move the media
+     away from its hit target and dragging edits a different location. */
+  const preset = clip.motion_preset || 'none';
+  const amount = Math.max(0, Math.min(2, clip.motion_amount ?? 1));
+  const p = Math.min(1, Math.max(0, timeIn / Math.max(0.1, clipDuration(clip))));
+  const phase = timeIn * Math.PI * 2;
+  let motionScale = 1, motionX = 0, motionY = 0, motionRotation = 0;
+  switch (preset) {
+    case 'zoom-in': motionScale = 1 + 0.35 * amount * p; break;
+    case 'zoom-out': motionScale = 1 + 0.35 * amount * (1 - p); break;
+    case 'spin': motionScale = 1.03; motionRotation = 360 * amount * p; break;
+    case 'float':
+      motionScale = 1.04 + Math.abs(Math.sin(phase * 0.5)) * 0.01 * amount;
+      motionY = Math.sin(phase * 0.65) * 22 * amount;
+      motionRotation = Math.sin(phase * 0.65) * 2 * amount;
+      break;
+    case 'pop': {
+      const q = p < 0.2 ? p / 0.2 : 1 - ((p - 0.2) / 0.8) * 0.08;
+      motionScale = 0.82 + 0.26 * Math.min(1, q) * amount;
+      break;
+    }
+    case 'shake':
+      motionScale = 1.04;
+      motionX = Math.sin(timeIn * Math.PI * 10) * 14 * amount;
+      motionY = Math.sin(timeIn * Math.PI * 8) * 8 * amount;
+      motionRotation = Math.sin(timeIn * Math.PI * 8) * 2 * amount;
+      break;
+  }
   return {
     ...clip,
     transform: {
       ...clip.transform,
-      scale: Number.isFinite(v.scale) ? v.scale : clip.transform.scale,
-      offset_x: Number.isFinite(v.offset_x) ? v.offset_x : clip.transform.offset_x,
-      offset_y: Number.isFinite(v.offset_y) ? v.offset_y : clip.transform.offset_y,
-      rotation: Number.isFinite(v.rotation) ? v.rotation : clip.transform.rotation,
+      scale: (Number.isFinite(v.scale) ? v.scale : clip.transform.scale) * motionScale,
+      offset_x: (Number.isFinite(v.offset_x) ? v.offset_x : clip.transform.offset_x) + motionX,
+      offset_y: (Number.isFinite(v.offset_y) ? v.offset_y : clip.transform.offset_y) + motionY,
+      rotation: (Number.isFinite(v.rotation) ? v.rotation : clip.transform.rotation) + motionRotation,
     },
   };
 }
@@ -5078,6 +5107,16 @@ function VideoEditor() {
       { ...clip, transform: { ...clip.transform } },
       clipLocalTime,
     );
+    /* Keep edit values separate from the visual motion offset. Pointer movement
+       changes the authored transform, never the transient Spin/Float offset. */
+    const resolvedBase = resolveClipValues(clip, clipLocalTime);
+    const baseTransform = {
+      ...clip.transform,
+      scale: Number.isFinite(resolvedBase.scale) ? resolvedBase.scale : clip.transform.scale,
+      offset_x: Number.isFinite(resolvedBase.offset_x) ? resolvedBase.offset_x : clip.transform.offset_x,
+      offset_y: Number.isFinite(resolvedBase.offset_y) ? resolvedBase.offset_y : clip.transform.offset_y,
+      rotation: Number.isFinite(resolvedBase.rotation) ? resolvedBase.rotation : clip.transform.rotation,
+    };
     const box = clipBoxRect(startClip, project.canvas.width, project.canvas.height);
     const rad = (startClip.transform.rotation * Math.PI) / 180;
     const startAngle = Math.atan2(startY - box.cy, startX - box.cx);
@@ -5136,7 +5175,7 @@ function VideoEditor() {
       if (!p) return;
       const dx = p.x - startX;
       const dy = p.y - startY;
-      const T = startClip.transform;
+      const T = baseTransform;
 
       if (!activeGesture) {
         if (Math.hypot(dx, dy) < GESTURE_SLOP) return;
@@ -5153,8 +5192,8 @@ function VideoEditor() {
           clip,
           {
             ...T,
-            offset_x: Math.round(box.cx + dx - project.canvas.width / 2),
-            offset_y: Math.round(box.cy + dy - project.canvas.height / 2),
+            offset_x: Math.round(T.offset_x + dx),
+            offset_y: Math.round(T.offset_y + dy),
           },
           project.canvas.width,
           project.canvas.height,
@@ -5231,7 +5270,7 @@ function VideoEditor() {
 
       /* rotate */
       const angle = Math.atan2(p.y - box.cy, p.x - box.cx);
-      let deg = startClip.transform.rotation + ((angle - startAngle) * 180) / Math.PI;
+      let deg = T.rotation + ((angle - startAngle) * 180) / Math.PI;
       const snapped = Math.round(deg / 15) * 15;
       if (Math.abs(deg - snapped) < 4) deg = snapped;
       const nextTransform = containClipTransform(
