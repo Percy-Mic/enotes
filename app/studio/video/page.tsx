@@ -8262,6 +8262,55 @@ function VideoEditor() {
               <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-white/80">Background video</p>
+                    <p className="text-[9px] text-white/40">Loops behind keyed clips and overlays.</p>
+                  </div>
+                  <label className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 text-[10px] font-bold text-black hover:bg-white/90">
+                    <Upload className="h-3.5 w-3.5" /> {project.background?.videoSrc ? 'Replace' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime,video/ogg"
+                      className="hidden"
+                      onChange={async (event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = '';
+                        if (!file) return;
+                        if (!meId) { notify('Sign in again before uploading a background video.'); return; }
+                        try {
+                          const uploaded = await uploadFile(file, 'studio-media', meId);
+                          updateProject((p) => ({
+                            ...p,
+                            background: {
+                              ...(p.background || { type: 'color', color: '#000000' }),
+                              videoSrc: uploaded.url,
+                            },
+                          }), 'Set canvas background video');
+                          notify('Background video added. It will loop behind your main clips.');
+                        } catch (error) {
+                          notify(error instanceof Error ? error.message : 'Background video upload failed.');
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {project.background?.videoSrc && (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="min-w-0 truncate text-[10px] text-white/50">Video layer active · loops with the project</p>
+                    <button
+                      type="button"
+                      onClick={() => updateProject((p) => {
+                        const background = { ...(p.background || { type: 'color' as const, color: '#000000' }) };
+                        delete background.videoSrc;
+                        return { ...p, background };
+                      }, 'Remove canvas background video')}
+                      className="shrink-0 rounded-md border border-white/10 px-2 py-1.5 text-[10px] font-semibold text-white/65 hover:bg-white/5"
+                    >Remove</button>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="text-[11px] font-semibold text-white/80">Background image</p>
                     <p className="text-[9px] text-white/40">Sits behind keyed clips and overlays.</p>
                   </div>
