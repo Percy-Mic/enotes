@@ -7921,7 +7921,7 @@ function VideoEditor() {
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Mask">◯ Mask</button>
                     <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
-                    <button onClick={freezeFrameAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Freeze frame" title="Hold the current video frame for one second">▣ Freeze</button>
+                    <button onClick={() => selectedClip?.freezeFrame ? updateClip(selectedClip.id, { freezeFrame: undefined }, 'Remove freeze frame') : freezeFrameAtPlayhead()} className={EDITOR_ACTION_PILL} aria-label={selectedClip?.freezeFrame ? "Remove freeze frame" : "Freeze frame"} title={selectedClip?.freezeFrame ? "Remove the freeze hold" : "Hold the current video frame for one second"}>{selectedClip?.freezeFrame ? "↻ Unfreeze" : "▣ Freeze"}</button>
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
                     <button onClick={() => setClipSpeedMenuOpen((v) => !v)} className={EDITOR_ACTION_PILL} aria-label="Change clip speed"><SkipForward className="h-4 w-4" />Speed</button>
                     <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL} aria-label="Toggle clip audio">{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Volume'}</button>
@@ -7972,7 +7972,7 @@ function VideoEditor() {
                     <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
                       {[
                         { label: 'Edit', icon: <Scissors className="h-4 w-4" />, action: () => openTool('motion') },
-                        { label: 'Freeze', icon: <Film className="h-4 w-4" />, action: freezeFrameAtPlayhead },
+                        { label: selectedClip.freezeFrame ? 'Unfreeze' : 'Freeze', icon: <Film className="h-4 w-4" />, action: () => selectedClip.freezeFrame ? updateClip(selectedClip.id, { freezeFrame: undefined }, 'Remove freeze frame') : freezeFrameAtPlayhead() },
                         { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => { setClipSoundMenuOpen((v) => !v); setClipSpeedMenuOpen(false); } },
                         { label: 'Text', icon: <Type className="h-4 w-4" />, action: () => { addTextElement(); } },
                         { label: 'Effects', icon: <Sparkles className="h-4 w-4" />, action: () => openTool('look') },
