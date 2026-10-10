@@ -1757,6 +1757,27 @@ function applyTransition(
 
 /* ---------- original clip audio + basic voice cleanup ---------- */
 
+/**
+ * Audio envelope for the incoming clip transition. This is shared by the
+ * real-time preview and export so transitions do not look faded while their
+ * soundtrack starts abruptly. Time is local to the clip's timeline duration.
+ */
+export function clipTransitionAudioGain(
+  clip: VideoClip,
+  localTime: number,
+  timelineDuration: number,
+): number {
+  const transition = clip.transitionIn;
+  if (!transition || !transition.type || transition.type === 'none') return 1;
+  const duration = Math.min(
+    Math.max(0, timelineDuration),
+    Math.max(0, Number(transition.duration) || 0),
+  );
+  if (duration <= 0) return 1;
+  return Math.max(0, Math.min(1, localTime / duration));
+}
+
+
 function reverseAudioSegment(ctx: AudioContext, buffer: AudioBuffer, start: number, end: number): AudioBuffer {
   const sr = buffer.sampleRate;
   const from = Math.max(0, Math.floor(start * sr));
@@ -2826,7 +2847,7 @@ export class VideoRenderer {
       //
       // The fallback is deliberately kept per-clip. One problematic clip must
       // not remove audio from every other clip in the project.
-      const exportMediaAudio: Array<{ media: HTMLAudioElement; timer: number | null }> = [];
+      const exportMediaAudio: Array<{ media: HTMLAudioElement; timer: number | null; stopTimer: number | null }> = [];
       const scheduleMediaClipAudio = async (
         clip: VideoClip,
         clipStart: number,
@@ -2843,6 +2864,9 @@ export class VideoRenderer {
         media.muted = false;
         media.defaultMuted = false;
         media.src = clip.src;
+        // Match AudioBufferSourceNode playback: linked source audio changes pitch
+        // naturally with speed rather than using the browser's pitch correction.
+        media.preservesPitch = false;
 
         const waitForMetadata = new Promise<void>((resolve, reject) => {
           if (media.readyState >= HTMLMediaElement.HAVE_METADATA) {
@@ -2873,7 +2897,7 @@ export class VideoRenderer {
 
         for (let i = 0; i <= audioSteps; i++) {
           const u = i / audioSteps;
-          const value = resolveClipValues(clip, u * clipDurationSec).volume;
+          const value = resolveClipValues(clip, u * clipDurationSec).volume * clipTransitionAudioGain(clip, u * clipDurationSec, clipDurationSec);
           const at = audioStart + u * clipDurationSec;
           if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
           else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), at);
@@ -2904,8 +2928,14 @@ export class VideoRenderer {
             });
           } catch {}
         }, startDelayMs);
+        // A media-element fallback must stop at the retimed clip boundary;
+        // otherwise its audio can bleed underneath every later clip.
+        const stopTimer = window.setTimeout(() => {
+          media.pause();
+          media.muted = true;
+        }, startDelayMs + Math.max(0, clipDurationSec) * 1000);
 
-        exportMediaAudio.push({ media, timer });
+        exportMediaAudio.push({ media, timer, stopTimer });
         void media.play().catch(() => {});
       };
 
@@ -2937,7 +2967,7 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const value = resolveClipValues(clip, u * clipDurationSec).volume * clipTransitionAudioGain(clip, u * clipDurationSec, clipDurationSec);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }
@@ -2957,7 +2987,7 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const value = resolveClipValues(clip, u * clipDurationSec).volume * clipTransitionAudioGain(clip, u * clipDurationSec, clipDurationSec);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }
@@ -3212,8 +3242,9 @@ export class VideoRenderer {
 
       recorder.stop();
       const blob = await done;
-      exportMediaAudio.forEach(({ media, timer }) => {
+      exportMediaAudio.forEach(({ media, timer, stopTimer }) => {
         if (timer !== null) window.clearTimeout(timer);
+        if (stopTimer !== null) window.clearTimeout(stopTimer);
         media.pause();
         media.removeAttribute('src');
         try { media.load(); } catch {}
