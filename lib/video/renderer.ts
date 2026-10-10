@@ -2111,18 +2111,25 @@ export class VideoRenderer {
     }
     if (background?.videoSrc) {
       try {
-        backgroundVideo = opts.isolatedPreview
-          ? await this.loadIsolatedVideo(background.videoSrc)
-          : await loadVideo(background.videoSrc);
+        /* The background owns a dedicated decoder. Reusing the timeline's
+           URL-keyed videoCache lets a source used both as a background and as
+           a clip fight over currentTime, causing one layer to flash or show
+           the wrong frame. Use this renderer's isolated decoder in both
+           preview and export; its clock is independent from timeline clips. */
+        backgroundVideo = await this.loadIsolatedVideo(background.videoSrc);
         const duration = Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
           ? backgroundVideo.duration
           : 1;
         const target = ((Math.max(0, time) % duration) + duration) % duration;
-        if (opts.isolatedPreview) {
-          await this.syncIsolatedVideo(backgroundVideo, background.videoSrc, target, !!opts.playing, false, 1, false);
-        } else {
-          await syncPlaybackVideo(backgroundVideo, background.videoSrc, target, !!opts.playing, false, 1, false);
-        }
+        await this.syncIsolatedVideo(
+          backgroundVideo,
+          background.videoSrc,
+          target,
+          !!opts.playing,
+          false,
+          1,
+          false,
+        );
       } catch {
         backgroundVideo = null;
       }
