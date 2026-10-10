@@ -581,6 +581,10 @@ export interface CanvasBackground {
   videoSrc?: string;
   /** cover fills the canvas (cropping edges); contain keeps the full image visible. */
   imageFit?: 'cover' | 'contain';
+  /** Scale and normalized position for manually framing the background media. */
+  mediaScale?: number;
+  mediaOffsetX?: number;
+  mediaOffsetY?: number;
 }
 
 export interface VideoProject {
@@ -716,6 +720,9 @@ export function normalizeProject(input: unknown): VideoProject {
     ...(typeof backgroundRaw.imageSrc === 'string' && /^https?:\/\//i.test(backgroundRaw.imageSrc) ? { imageSrc: backgroundRaw.imageSrc.slice(0, 4096) } : {}),
     ...(typeof backgroundRaw.videoSrc === 'string' && /^https?:\/\//i.test(backgroundRaw.videoSrc) ? { videoSrc: backgroundRaw.videoSrc.slice(0, 4096) } : {}),
     imageFit: backgroundRaw.imageFit === 'contain' ? 'contain' : 'cover',
+    mediaScale: clamp(Number(backgroundRaw.mediaScale) || 1, 0.25, 4),
+    mediaOffsetX: clamp(Number(backgroundRaw.mediaOffsetX) || 0, -1, 1),
+    mediaOffsetY: clamp(Number(backgroundRaw.mediaOffsetY) || 0, -1, 1),
   };
 
   const clips: VideoClip[] = Array.isArray(raw.clips) ? raw.clips.map((c) => {
