@@ -1080,6 +1080,7 @@ function VideoEditor() {
   const [stockOrientation, setStockOrientation] = useState<'all' | 'landscape' | 'portrait' | 'square'>('all');
   const [stockVideos, setStockVideos] = useState<{ id: string; url: string; thumbnail: string; width: number; height: number; duration: number; sourceUrl: string; photographer: string; provider: 'pexels' | 'pixabay' }[]>([]);
   const [stockBusy, setStockBusy] = useState(false);
+  const [freezeBusy, setFreezeBusy] = useState(false);
   const [stockError, setStockError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [effectSearch, setEffectSearch] = useState('');
@@ -2636,7 +2637,7 @@ function VideoEditor() {
       return notify('Move the playhead inside the selected clip to freeze a frame.');
     }
 
-    setBusy(true);
+    setFreezeBusy(true);
     setPlaying(false);
     try {
       const sourceCanvas = document.createElement('canvas');
@@ -2717,7 +2718,7 @@ function VideoEditor() {
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Could not create the freeze frame.');
     } finally {
-      setBusy(false);
+      setFreezeBusy(false);
     }
   }, [meId, notify, selectedClipId, updateProject]);
 
@@ -8076,7 +8077,7 @@ function VideoEditor() {
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Mask">◯ Mask</button>
                     <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
-                    <button onClick={() => void freezeFrameAtPlayhead()} disabled={busy} className={EDITOR_ACTION_PILL} aria-label="Freeze frame"><Copy className="h-4 w-4" />Freeze</button>
+                    <button onClick={() => void freezeFrameAtPlayhead()} disabled={freezeBusy} className={EDITOR_ACTION_PILL} aria-label="Freeze frame"><Copy className="h-4 w-4" />Freeze</button>
                     <button onClick={() => openTool('transitions')} className={EDITOR_ACTION_PILL} aria-label="Edit transitions"><Film className="h-4 w-4" />Transitions</button>
                     <button onClick={() => openTool('adjust')} className={EDITOR_ACTION_PILL} aria-label="Adjust clip"><SlidersHorizontal className="h-4 w-4" />Adjust</button>
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
@@ -10278,7 +10279,7 @@ function VideoEditor() {
             <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Music className="h-5 w-5" />Audio</button>
             <button type="button" onClick={() => openTool('transitions')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Film className="h-5 w-5" />Transitions</button>
             <button type="button" onClick={() => openTool('adjust')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><SlidersHorizontal className="h-5 w-5" />Adjust</button>
-            <button type="button" onClick={() => void freezeFrameAtPlayhead()} disabled={busy} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#7BE7D4] disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Copy className="h-5 w-5" />Freeze</button>
+            <button type="button" onClick={() => void freezeFrameAtPlayhead()} disabled={freezeBusy} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#7BE7D4] disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Copy className="h-5 w-5" />Freeze</button>
             <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Sparkles className="h-5 w-5" />Effects</button>
             <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Move className="h-5 w-5" />Motion</button>
             <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Gauge className="h-5 w-5" />Opacity</button>
