@@ -27,7 +27,7 @@ import {
   type AspectRatio, type AudioEffect, type AudioEffectType, type AudioTrack, type CropRect, type KeyframeProperty, type MaskShape, type TimelineElement, type TimelineMarker, type TimelineTrack, type VideoClip, type VideoProject, type TextAnimationType, type TextLoopAnimationType,
 } from '@/lib/video/project';
 import {
-  EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
+  EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox, clipTransitionAudioGain,
   type ExportProgress, type ExportResult, type ExportSettings,
 } from '@/lib/video/renderer';
 
@@ -1635,6 +1635,7 @@ function VideoEditor() {
               )
             );
         audio.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
+        audio.preservesPitch = false;
         /*
          * The canvas renderer uses a muted video element for pixels. This
          * separate element is the authoritative audible copy of the clip.
@@ -1644,7 +1645,7 @@ function VideoEditor() {
         audio.muted = false;
         audio.defaultMuted = false;
         const resolvedAudio = resolveClipValues(clip, local);
-        audio.volume = resolvedAudio.volume;
+        audio.volume = resolvedAudio.volume * clipTransitionAudioGain(clip, local, clipDuration(clip));
         ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
         const requested = previewAudioPlayRequestedRef.current.has(clipId);
         // Keep the audio element on its own playback clock. Seeking on normal
@@ -1710,6 +1711,7 @@ function VideoEditor() {
         ? Math.max(trimStart, Math.min(trimEnd - 0.01, trimEnd - local * speed))
         : Math.max(trimStart, Math.min(trimEnd - 0.01, trimStart + local * speed));
       audio.playbackRate = speed;
+      audio.preservesPitch = false;
       audio.volume = Math.max(0, Math.min(1, resolveElementValues(el, local).volume));
       const requested = previewAudioPlayRequestedRef.current.has(key);
       if (Math.abs(audio.currentTime - target) > 0.75 && (!shouldPlay || !requested)) {
