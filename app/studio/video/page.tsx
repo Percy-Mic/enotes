@@ -1105,7 +1105,22 @@ function VideoEditor() {
       const fsCanvas = fsCanvasRef.current;
       if (!fsCanvas || cancelled) return;
       try {
-        await rendererRef.current.drawFrame(fsCanvas, docRef.current.project, playheadRef.current, {
+        const sourceProject = docRef.current.project;
+        const edge = Math.max(sourceProject.canvas.width, sourceProject.canvas.height);
+        const viewportWidth = fsCanvas.clientWidth || window.innerWidth || 360;
+        const maxPreviewEdge = viewportWidth < 640 ? 540 : 1280;
+        const scale = edge > maxPreviewEdge ? maxPreviewEdge / edge : 1;
+        const previewProject: VideoProject = scale < 1
+          ? {
+              ...sourceProject,
+              canvas: {
+                ...sourceProject.canvas,
+                width: Math.max(1, Math.round(sourceProject.canvas.width * scale)),
+                height: Math.max(1, Math.round(sourceProject.canvas.height * scale)),
+              },
+            }
+          : sourceProject;
+        await rendererRef.current.drawFrame(fsCanvas, previewProject, playheadRef.current, {
           previewing: true,
           playing,
         });
@@ -1804,9 +1819,26 @@ function VideoEditor() {
         const renderTime = nextTime;
         pendingRef.current = null;
 
+        const sourceProject = docRef.current.project;
+        const edge = Math.max(sourceProject.canvas.width, sourceProject.canvas.height);
+        // Small preview canvases prevent 4K/8K project dimensions from allocating
+        // huge GPU/CPU pixel buffers on phones. Export still uses project dimensions.
+        const viewportWidth = canvas.clientWidth || window.innerWidth || 360;
+        const maxPreviewEdge = viewportWidth < 640 ? 540 : 960;
+        const previewScale = edge > maxPreviewEdge ? maxPreviewEdge / edge : 1;
+        const previewProject: VideoProject = previewScale < 1
+          ? {
+              ...sourceProject,
+              canvas: {
+                ...sourceProject.canvas,
+                width: Math.max(1, Math.round(sourceProject.canvas.width * previewScale)),
+                height: Math.max(1, Math.round(sourceProject.canvas.height * previewScale)),
+              },
+            }
+          : sourceProject;
         await rendererRef.current.drawFrame(
           canvas,
-          docRef.current.project,
+          previewProject,
           renderTime,
           { previewing: true, playing }
         );
@@ -2448,6 +2480,11 @@ function VideoEditor() {
   }, [notify, stockPlaybackUrl, updateProject]);
 
   const startPracticeProject = useCallback(async (practiceTopic = 'cinematic story') => {
+    // Practice mode replaces the entire timeline: stop the old clock and audio first.
+    setPlaying(false);
+    void syncPreviewAudio(playheadRef.current, false);
+    playheadRef.current = 0;
+    setPlayhead(0);
     setStockBusy(true);
     setStockError(null);
     try {
@@ -2507,19 +2544,24 @@ function VideoEditor() {
       if (clips.length < 3) throw new Error('Not enough stock footage was returned. Try again.');
       const firstPractice = clips[0] as VideoClip | undefined;
       const practiceBase = emptyProject('original');
+      const sourceWidth = Number(firstPractice?.source_width || 0);
+      const sourceHeight = Number(firstPractice?.source_height || 0);
+      const practiceCanvasScale = sourceWidth > 0 && sourceHeight > 0
+        ? Math.min(1, 1280 / Math.max(sourceWidth, sourceHeight))
+        : 1;
+      const practiceCanvas = sourceWidth > 0 && sourceHeight > 0
+        ? {
+            width: Math.max(1, Math.round(sourceWidth * practiceCanvasScale)),
+            height: Math.max(1, Math.round(sourceHeight * practiceCanvasScale)),
+          }
+        : null;
       setDoc((prev) => ({
         ...prev,
         title: `${practiceTopic.replace(/\\b\\w/g, (letter) => letter.toUpperCase())} — Practice`,
         project: normalizeProject({
           ...practiceBase,
-          ...(firstPractice?.source_width && firstPractice?.source_height
-            ? {
-                aspect: 'original' as const,
-                canvas: {
-                  width: firstPractice.source_width,
-                  height: firstPractice.source_height,
-                },
-              }
+          ...(practiceCanvas
+            ? { aspect: 'original' as const, canvas: practiceCanvas }
             : {}),
           clips,
         }),
@@ -2532,7 +2574,7 @@ function VideoEditor() {
     } finally {
       setStockBusy(false);
     }
-  }, [notify, setDoc, stockPlaybackUrl]);
+  }, [notify, setDoc, stockPlaybackUrl, syncPreviewAudio]);
 
   const practiceLaunchHandled = useRef(false);
   useEffect(() => {
