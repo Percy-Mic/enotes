@@ -28,7 +28,7 @@ import { drawAdvancedEffectStack } from '@/lib/video/advanced-effects';
    ============================================================ */
 
 import {
-  clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder, isAudioPlaceholder,
+  clipDuration, clipSourceTimeAtLocal, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder, isAudioPlaceholder,
   containFit, croppedAspect, resolveElementValues,
   type VideoProject, type TimelineElement, type VideoClip, type CropRect, type ClipAdjustments, type EffectType,
 } from '@/lib/video/project';
@@ -2091,10 +2091,9 @@ export class VideoRenderer {
         acc += clipDuration(c);
       }
       const local = Math.max(0, time - acc);
-      const trimmed = Math.max(0.1, clip.trimEnd - clip.trimStart);
-      const sourceTime = clip.reverse
-        ? Math.max(clip.trimStart, clip.trimEnd - local * clip.speed)
-        : Math.min(clip.trimEnd, clip.trimStart + local * clip.speed);
+      const sourceTime = clipSourceTimeAtLocal(clip, local);
+      const freeze = clip.freezeFrame;
+      const isFreezeHold = !!freeze && freeze.duration > 0 && local >= freeze.at && local < freeze.at + freeze.duration;
       const timeIn = Math.max(0, time - acc);
       const dur = clipDuration(clip);
       const eff = effectTransform(clip, timeIn, dur);
@@ -2183,9 +2182,9 @@ export class VideoRenderer {
            if (!paintedFromCache) {
              if (video) {
                if (opts.isolatedPreview) {
-                await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+                await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing && !isFreezeHold, !opts.previewing, clip.speed, !!clip.reverse);
               } else {
-                await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+                await syncPlaybackVideo(video, clip.src, target, !!opts.playing && !isFreezeHold, !opts.previewing, clip.speed, !!clip.reverse);
               }
               if (!image && (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0)) {
                 return;
