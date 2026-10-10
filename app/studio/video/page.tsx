@@ -2453,6 +2453,11 @@ function VideoEditor() {
     try {
       const topicQueries: Record<string, string[]> = { 'cinematic story': ['city night cinematic', 'person walking cinematic', 'nature landscape cinematic', 'close up hands cinematic', 'street movement cinematic'], 'travel film': ['tropical beach travel', 'city travel walking', 'mountain scenic landscape', 'local food market', 'sunset destination'], 'product ad': ['minimal product close up', 'hands using product', 'clean studio product', 'lifestyle product use', 'product detail macro'], 'food reel': ['fresh food close up', 'cooking hands kitchen', 'street food preparation', 'plated meal close up', 'food market ingredients'], 'daily vlog': ['morning routine home', 'person walking city', 'coffee shop lifestyle', 'commute city street', 'sunset everyday life'], 'music video': ['concert lights crowd', 'urban night movement', 'abstract colorful lights', 'slow motion dancing', 'city neon night'] };
       const queries = topicQueries[practiceTopic] || topicQueries['cinematic story'];
+      // Practice projects need one consistent canvas orientation. Portrait-first
+      // social concepts use vertical footage; cinematic/product work uses landscape.
+      const practiceOrientation = ['cinematic story', 'product ad'].includes(practiceTopic)
+        ? 'landscape'
+        : 'portrait';
       const results = await Promise.all(
         queries.map(async (query) => {
           // Pexels/Pixabay rank popular results, so page=1 + [0] returned
@@ -2463,11 +2468,21 @@ function VideoEditor() {
             query,
             page: String(pageNumber),
             provider: 'all',
+            orientation: practiceOrientation,
           });
           const response = await fetch('/api/studio/stock-videos?' + params.toString(), { cache: 'no-store' });
           const data = await response.json();
           if (!response.ok || data.error) throw new Error(data.error || 'Practice footage search failed.');
-          const videos = Array.isArray(data.videos) ? data.videos.filter((v: any) => v && v.url) : [];
+          const videos = Array.isArray(data.videos)
+            ? data.videos.filter((v: any) => {
+                if (!v?.url) return false;
+                const width = Number(v.width || 0);
+                const height = Number(v.height || 0);
+                if (!width || !height) return false;
+                const ratio = width / height;
+                return practiceOrientation === 'landscape' ? ratio >= 1.15 : ratio <= 0.87;
+              })
+            : [];
           if (!videos.length) return null;
           return videos[Math.floor(Math.random() * videos.length)];
         })
