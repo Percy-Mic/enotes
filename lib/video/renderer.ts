@@ -1796,6 +1796,9 @@ export class VideoRenderer {
       source; cleared on the next successful draw. The editor surfaces this. */
   lastSourceError: string | null = null;
 
+  /** Non-fatal rendering issues that affect an effect but should not blank the frame. */
+  lastRenderWarning: string | null = null;
+
   /** Set while an export is running — the editor guards double-exports. */
   isExporting = false;
 
@@ -2090,6 +2093,7 @@ export class VideoRenderer {
     }
     const token = (this.renderTokens.get(canvas) || 0) + 1;
     this.renderTokens.set(canvas, token);
+    this.lastRenderWarning = null;
     const isCurrent = () => this.renderTokens.get(canvas) === token;
     project = normalizeProject(project);
     this.ctx = ctx;
@@ -2301,8 +2305,13 @@ export class VideoRenderer {
              if (clip.chromaKey?.enabled) {
                try {
                  applyChromaKeyPixels(sctx, surface.width, surface.height, clip.chromaKey);
-               } catch {
-                 /* A tainted/cross-origin frame must not blank the preview. */
+               } catch (keyError) {
+                 /* Preserve the unkeyed frame, but surface why the key could not
+                    be applied instead of silently pretending the effect worked. */
+                 const detail = keyError instanceof DOMException && keyError.name === 'SecurityError'
+                   ? 'the browser blocked pixel access (often due to media CORS)'
+                   : 'the source frame could not be processed';
+                 this.lastRenderWarning = `Chroma key was skipped for "${clip.name || 'this clip'}" because ${detail}. Try a same-origin upload or a CORS-enabled media URL.`;
                }
              }
              sctx.filter = 'none';
