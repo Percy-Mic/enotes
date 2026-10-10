@@ -736,6 +736,19 @@ export function normalizeProject(input: unknown): VideoProject {
       media_type: clip.media_type === 'image' ? 'image' : 'video',
       volume: Math.max(0, Math.min(1, clip.volume == null ? 1 : Number(clip.volume))), muted: Boolean(clip.muted),
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
+      ...(clip.chromaKey && typeof clip.chromaKey === 'object' ? {
+        chromaKey: (() => {
+          const key = clip.chromaKey as NonNullable<VideoClip['chromaKey']>;
+          const color = typeof key.color === 'string' && /^#?[0-9a-f]{6}$/i.test(key.color) ? (key.color.startsWith('#') ? key.color : '#' + key.color) : '#00ff00';
+          return {
+            enabled: Boolean(key.enabled),
+            color,
+            tolerance: clamp(Number(key.tolerance) || 0, 0, 255),
+            softness: clamp(Number(key.softness) || 1, 1, 255),
+            spill: clamp(Number(key.spill) || 0, 0, 1),
+          };
+        })(),
+      } : {}),
       effect: (clip.effect || 'none') as EffectType,
       motion_preset: (['none', 'zoom-in', 'zoom-out', 'spin', 'float', 'pop', 'shake'] as ClipMotionPreset[]).includes(clip.motion_preset as ClipMotionPreset) ? clip.motion_preset as ClipMotionPreset : 'none',
       motion_amount: clamp(Number(clip.motion_amount) || 1, 0, 2),
