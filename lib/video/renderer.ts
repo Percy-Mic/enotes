@@ -2155,10 +2155,13 @@ export class VideoRenderer {
       if (source) {
         const iw = movingBackground ? movingBackground.videoWidth : (source as HTMLImageElement).naturalWidth;
         const ih = movingBackground ? movingBackground.videoHeight : (source as HTMLImageElement).naturalHeight;
-        const scale = background?.imageFit === 'contain' ? Math.min(W / iw, H / ih) : Math.max(W / iw, H / ih);
+        const fitScale = background?.imageFit === 'contain' ? Math.min(W / iw, H / ih) : Math.max(W / iw, H / ih);
+        const scale = fitScale * Math.max(0.25, Math.min(4, Number(background?.mediaScale) || 1));
         const dw = iw * scale;
         const dh = ih * scale;
-        ctx.drawImage(source, (W - dw) / 2, (H - dh) / 2, dw, dh);
+        const dx = (W - dw) / 2 + (Number(background?.mediaOffsetX) || 0) * W;
+        const dy = (H - dh) / 2 + (Number(background?.mediaOffsetY) || 0) * H;
+        ctx.drawImage(source, dx, dy, dw, dh);
       }
       backgroundPainted = true;
     };
