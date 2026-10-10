@@ -1577,9 +1577,17 @@ function VideoEditor() {
        Main clips are sequential, therefore their project start is accumulated
        from clipDuration(). */
     let clipStart = 0;
-    for (const clip of p.clips) {
+    for (let clipIndex = 0; clipIndex < p.clips.length; clipIndex++) {
+      const clip = p.clips[clipIndex];
+      const nextClip = p.clips[clipIndex + 1];
       const clipId = `clip-audio:${clip.id}`;
       const clipProjectDuration = Math.max(0.05, clipDuration(clip));
+      const fadeInDuration = clip.transitionIn?.type === 'crossfade'
+        ? Math.min(clipProjectDuration, Math.max(0, clip.transitionIn.duration))
+        : 0;
+      const fadeOutDuration = nextClip?.transitionIn?.type === 'crossfade'
+        ? Math.min(clipProjectDuration, Math.max(0, nextClip.transitionIn.duration))
+        : 0;
       const inRange = !p.masterMuted &&
         !clip.muted &&
         clip.volume > 0 &&
@@ -1635,7 +1643,13 @@ function VideoEditor() {
         audio.muted = false;
         audio.defaultMuted = false;
         const resolvedAudio = resolveClipValues(clip, local);
-        audio.volume = resolvedAudio.volume;
+        const fadeInGain = fadeInDuration > 0 && local < fadeInDuration
+          ? Math.max(0, Math.min(1, local / fadeInDuration))
+          : 1;
+        const fadeOutGain = fadeOutDuration > 0 && local > clipProjectDuration - fadeOutDuration
+          ? Math.max(0, Math.min(1, (clipProjectDuration - local) / fadeOutDuration))
+          : 1;
+        audio.volume = Math.max(0, Math.min(1, resolvedAudio.volume * fadeInGain * fadeOutGain));
         ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
         const requested = previewAudioPlayRequestedRef.current.has(clipId);
         // Keep the audio element on its own playback clock. Seeking on normal
