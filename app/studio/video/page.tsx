@@ -2516,6 +2516,30 @@ function VideoEditor() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
 
+  /* Freeze the selected video at the playhead without modifying its source. */
+  const freezeFrameAtPlayhead = useCallback(() => {
+    const p = docRef.current.project;
+    const t = playheadRef.current;
+    let acc = 0;
+    let clip: VideoClip | undefined;
+    let local = 0;
+    for (const candidate of p.clips) {
+      const duration = clipDuration(candidate);
+      if (t >= acc && t < acc + duration) { clip = candidate; local = t - acc; break; }
+      acc += duration;
+    }
+    if (!clip) return notify('Place the playhead inside a main-track clip first.');
+    if (clip.media_type === 'image') return notify('Freeze frame is available for video clips.');
+    if (clip.freezeFrame) return notify('This clip already has a freeze frame. Remove it before adding another.');
+    const sourceTime = clip.reverse
+      ? Math.max(clip.trimStart, clip.trimEnd - local * clip.speed)
+      : Math.min(clip.trimEnd, clip.trimStart + local * clip.speed);
+    const at = Math.max(0.05, Math.min(local, clipDuration(clip) - 0.05));
+    updateClip(clip.id, { freezeFrame: { at, sourceTime, duration: 1 } }, 'Add freeze frame');
+    setSelectedClipId(clip.id);
+    notify('Freeze frame added for 1 second.');
+  }, [notify, updateClip]);
+
   /* ---------- clip ops ---------- */
   const splitAtPlayhead = useCallback(() => {
     const p = docRef.current.project;
@@ -7897,6 +7921,7 @@ function VideoEditor() {
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Mask">◯ Mask</button>
                     <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
+                    <button onClick={freezeFrameAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Freeze frame" title="Hold the current video frame for one second">▣ Freeze</button>
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
                     <button onClick={() => setClipSpeedMenuOpen((v) => !v)} className={EDITOR_ACTION_PILL} aria-label="Change clip speed"><SkipForward className="h-4 w-4" />Speed</button>
                     <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL} aria-label="Toggle clip audio">{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Volume'}</button>
@@ -7947,6 +7972,7 @@ function VideoEditor() {
                     <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
                       {[
                         { label: 'Edit', icon: <Scissors className="h-4 w-4" />, action: () => openTool('motion') },
+                        { label: 'Freeze', icon: <Film className="h-4 w-4" />, action: freezeFrameAtPlayhead },
                         { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => { setClipSoundMenuOpen((v) => !v); setClipSpeedMenuOpen(false); } },
                         { label: 'Text', icon: <Type className="h-4 w-4" />, action: () => { addTextElement(); } },
                         { label: 'Effects', icon: <Sparkles className="h-4 w-4" />, action: () => openTool('look') },
