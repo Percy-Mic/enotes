@@ -2104,8 +2104,20 @@ export class VideoRenderer {
        caused mobile decoders to expose a black canvas during transient stalls.
        Commit a new background only when this render has a drawable frame. */
     const background = project.background;
+    let backgroundImage: HTMLImageElement | null = null;
+    if (background?.imageSrc) {
+      try { backgroundImage = await loadImage(background.imageSrc); } catch { backgroundImage = null; }
+    }
     let backgroundPainted = false;
     const paintBackground = () => {
+      if (backgroundImage && backgroundImage.naturalWidth > 0 && backgroundImage.naturalHeight > 0) {
+        const iw = backgroundImage.naturalWidth;
+        const ih = backgroundImage.naturalHeight;
+        const scale = background?.imageFit === 'contain' ? Math.min(W / iw, H / ih) : Math.max(W / iw, H / ih);
+        const dw = iw * scale;
+        const dh = ih * scale;
+        ctx.drawImage(backgroundImage, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      }
       if (background?.type === 'gradient') {
         const angle = ((Number(background.angle) || 0) * Math.PI) / 180;
         const radius = Math.hypot(W, H);
