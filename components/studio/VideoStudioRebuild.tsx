@@ -145,7 +145,7 @@ export default function VideoStudioRebuild() {
 
   const [project, setProject] = useState<VideoProject>(() => emptyProject());
   const projectRef = useRef(project);
-  const [title, setTitle] = useState('Untitled project');
+  const [title, setTitle] = useState(isNew ? '' : 'Untitled project');
   const [userId, setUserId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(projectId);
   const [selection, setSelection] = useState<Selection>(null);
@@ -712,7 +712,6 @@ export default function VideoStudioRebuild() {
     const aspect: AspectRatio = brief.id === 'product-promo' || brief.id === 'cinematic' || brief.id === 'explainer' ? '16:9' : '9:16';
     const canvas = aspect === '9:16' ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
     replaceWithoutHistory({ ...emptyProject(), aspect, canvas });
-    setTitle(brief.title);
     setSelection(null);
     setPanel('media');
     setSetupStep('editing');
@@ -774,7 +773,7 @@ export default function VideoStudioRebuild() {
               <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1fr_1.2fr]">
                 <div className="space-y-4">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">Project title <span className="text-[#6ea8fe]">*</span>
-                    <input autoFocus value={title === 'Untitled project' ? '' : title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Summer in Manila" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0b111b] px-4 py-3 text-base font-medium text-white outline-none transition placeholder:text-slate-600 focus:border-[#6ea8fe] focus:ring-2 focus:ring-[#6ea8fe]/15" />
+                    <input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Summer in Manila" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0b111b] px-4 py-3 text-base font-medium text-white outline-none transition placeholder:text-slate-600 focus:border-[#6ea8fe] focus:ring-2 focus:ring-[#6ea8fe]/15" />
                   </label>
                   <p className="text-xs leading-5 text-slate-500">A clear title makes your project easy to find later. You can rename it anytime.</p>
                   <div className="rounded-xl border border-white/8 bg-[#0b111b] p-4">
