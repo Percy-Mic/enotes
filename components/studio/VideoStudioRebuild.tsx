@@ -30,10 +30,11 @@ type Selection =
   | { kind: 'audio'; id: string }
   | null;
 
-type Panel = 'media' | 'text' | 'audio' | 'effects' | 'motion' | 'crop' | 'transform' | 'export' | null;
+type Panel = 'media' | 'text' | 'audio' | 'speed' | 'transitions' | 'filters' | 'effects' | 'motion' | 'animation' | 'crop' | 'transform' | 'export' | null;
 
 const PANEL_LABELS: Record<Exclude<Panel, null>, string> = {
-  media: 'Media', text: 'Text', audio: 'Audio', effects: 'Effects', motion: 'Motion',
+  media: 'Media', text: 'Text', audio: 'Audio', speed: 'Speed', transitions: 'Transitions',
+  filters: 'Filters', effects: 'Effects', motion: 'Motion', animation: 'Animation',
   crop: 'Crop', transform: 'Transform', export: 'Export',
 };
 
@@ -679,9 +680,9 @@ export default function VideoStudioRebuild() {
   }, [selectedClip, selectedElement]);
 
   const contextual = selectedClip
-    ? ['transform', 'crop', 'effects', 'motion', 'audio', 'split', 'duplicate', 'delete'] as const
+    ? ['speed', 'transitions', 'transform', 'crop', 'filters', 'effects', 'motion', 'audio', 'split', 'duplicate', 'delete'] as const
     : selectedElement
-      ? ['text', 'transform', 'effects', 'motion', 'duplicate', 'delete'] as const
+      ? ['text', 'animation', 'transform', 'filters', 'effects', 'motion', 'duplicate', 'delete'] as const
       : selectedAudio
         ? ['audio', 'delete'] as const
         : ['media', 'text', 'audio', 'effects', 'export'] as const;
@@ -691,6 +692,10 @@ export default function VideoStudioRebuild() {
     if (action === 'duplicate') return duplicateSelection();
     if (action === 'delete') return deleteSelection();
     if (action === 'text') return setPanel('text');
+    if (action === 'speed') return setPanel('speed');
+    if (action === 'transitions') return setPanel('transitions');
+    if (action === 'filters') return setPanel('filters');
+    if (action === 'animation') return setPanel('animation');
     if (action === 'transform') return setPanel('transform');
     if (action === 'crop') return setPanel('crop');
     if (action === 'effects') return setPanel('effects');
@@ -736,7 +741,7 @@ export default function VideoStudioRebuild() {
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-16 shrink-0 flex-col items-center gap-2 border-r border-white/8 bg-[#101010] py-3 lg:flex">
           {[
-            ['media', FolderOpen], ['text', Type], ['audio', Music2], ['effects', Wand2], ['motion', Sparkles], ['export', Download],
+            ['media', FolderOpen], ['text', Type], ['audio', Music2], ['speed', Gauge], ['transitions', Film], ['filters', ImageIcon], ['effects', Wand2], ['motion', Sparkles], ['animation', RotateCcw], ['export', Download],
           ].map(([id, Icon]) => (
             <button key={String(id)} type="button" onClick={() => setPanel(id as Panel)}
               className={`grid h-12 w-12 place-items-center rounded-xl text-[9px] ${panel === id ? 'bg-white/10 text-[#ffb6c1]' : 'text-white/50 hover:bg-white/5'}`}>
@@ -878,7 +883,17 @@ export default function VideoStudioRebuild() {
                   {panel === 'audio' && selectedAudio && <><Section title="Audio"><Slider label="Volume" min={0} max={1} step={.01} value={selectedAudio.volume} onChange={(v)=>updateAudio(selectedAudio.id,{volume:v})}/><Slider label="Start" min={0} max={total} step={.1} value={selectedAudio.start} onChange={(v)=>updateAudio(selectedAudio.id,{start:v})}/><Slider label="Fade in" min={0} max={5} step={.1} value={selectedAudio.fadeIn} onChange={(v)=>updateAudio(selectedAudio.id,{fadeIn:v})}/><Slider label="Fade out" min={0} max={5} step={.1} value={selectedAudio.fadeOut} onChange={(v)=>updateAudio(selectedAudio.id,{fadeOut:v})}/></Section></>}
                   {panel === 'audio' && selectedClip && <><Section title="Original video audio"><Slider label="Volume" min={0} max={1} step={.01} value={selectedClip.volume} onChange={(v)=>updateClip(selectedClip.id,{volume:v})}/><div className="mt-3 flex gap-2"><Button active={selectedClip.muted} onClick={()=>updateClip(selectedClip.id,{muted:!selectedClip.muted})}>{selectedClip.muted ? <VolumeX className="h-4 w-4"/> : <Volume2 className="h-4 w-4"/>}{selectedClip.muted ? 'Muted' : 'Audio on'}</Button></div></Section></>}
 
-                  {panel === 'effects' && selectedClip && <><Section title="Filter"><div className="grid grid-cols-3 gap-2">{FILTER_PRESETS.map((f)=><button key={f.id} type="button" onClick={()=>updateClip(selectedClip.id,{filter:f.id})} className={`rounded-lg border p-2 text-left text-[10px] ${selectedClip.filter===f.id?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{f.name}</button>)}</div></Section><Section title="Effect"><div className="grid grid-cols-2 gap-2">{EFFECT_PRESETS.slice(0,24).map((f)=><button key={f.id} type="button" onClick={()=>updateClip(selectedClip.id,{effect:f.id,effects:f.id==='none'?[]:[{type:f.id,intensity:1}]})} className={`rounded-lg border p-2 text-left text-[10px] ${selectedClip.effect===f.id?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{f.name}</button>)}</div></Section></>}
+                  {panel === 'speed' && selectedClip && <><Section title="Playback speed"><p className="mb-3 text-xs text-white/45">The source audio follows this clip's speed. Timeline duration updates automatically.</p><div className="grid grid-cols-4 gap-2">{[0.25,0.5,1,1.5,2,3,4].map((rate)=><button key={rate} type="button" onClick={()=>updateClip(selectedClip.id,{speed:rate})} className={`rounded-lg border p-2 text-xs font-semibold ${Math.abs(selectedClip.speed-rate)<0.001?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{rate}×</button>)}</div><div className="mt-4"><Slider label="Custom speed" min={0.25} max={4} step={0.05} value={selectedClip.speed} onChange={(v)=>updateClip(selectedClip.id,{speed:v})}/></div><div className="mt-4 rounded-lg bg-white/5 p-3 text-xs text-white/60">Effective duration: <strong className="text-white">{fmtTime(clipDuration(selectedClip))}</strong></div></Section></>}
+
+                  {panel === 'transitions' && selectedClip && <><Section title="Transition into this clip"><p className="mb-3 text-xs text-white/45">Choose the transition from the previous clip into the selected clip.</p><div className="grid grid-cols-2 gap-2">{(['none','fade','crossfade','slide','zoom','wipe','dip-black','push','blur','zoom-blur','whip-pan','spin','luma-wipe','glitch-cut','film-burn'] as const).map((type)=><button key={type} type="button" onClick={()=>updateClip(selectedClip.id,{transitionIn:{...selectedClip.transitionIn,type}})} className={`rounded-lg border p-2 text-left text-xs ${selectedClip.transitionIn.type===type?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{type.replaceAll('-',' ')}</button>)}</div><div className="mt-4"><Slider label="Duration" min={0.05} max={Math.max(0.1,Math.min(3,clipDuration(selectedClip)))} step={0.05} value={Math.min(selectedClip.transitionIn.duration,Math.max(0.1,Math.min(3,clipDuration(selectedClip))))} onChange={(v)=>updateClip(selectedClip.id,{transitionIn:{...selectedClip.transitionIn,duration:v}})}/></div></Section></>}
+
+                  {panel === 'filters' && selectedClip && <><Section title="Color filters"><div className="grid grid-cols-3 gap-2">{FILTER_PRESETS.map((f)=><button key={f.id} type="button" onClick={()=>updateClip(selectedClip.id,{filter:f.id})} className={`rounded-lg border p-2 text-left text-[10px] ${selectedClip.filter===f.id?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{f.name}</button>)}</div></Section><Section title="Color adjustments"><div className="space-y-4">{([['brightness','Brightness',0,200],['contrast','Contrast',0,200],['saturate','Saturation',0,200],['hue','Hue',-180,180],['blur','Blur',0,30],['temperature','Temperature',-100,100],['vignette','Vignette',0,100],['grain','Grain',0,100]] as const).map(([key,label,min,max])=><Slider key={key} label={label} min={min} max={max} step={1} value={(selectedClip.adjustments as any)[key] ?? (key==='brightness'||key==='contrast'||key==='saturate'?100:0)} onChange={(v)=>updateClip(selectedClip.id,{adjustments:{...selectedClip.adjustments,[key]:v}})}/>)}</div></Section></>}
+
+                  {panel === 'effects' && selectedClip && <Section title="Visual effects"><div className="grid grid-cols-2 gap-2">{EFFECT_PRESETS.slice(0,24).map((f)=><button key={f.id} type="button" onClick={()=>updateClip(selectedClip.id,{effect:f.id,effects:f.id==='none'?[]:[{type:f.id,intensity:1}]})} className={`rounded-lg border p-2 text-left text-[10px] ${selectedClip.effect===f.id?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{f.name}</button>)}</div><div className="mt-4"><Slider label="Effect intensity" min={0} max={2} step={0.05} value={selectedClip.effect_intensity ?? 1} onChange={(v)=>updateClip(selectedClip.id,{effect_intensity:v,effects:selectedClip.effect==='none'?[]:[{type:selectedClip.effect,intensity:v}]})}/></div></Section>}
+
+                  {panel === 'animation' && selectedElement && <><Section title="Text animation"><label className="mb-3 block text-xs text-white/60">Entrance<select value={selectedElement.animation_in || 'none'} onChange={(e)=>updateElement(selectedElement.id,{animation_in:e.target.value as any})} className="mt-1 w-full rounded-lg border border-white/10 bg-[#1a1a1a] p-2 text-white">{TEXT_ANIMATION_PRESETS.map((a)=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label><label className="mb-3 block text-xs text-white/60">Exit<select value={selectedElement.animation_out || 'none'} onChange={(e)=>updateElement(selectedElement.id,{animation_out:e.target.value as any})} className="mt-1 w-full rounded-lg border border-white/10 bg-[#1a1a1a] p-2 text-white">{TEXT_ANIMATION_PRESETS.map((a)=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label><div className="space-y-4"><Slider label="Entrance duration" min={0.05} max={2} step={0.05} value={selectedElement.animation_in_duration ?? 0.35} onChange={(v)=>updateElement(selectedElement.id,{animation_in_duration:v})}/><Slider label="Exit duration" min={0.05} max={2} step={0.05} value={selectedElement.animation_out_duration ?? 0.3} onChange={(v)=>updateElement(selectedElement.id,{animation_out_duration:v})}/></div></Section></>}
+
+                  {panel === 'motion' && selectedClip && <Section title="Motion presets"><div className="grid grid-cols-2 gap-2">{(['none','zoom-in','zoom-out','spin','float','pop','shake'] as const).map((m)=><button key={m} type="button" onClick={()=>updateClip(selectedClip.id,{motion_preset:m,motion_amount:1})} className={`rounded-lg border p-3 text-left text-xs ${selectedClip.motion_preset===m?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{m.replaceAll('-',' ')}</button>)}</div><div className="mt-4"><Slider label="Amount" min={0} max={2} step={.05} value={selectedClip.motion_amount || 1} onChange={(v)=>updateClip(selectedClip.id,{motion_amount:v})}/></Section>}
 
                   {panel === 'motion' && selectedClip && <Section title="Motion presets"><div className="grid grid-cols-2 gap-2">{(['none','zoom-in','zoom-out','spin','float','pop','shake'] as const).map((m)=><button key={m} type="button" onClick={()=>updateClip(selectedClip.id,{motion_preset:m,motion_amount:1})} className={`rounded-lg border p-3 text-left text-xs ${selectedClip.motion_preset===m?'border-[#ffb6c1] bg-[#ffb6c1]/10':'border-white/10 bg-white/5'}`}>{m.replaceAll('-',' ')}</button>)}</div><div className="mt-4"><Slider label="Amount" min={0} max={2} step={.05} value={selectedClip.motion_amount || 1} onChange={(v)=>updateClip(selectedClip.id,{motion_amount:v})}/></div></Section>}
 
@@ -894,6 +909,10 @@ export default function VideoStudioRebuild() {
                   {panel === 'text' && !selectedElement && <Section title="Text"><Button onClick={addText}><Type className="h-4 w-4"/> Add text</Button></Section>}
                   {panel === 'audio' && !selectedAudio && <Section title="Audio"><Button onClick={()=>audioInputRef.current?.click()}><Upload className="h-4 w-4"/> Import audio</Button></Section>}
                   {panel === 'media' && !selectedClip && <Section title="Media"><Button onClick={()=>fileInputRef.current?.click()}><Upload className="h-4 w-4"/> Import video/photo</Button></Section>}
+                  {panel === 'speed' && !selectedClip && <Section title="Speed"><p className="text-xs text-white/45">Select a video clip to adjust playback speed and linked source audio.</p></Section>}
+                  {panel === 'transitions' && !selectedClip && <Section title="Transitions"><p className="text-xs text-white/45">Select the clip that should receive the transition.</p></Section>}
+                  {panel === 'filters' && !selectedClip && <Section title="Filters"><p className="text-xs text-white/45">Select a video clip to adjust filters and color.</p></Section>}
+                  {panel === 'animation' && !selectedElement && <Section title="Animation"><p className="text-xs text-white/45">Select a text or overlay layer to edit its animation.</p></Section>}
                   {panel === 'effects' && !selectedClip && <Section title="Effects"><p className="text-xs text-white/45">Select a video clip first. Effects are rendered by the same engine used for export.</p></Section>}
                   {panel === 'motion' && !selectedClip && <Section title="Motion"><p className="text-xs text-white/45">Select a video clip first.</p></Section>}
                   {panel === 'crop' && !selectedClip && <Section title="Crop"><p className="text-xs text-white/45">Select a video clip first.</p></Section>}
