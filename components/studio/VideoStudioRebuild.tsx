@@ -170,6 +170,8 @@ export default function VideoStudioRebuild() {
   const [setupStep, setSetupStep] = useState<'project' | 'practice' | 'editing'>(isNew ? 'project' : 'editing');
   const [practiceBrief, setPracticeBrief] = useState<{ id: string; title: string; client: string; goal: string; audience: string; deliverable: string; shots: string[] } | null>(null);
   const [selectedBriefId, setSelectedBriefId] = useState('travel-reel');
+  const [pendingPracticeFiles, setPendingPracticeFiles] = useState<File[] | null>(null);
+  const [practiceFilesConfirmed, setPracticeFilesConfirmed] = useState(false);
 
   const practiceBriefs = [
     { id: 'travel-reel', title: 'A hidden weekend escape', client: 'Northstar Travel Co.', goal: 'Make a 30-second vertical reel that makes a nearby destination feel irresistible.', audience: 'Young adults planning a quick weekend trip.', deliverable: '9:16 social reel · 20–30 seconds · energetic, warm, natural sound', shots: ['Establishing shot of the place', 'Movement: walking, riding, or arriving', 'Two close-up details', 'A human moment or point of view', 'A memorable final reveal'] },
@@ -754,8 +756,31 @@ export default function VideoStudioRebuild() {
 
   return (
     <main className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#0b0f16] text-white" data-no-theme-scope>
-      <input ref={fileInputRef} className="hidden" type="file" multiple accept="video/*,image/*" onChange={(e) => e.target.files && void addMedia(e.target.files)} />
+      <input ref={fileInputRef} className="hidden" type="file" multiple accept="video/*,image/*" onChange={(e) => { if (e.target.files?.length) { const files = Array.from(e.target.files); e.target.value = ''; if (practiceBrief) { setPendingPracticeFiles(files); setPracticeFilesConfirmed(false); } else { void addMedia(files); } } }} />
       <input ref={audioInputRef} className="hidden" type="file" accept="audio/*" onChange={(e) => e.target.files?.[0] && void addMedia([e.target.files[0]])} />
+
+      {pendingPracticeFiles && practiceBrief && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center overflow-y-auto bg-[#070b12]/90 p-4">
+          <div className="my-auto w-full max-w-xl rounded-2xl border border-white/10 bg-[#111824] p-5 shadow-2xl sm:p-6">
+            <div className="mb-4 flex items-start gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#6ea8fe]/15 text-[#6ea8fe]"><Layers3 className="h-5 w-5" /></span>
+              <div><div className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#6ea8fe]">Practice asset review</div><h2 className="mt-1 text-lg font-bold text-white">Do these clips fit the client brief?</h2><p className="mt-1 text-sm leading-5 text-slate-400">{practiceBrief.client}: {practiceBrief.goal}</p></div>
+            </div>
+            <div className="mb-4 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-white/8 bg-[#0b111b] p-3">
+              {pendingPracticeFiles.map((file, index) => <div key={`${file.name}-${file.lastModified}-${index}`} className="flex items-center gap-3 text-xs"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/5 text-slate-400">{file.type.startsWith('video/') ? <Film className="h-3.5 w-3.5" /> : <ImageIcon className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1 truncate text-slate-200">{file.name}</span><span className="shrink-0 text-[10px] text-slate-500">{file.type.startsWith('video/') ? 'Video' : 'Image'}</span></div>)}
+            </div>
+            <div className="mb-5 rounded-lg bg-white/[0.035] p-3 text-xs leading-5 text-slate-400"><strong className="text-slate-200">Client shot list:</strong> {practiceBrief.shots.join(' · ')}</div>
+            <label className="flex cursor-pointer items-start gap-3 text-xs leading-5 text-slate-300">
+              <input type="checkbox" checked={practiceFilesConfirmed} onChange={(e) => setPracticeFilesConfirmed(e.target.checked)} className="mt-0.5 accent-[#6ea8fe]" />
+              I checked the selected files. Each clip supports the brief, and unrelated footage will be left out.
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button onClick={() => { setPendingPracticeFiles(null); setPracticeFilesConfirmed(false); }}>Cancel</Button>
+              <Button disabled={!practiceFilesConfirmed || !pendingPracticeFiles.length} onClick={() => { const files = pendingPracticeFiles; setPendingPracticeFiles(null); setPracticeFilesConfirmed(false); void addMedia(files); }}><Plus className="h-4 w-4" /> Add relevant clips</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {setupStep !== 'editing' && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[#070b12]/95 p-4 backdrop-blur-sm">
