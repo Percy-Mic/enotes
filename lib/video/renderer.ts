@@ -2083,7 +2083,7 @@ export class VideoRenderer {
     canvas: HTMLCanvasElement,
     project: VideoProject,
     time: number,
-    opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean } = {}
+    opts: { previewing?: boolean; playing?: boolean; isolatedPreview?: boolean; preserveOtherPlayback?: boolean } = {}
   ) {
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -2390,6 +2390,11 @@ export class VideoRenderer {
               await this.drawFrame(outgoingCanvas, outgoingProject, outgoingLocal, {
                 previewing: opts.previewing,
                 playing: opts.playing,
+                // This offscreen boundary render shares the decoder cache with
+                // the main preview. Do not pause the incoming clip while drawing
+                // the outgoing frame; the outer render will clean up inactive
+                // decoders after the composite is complete.
+                preserveOtherPlayback: true,
               });
               if (!isCurrent()) return;
               const progress = Math.max(0, Math.min(1, timeIn / clip.transitionIn.duration));
@@ -2473,7 +2478,7 @@ export class VideoRenderer {
       if (el.src && (el.kind === 'video' || el.media_type === 'video')) activeSources.add(el.src);
     }
     if (!isCurrent()) return;
-    pauseInactiveVideos(activeSources);
+    if (!opts.preserveOtherPlayback) pauseInactiveVideos(activeSources);
 
     /* vignette effect darkens the composed frame (clip + overlays) */
     if (resolved && resolved.clip.effect === 'vignette') {
