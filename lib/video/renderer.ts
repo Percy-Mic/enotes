@@ -1501,6 +1501,29 @@ export interface TransitionResult {
   incoming?: { scale?: number; dx?: number; dy?: number; rotate?: number; blurPx?: number };
 }
 
+const transitionScratchCanvases = new WeakMap<HTMLCanvasElement, Map<string, HTMLCanvasElement>>();
+
+function getTransitionScratchCanvas(
+  owner: HTMLCanvasElement,
+  slot: string,
+  width: number,
+  height: number,
+): HTMLCanvasElement {
+  let slots = transitionScratchCanvases.get(owner);
+  if (!slots) {
+    slots = new Map<string, HTMLCanvasElement>();
+    transitionScratchCanvases.set(owner, slots);
+  }
+  let scratch = slots.get(slot);
+  if (!scratch) {
+    scratch = document.createElement('canvas');
+    slots.set(slot, scratch);
+  }
+  if (scratch.width !== width) scratch.width = width;
+  if (scratch.height !== height) scratch.height = height;
+  return scratch;
+}
+
 function applyTransitionFrame(
   ctx: CanvasRenderingContext2D,
   hint: NonNullable<TransitionResult['incoming']>,
@@ -1512,10 +1535,11 @@ function applyTransitionFrame(
   /* Snapshot first. Drawing ctx.canvas onto itself can yield undefined
      feedback on some GPU/browser combinations and is a common source of
      transition flashes and black preview frames. */
-  const source = document.createElement('canvas');
-  source.width = canvasW; source.height = canvasH;
+  const source = getTransitionScratchCanvas(ctx.canvas, 'incoming-transform', canvasW, canvasH);
   const sourceCtx = source.getContext('2d');
   if (!sourceCtx) return;
+  sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sourceCtx.clearRect(0, 0, canvasW, canvasH);
   sourceCtx.drawImage(ctx.canvas, 0, 0, canvasW, canvasH);
 
   ctx.save();
@@ -1539,8 +1563,11 @@ function applyTransition(
   canvasW: number,
   canvasH: number
 ): TransitionResult {
-  if (!type || type === 'none' || duration <= 0) return { overlayAlpha: 0 };
-  const progress = Math.min(1, timeIn / duration);
+  // A transition is an intro to this clip, not a per-frame effect for its entire lifetime.
+  // Returning immediately after its duration avoids snapshotting and compositing a full-size
+  // canvas on every subsequent playback frame (which can starve both preview and audio).
+  if (!type || type === 'none' || duration <= 0 || timeIn >= duration) return { overlayAlpha: 0 };
+  const progress = Math.max(0, Math.min(1, timeIn / duration));
   const eased = easeOut(progress);
   const W = canvasW;
   const H = canvasH;
@@ -1549,10 +1576,14 @@ function applyTransition(
   let source: HTMLCanvasElement | null = null;
   const needsSource = type === 'crossfade' || type === 'slide' || type === 'zoom-blur' || type === 'whip-pan' || type === 'glitch-cut' || type === 'blur';
   if (needsSource) {
-    source = document.createElement('canvas');
-    source.width = W; source.height = H;
+    source = getTransitionScratchCanvas(ctx.canvas, 'transition-snapshot', W, H);
     const sourceCtx = source.getContext('2d');
     if (!sourceCtx) return { overlayAlpha: 0 };
+    sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sourceCtx.globalAlpha = 1;
+    sourceCtx.globalCompositeOperation = 'source-over';
+    sourceCtx.filter = 'none';
+    sourceCtx.clearRect(0, 0, W, H);
     sourceCtx.drawImage(ctx.canvas, 0, 0, W, H);
   }
 
