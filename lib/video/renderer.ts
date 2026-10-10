@@ -2825,7 +2825,8 @@ export class VideoRenderer {
 
         for (let i = 0; i <= audioSteps; i++) {
           const u = i / audioSteps;
-          const value = resolveClipValues(clip, u * clipDurationSec).volume;
+          const local = u * clipDurationSec;
+          const value = resolveClipValues(clip, local).volume * transitionGainAt(local);
           const at = audioStart + u * clipDurationSec;
           if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
           else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), at);
@@ -2869,8 +2870,25 @@ export class VideoRenderer {
 
       if (!scaled.masterMuted) {
         let clipStart = 0;
-        for (const clip of scaled.clips) {
+        for (let clipIndex = 0; clipIndex < scaled.clips.length; clipIndex++) {
+          const clip = scaled.clips[clipIndex];
           const clipDurationSec = clipDuration(clip);
+          const nextClip = scaled.clips[clipIndex + 1];
+          const fadeInDuration = clip.transitionIn?.type === 'crossfade'
+            ? Math.min(clipDurationSec, Math.max(0, clip.transitionIn.duration))
+            : 0;
+          const fadeOutDuration = nextClip?.transitionIn?.type === 'crossfade'
+            ? Math.min(clipDurationSec, Math.max(0, nextClip.transitionIn.duration))
+            : 0;
+          const transitionGainAt = (local: number) => {
+            const fadeIn = fadeInDuration > 0 && local < fadeInDuration
+              ? Math.max(0, Math.min(1, local / fadeInDuration))
+              : 1;
+            const fadeOut = fadeOutDuration > 0 && local > clipDurationSec - fadeOutDuration
+              ? Math.max(0, Math.min(1, (clipDurationSec - local) / fadeOutDuration))
+              : 1;
+            return fadeIn * fadeOut;
+          };
           if (clip.media_type !== 'image' && !clip.muted && clip.volume > 0 && !isPlaceholder(clip.src)) {
             try {
               const res = await fetch(clip.src);
