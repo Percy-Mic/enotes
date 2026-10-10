@@ -27,7 +27,7 @@ import {
   type AspectRatio, type AudioEffect, type AudioEffectType, type AudioTrack, type CropRect, type KeyframeProperty, type MaskShape, type TimelineElement, type TimelineMarker, type TimelineTrack, type VideoClip, type VideoProject, type TextAnimationType, type TextLoopAnimationType,
 } from '@/lib/video/project';
 import {
-  EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox,
+  EXPORT_QUALITY_PRESETS, VideoRenderer, defaultExportSettings, invalidateReversedCache, fitIntoBox, clipTransitionAudioGain,
   type ExportProgress, type ExportResult, type ExportSettings,
 } from '@/lib/video/renderer';
 
@@ -826,14 +826,43 @@ function clipBoxRect(clip: VideoClip, canvasW: number, canvasH: number) {
 function clipControlState(clip: VideoClip, time: number) {
   const timeIn = Math.max(0, Math.min(clipDuration(clip), time));
   const v = resolveClipValues(clip, timeIn);
+  /* The canvas selection frame must describe the rendered frame, including
+     built-in motion presets. Otherwise Spin/Zoom/Float visibly move the media
+     away from its hit target and dragging edits a different location. */
+  const preset = clip.motion_preset || 'none';
+  const amount = Math.max(0, Math.min(2, clip.motion_amount ?? 1));
+  const p = Math.min(1, Math.max(0, timeIn / Math.max(0.1, clipDuration(clip))));
+  const phase = timeIn * Math.PI * 2;
+  let motionScale = 1, motionX = 0, motionY = 0, motionRotation = 0;
+  switch (preset) {
+    case 'zoom-in': motionScale = 1 + 0.35 * amount * p; break;
+    case 'zoom-out': motionScale = 1 + 0.35 * amount * (1 - p); break;
+    case 'spin': motionScale = 1.03; motionRotation = 360 * amount * p; break;
+    case 'float':
+      motionScale = 1.04 + Math.abs(Math.sin(phase * 0.5)) * 0.01 * amount;
+      motionY = Math.sin(phase * 0.65) * 22 * amount;
+      motionRotation = Math.sin(phase * 0.65) * 2 * amount;
+      break;
+    case 'pop': {
+      const q = p < 0.2 ? p / 0.2 : 1 - ((p - 0.2) / 0.8) * 0.08;
+      motionScale = 0.82 + 0.26 * Math.min(1, q) * amount;
+      break;
+    }
+    case 'shake':
+      motionScale = 1.04;
+      motionX = Math.sin(timeIn * Math.PI * 10) * 14 * amount;
+      motionY = Math.sin(timeIn * Math.PI * 8) * 8 * amount;
+      motionRotation = Math.sin(timeIn * Math.PI * 8) * 2 * amount;
+      break;
+  }
   return {
     ...clip,
     transform: {
       ...clip.transform,
-      scale: Number.isFinite(v.scale) ? v.scale : clip.transform.scale,
-      offset_x: Number.isFinite(v.offset_x) ? v.offset_x : clip.transform.offset_x,
-      offset_y: Number.isFinite(v.offset_y) ? v.offset_y : clip.transform.offset_y,
-      rotation: Number.isFinite(v.rotation) ? v.rotation : clip.transform.rotation,
+      scale: (Number.isFinite(v.scale) ? v.scale : clip.transform.scale) * motionScale,
+      offset_x: (Number.isFinite(v.offset_x) ? v.offset_x : clip.transform.offset_x) + motionX,
+      offset_y: (Number.isFinite(v.offset_y) ? v.offset_y : clip.transform.offset_y) + motionY,
+      rotation: (Number.isFinite(v.rotation) ? v.rotation : clip.transform.rotation) + motionRotation,
     },
   };
 }
@@ -1021,6 +1050,7 @@ function VideoEditor() {
   const drawingRef = useRef(false);
   const pendingRef = useRef<number | null>(null);
   const lastSrcErrRef = useRef<string | null>(null);
+  const lastRenderWarningRef = useRef<string | null>(null);
 
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
@@ -1605,6 +1635,7 @@ function VideoEditor() {
               )
             );
         audio.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
+        audio.preservesPitch = false;
         /*
          * The canvas renderer uses a muted video element for pixels. This
          * separate element is the authoritative audible copy of the clip.
@@ -1614,7 +1645,7 @@ function VideoEditor() {
         audio.muted = false;
         audio.defaultMuted = false;
         const resolvedAudio = resolveClipValues(clip, local);
-        audio.volume = resolvedAudio.volume;
+        audio.volume = resolvedAudio.volume * clipTransitionAudioGain(clip, local, clipDuration(clip));
         ensurePreviewAudioGraph(clipId, audio, clip.audioProcessing?.effects);
         const requested = previewAudioPlayRequestedRef.current.has(clipId);
         // Keep the audio element on its own playback clock. Seeking on normal
@@ -1680,6 +1711,7 @@ function VideoEditor() {
         ? Math.max(trimStart, Math.min(trimEnd - 0.01, trimEnd - local * speed))
         : Math.max(trimStart, Math.min(trimEnd - 0.01, trimStart + local * speed));
       audio.playbackRate = speed;
+      audio.preservesPitch = false;
       audio.volume = Math.max(0, Math.min(1, resolveElementValues(el, local).volume));
       const requested = previewAudioPlayRequestedRef.current.has(key);
       if (Math.abs(audio.currentTime - target) > 0.75 && (!shouldPlay || !requested)) {
@@ -1815,6 +1847,14 @@ function VideoEditor() {
           notify('A clip in the timeline cannot be played in this browser — see the preview for which one.');
         } else if (!err) {
           lastSrcErrRef.current = null;
+        }
+
+        const warning = rendererRef.current.lastRenderWarning;
+        if (warning && warning !== lastRenderWarningRef.current) {
+          lastRenderWarningRef.current = warning;
+          notify(warning);
+        } else if (!warning) {
+          lastRenderWarningRef.current = null;
         }
 
         nextTime = pendingRef.current;
@@ -2515,6 +2555,30 @@ function VideoEditor() {
     // Professional editor: no GIF/emoji/sticker browser in the video workflow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
+
+  /* Freeze the selected video at the playhead without modifying its source. */
+  const freezeFrameAtPlayhead = useCallback(() => {
+    const p = docRef.current.project;
+    const t = playheadRef.current;
+    let acc = 0;
+    let clip: VideoClip | undefined;
+    let local = 0;
+    for (const candidate of p.clips) {
+      const duration = clipDuration(candidate);
+      if (t >= acc && t < acc + duration) { clip = candidate; local = t - acc; break; }
+      acc += duration;
+    }
+    if (!clip) return notify('Place the playhead inside a main-track clip first.');
+    if (clip.media_type === 'image') return notify('Freeze frame is available for video clips.');
+    if (clip.freezeFrame) return notify('This clip already has a freeze frame. Remove it before adding another.');
+    const sourceTime = clip.reverse
+      ? Math.max(clip.trimStart, clip.trimEnd - local * clip.speed)
+      : Math.min(clip.trimEnd, clip.trimStart + local * clip.speed);
+    const at = Math.max(0.05, Math.min(local, clipDuration(clip) - 0.05));
+    updateClip(clip.id, { freezeFrame: { at, sourceTime, duration: 1 } }, 'Add freeze frame');
+    setSelectedClipId(clip.id);
+    notify('Freeze frame added for 1 second.');
+  }, [notify, updateClip]);
 
   /* ---------- clip ops ---------- */
   const splitAtPlayhead = useCallback(() => {
@@ -5054,6 +5118,16 @@ function VideoEditor() {
       { ...clip, transform: { ...clip.transform } },
       clipLocalTime,
     );
+    /* Keep edit values separate from the visual motion offset. Pointer movement
+       changes the authored transform, never the transient Spin/Float offset. */
+    const resolvedBase = resolveClipValues(clip, clipLocalTime);
+    const baseTransform = {
+      ...clip.transform,
+      scale: Number.isFinite(resolvedBase.scale) ? resolvedBase.scale : clip.transform.scale,
+      offset_x: Number.isFinite(resolvedBase.offset_x) ? resolvedBase.offset_x : clip.transform.offset_x,
+      offset_y: Number.isFinite(resolvedBase.offset_y) ? resolvedBase.offset_y : clip.transform.offset_y,
+      rotation: Number.isFinite(resolvedBase.rotation) ? resolvedBase.rotation : clip.transform.rotation,
+    };
     const box = clipBoxRect(startClip, project.canvas.width, project.canvas.height);
     const rad = (startClip.transform.rotation * Math.PI) / 180;
     const startAngle = Math.atan2(startY - box.cy, startX - box.cx);
@@ -5112,7 +5186,7 @@ function VideoEditor() {
       if (!p) return;
       const dx = p.x - startX;
       const dy = p.y - startY;
-      const T = startClip.transform;
+      const T = baseTransform;
 
       if (!activeGesture) {
         if (Math.hypot(dx, dy) < GESTURE_SLOP) return;
@@ -5129,8 +5203,8 @@ function VideoEditor() {
           clip,
           {
             ...T,
-            offset_x: Math.round(box.cx + dx - project.canvas.width / 2),
-            offset_y: Math.round(box.cy + dy - project.canvas.height / 2),
+            offset_x: Math.round(T.offset_x + dx),
+            offset_y: Math.round(T.offset_y + dy),
           },
           project.canvas.width,
           project.canvas.height,
@@ -5207,7 +5281,7 @@ function VideoEditor() {
 
       /* rotate */
       const angle = Math.atan2(p.y - box.cy, p.x - box.cx);
-      let deg = startClip.transform.rotation + ((angle - startAngle) * 180) / Math.PI;
+      let deg = T.rotation + ((angle - startAngle) * 180) / Math.PI;
       const snapped = Math.round(deg / 15) * 15;
       if (Math.abs(deg - snapped) < 4) deg = snapped;
       const nextTransform = containClipTransform(
@@ -7061,7 +7135,7 @@ function VideoEditor() {
           short (landscape phones, small laptops, many timeline lanes) —
           nothing is clipped away, and the page itself never scrolls. */}
       <div
-        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(58px+env(safe-area-inset-bottom))] md:pl-[74px] md:pb-0"
+        className={`relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(58px+env(safe-area-inset-bottom))] md:pl-[74px] md:pb-0 ${toolDrawerOpen ? "md:pr-[min(430px,42vw)]" : ""}`}
         onDragEnter={(e) => {
           if (Array.from(e.dataTransfer.types).includes('Files')) {
             e.preventDefault();
@@ -7897,6 +7971,7 @@ function VideoEditor() {
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Mask">◯ Mask</button>
                     <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
+                    <button onClick={() => selectedClip?.freezeFrame ? updateClip(selectedClip.id, { freezeFrame: undefined }, 'Remove freeze frame') : freezeFrameAtPlayhead()} className={EDITOR_ACTION_PILL} aria-label={selectedClip?.freezeFrame ? "Remove freeze frame" : "Freeze frame"} title={selectedClip?.freezeFrame ? "Remove the freeze hold" : "Hold the current video frame for one second"}>{selectedClip?.freezeFrame ? "↻ Unfreeze" : "▣ Freeze"}</button>
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
                     <button onClick={() => setClipSpeedMenuOpen((v) => !v)} className={EDITOR_ACTION_PILL} aria-label="Change clip speed"><SkipForward className="h-4 w-4" />Speed</button>
                     <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL} aria-label="Toggle clip audio">{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Volume'}</button>
@@ -7947,6 +8022,7 @@ function VideoEditor() {
                     <div className="no-scrollbar flex items-center gap-1 overflow-x-auto pb-1">
                       {[
                         { label: 'Edit', icon: <Scissors className="h-4 w-4" />, action: () => openTool('motion') },
+                        { label: selectedClip.freezeFrame ? 'Unfreeze' : 'Freeze', icon: <Film className="h-4 w-4" />, action: () => selectedClip.freezeFrame ? updateClip(selectedClip.id, { freezeFrame: undefined }, 'Remove freeze frame') : freezeFrameAtPlayhead() },
                         { label: 'Sound', icon: <Music className="h-4 w-4" />, action: () => { setClipSoundMenuOpen((v) => !v); setClipSpeedMenuOpen(false); } },
                         { label: 'Text', icon: <Type className="h-4 w-4" />, action: () => { addTextElement(); } },
                         { label: 'Effects', icon: <Sparkles className="h-4 w-4" />, action: () => openTool('look') },
@@ -8011,7 +8087,7 @@ function VideoEditor() {
             className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] md:hidden"
           />
           <section
-            className={`fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515] shadow-2xl md:bottom-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:left-[74px] md:right-auto md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0`}
+            className={`fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515] shadow-2xl md:bottom-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,42vw)] md:left-auto md:right-0 md:max-h-none md:rounded-none md:border-b-0 md:border-l-0 md:border-r-0 md:border-t-0`}
             style={{ contain: 'layout paint' }}
             onPointerDown={() => {
               if (contextDrawerTimerRef.current !== null) {
@@ -8194,6 +8270,175 @@ function VideoEditor() {
                   </div>
                 )}
               </div>
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-white/80">Background video</p>
+                    <p className="text-[9px] text-white/40">Loops behind keyed clips and overlays.</p>
+                  </div>
+                  <label className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 text-[10px] font-bold text-black hover:bg-white/90">
+                    <Upload className="h-3.5 w-3.5" /> {project.background?.videoSrc ? 'Replace' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime,video/ogg"
+                      className="hidden"
+                      onChange={async (event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = '';
+                        if (!file) return;
+                        if (!meId) { notify('Sign in again before uploading a background video.'); return; }
+                        try {
+                          const uploaded = await uploadFile(file, 'studio-media', meId);
+                          updateProject((p) => ({
+                            ...p,
+                            background: {
+                              ...(p.background || { type: 'color', color: '#000000' }),
+                              videoSrc: uploaded.url,
+                              imageSrc: undefined,
+                            },
+                          }), 'Set canvas background video');
+                          notify('Background video added. It will loop behind your main clips.');
+                        } catch (error) {
+                          notify(error instanceof Error ? error.message : 'Background video upload failed.');
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {project.background?.videoSrc && (
+                  <>
+                  <div className="mb-2 flex gap-1.5">
+                    {(['cover', 'contain'] as const).map((fit) => (
+                      <button
+                        key={fit}
+                        type="button"
+                        onClick={() => updateProject((p) => ({
+                          ...p,
+                          background: { ...(p.background || { type: 'color', color: '#000000' }), imageFit: fit },
+                        }), fit === 'cover' ? 'Fill background video' : 'Fit background video')}
+                        className={`flex-1 rounded-lg border px-2 py-2 text-[10px] font-semibold ${(project.background?.imageFit || 'cover') === fit ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}
+                      >{fit === 'cover' ? 'Fill canvas' : 'Fit video'}</button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="min-w-0 truncate text-[10px] text-white/50">Video layer active · loops with the project</p>
+                    <button
+                      type="button"
+                      onClick={() => updateProject((p) => {
+                        const background = { ...(p.background || { type: 'color' as const, color: '#000000' }) };
+                        delete background.videoSrc;
+                        return { ...p, background };
+                      }, 'Remove canvas background video')}
+                      className="shrink-0 rounded-md border border-white/10 px-2 py-1.5 text-[10px] font-semibold text-white/65 hover:bg-white/5"
+                    >Remove</button>
+                  </div>
+                  </>
+                )}
+              </div>
+              <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-white/80">Background image</p>
+                    <p className="text-[9px] text-white/40">Sits behind keyed clips and overlays.</p>
+                  </div>
+                  <label className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-white px-2.5 text-[10px] font-bold text-black hover:bg-white/90">
+                    <Upload className="h-3.5 w-3.5" /> {project.background?.imageSrc ? 'Replace' : 'Upload'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      onChange={async (event) => {
+                        const file = event.currentTarget.files?.[0];
+                        event.currentTarget.value = '';
+                        if (!file) return;
+                        if (!meId) { notify('Sign in again before uploading a background image.'); return; }
+                        try {
+                          const uploaded = await uploadFile(file, 'studio-media', meId);
+                          updateProject((p) => ({
+                            ...p,
+                            background: {
+                              ...(p.background || { type: 'color', color: '#000000' }),
+                              imageSrc: uploaded.url,
+                              videoSrc: undefined,
+                              imageFit: p.background?.imageFit || 'cover',
+                            },
+                          }), 'Set canvas background image');
+                          notify('Background image added.');
+                        } catch (error) {
+                          notify(error instanceof Error ? error.message : 'Background image upload failed.');
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+                {project.background?.imageSrc && (
+                  <>
+                    <div className="mb-2 flex gap-1.5">
+                      {(['cover', 'contain'] as const).map((fit) => (
+                        <button
+                          key={fit}
+                          type="button"
+                          onClick={() => updateProject((p) => ({
+                            ...p,
+                            background: { ...(p.background || { type: 'color', color: '#000000' }), imageFit: fit },
+                          }), fit === 'cover' ? 'Fill background image' : 'Fit background image')}
+                          className={`flex-1 rounded-lg border px-2 py-2 text-[10px] font-semibold ${(project.background?.imageFit || 'cover') === fit ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}
+                        >{fit === 'cover' ? 'Fill canvas' : 'Fit image'}</button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => updateProject((p) => {
+                          const background = { ...(p.background || { type: 'color' as const, color: '#000000' }) };
+                          delete background.imageSrc;
+                          delete background.imageFit;
+                          return { ...p, background };
+                        }, 'Remove canvas background image')}
+                        className="rounded-lg border border-red-300/20 px-2.5 py-2 text-[10px] font-semibold text-red-200 hover:bg-red-400/10"
+                      >Remove</button>
+                    </div>
+                    <p className="break-all text-[9px] text-white/35">Image is stored with this project and rendered by the shared preview/export compositor.</p>
+                  </>
+                )}
+              </div>
+              {(project.background?.imageSrc || project.background?.videoSrc) && (
+                <div className="mt-3 space-y-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-white/80">Background framing</p>
+                      <p className="text-[9px] text-white/40">Position and zoom the image/video behind your keyed subject.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateProject((p) => ({
+                        ...p,
+                        background: { ...(p.background || { type: 'color', color: '#000000' }), mediaScale: 1, mediaOffsetX: 0, mediaOffsetY: 0 },
+                      }), 'Reset background framing')}
+                      className="shrink-0 rounded-md border border-white/10 px-2 py-1.5 text-[10px] font-semibold text-white/60 hover:bg-white/5"
+                    >Reset</button>
+                  </div>
+                  <Slider
+                    label={`Zoom · ${Math.round((project.background?.mediaScale ?? 1) * 100)}%`}
+                    min={25}
+                    max={400}
+                    value={Math.round((project.background?.mediaScale ?? 1) * 100)}
+                    onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), mediaScale: value / 100 } }), 'Background media zoom', 'background-media-zoom')}
+                  />
+                  <Slider
+                    label={`Horizontal position · ${Math.round((project.background?.mediaOffsetX ?? 0) * 100)}%`}
+                    min={-100}
+                    max={100}
+                    value={Math.round((project.background?.mediaOffsetX ?? 0) * 100)}
+                    onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), mediaOffsetX: value / 100 } }), 'Background horizontal position', 'background-media-x')}
+                  />
+                  <Slider
+                    label={`Vertical position · ${Math.round((project.background?.mediaOffsetY ?? 0) * 100)}%`}
+                    min={-100}
+                    max={100}
+                    value={Math.round((project.background?.mediaOffsetY ?? 0) * 100)}
+                    onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'color', color: '#000000' }), mediaOffsetY: value / 100 } }), 'Background vertical position', 'background-media-y')}
+                  />
+                </div>
+              )}
               {project.background?.type === 'gradient' && (
                 <div className="mt-2">
                   <Slider label="Gradient angle" min={-180} max={180} value={project.background.angle ?? 0} onChange={(value) => updateProject((p) => ({ ...p, background: { ...(p.background || { type: 'gradient', color: '#000000', color2: '#E5798F' }), type: 'gradient', angle: value } }), 'Canvas gradient angle', 'canvas-gradient-angle')} />
@@ -9250,6 +9495,17 @@ function VideoEditor() {
                 </div>
                 {frameMode === 'motion' && (
                   <div className="space-y-2">
+                    {selectedClip.freezeFrame && (
+                      <div className="rounded-xl border border-[#E5798F]/25 bg-[#E5798F]/[0.07] p-3">
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <label htmlFor="freeze-frame-duration" className="text-xs font-semibold text-white">Freeze-frame duration</label>
+                          <span className="text-xs tabular-nums text-white/60">{selectedClip.freezeFrame.duration.toFixed(2)}s</span>
+                        </div>
+                        <input id="freeze-frame-duration" type="range" min="0.25" max="5" step="0.25" value={selectedClip.freezeFrame.duration}
+                          onChange={(event) => updateClip(selectedClip.id, { freezeFrame: { ...selectedClip.freezeFrame!, duration: Number(event.target.value) } }, 'Adjust freeze-frame duration', `freeze-${selectedClip.id}`)}
+                          className="w-full accent-[#E5798F]" aria-label="Freeze-frame duration" />
+                      </div>
+                    )}
                     <div className="rounded-2xl border border-[#E5798F]/20 bg-gradient-to-br from-[#E5798F]/10 to-white/[0.03] p-3">
                       <div className="flex items-start gap-3">
                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#E5798F]/15 text-[#FFB6C1]">
@@ -9364,6 +9620,107 @@ function VideoEditor() {
                     <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_h: !selectedClip.transform.flip_h } }, 'Flip horizontal')} className={`${EDITOR_ACTION_PILL}`}><FlipHorizontal className="h-4 w-4" />Flip</button>
                     <button onClick={() => updateClip(selectedClip.id, { transform: { ...selectedClip.transform, flip_v: !selectedClip.transform.flip_v } }, 'Flip vertical')} className={`${EDITOR_ACTION_PILL}`}><FlipVertical className="h-4 w-4" />Flip V</button>
                   </div>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold">Chroma key</p>
+                      <p className="mt-1 text-[10px] leading-4 text-white/45">Remove a solid-color backdrop so another layer or the project background shows through. This setting is shared by preview and export.</p>
+                    </div>
+                    <label className="flex shrink-0 items-center gap-2 text-[10px] text-white/70">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedClip.chromaKey?.enabled}
+                        onChange={(event) => updateClip(selectedClip.id, {
+                          chromaKey: {
+                            enabled: event.target.checked,
+                            color: selectedClip.chromaKey?.color || '#00ff00',
+                            tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                            softness: selectedClip.chromaKey?.softness ?? 55,
+                            spill: selectedClip.chromaKey?.spill ?? 0.35,
+                          },
+                        }, event.target.checked ? 'Enable chroma key' : 'Disable chroma key', `chroma-${selectedClip.id}`)}
+                      />
+                      Enable
+                    </label>
+                  </div>
+                  <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+                    <label className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] p-2">
+                      <input
+                        aria-label="Chroma key color"
+                        type="color"
+                        value={selectedClip.chromaKey?.color || '#00ff00'}
+                        onChange={(event) => updateClip(selectedClip.id, {
+                          chromaKey: {
+                            enabled: selectedClip.chromaKey?.enabled ?? true,
+                            color: event.target.value,
+                            tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                            softness: selectedClip.chromaKey?.softness ?? 55,
+                            spill: selectedClip.chromaKey?.spill ?? 0.35,
+                          },
+                        }, 'Change chroma key color', `chroma-color-${selectedClip.id}`)}
+                        className="h-8 w-9 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-[10px] font-semibold text-white/80">Key color</span>
+                        <span className="block text-[9px] text-white/40">{selectedClip.chromaKey?.color || '#00ff00'}</span>
+                      </span>
+                    </label>
+                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] p-2">
+                      <span className="text-[10px] text-white/70">Quick key</span>
+                      <div className="flex gap-1">
+                        {([
+                          ['#00ff00', 'Green'],
+                          ['#00aaff', 'Blue'],
+                        ] as const).map(([color, label]) => (
+                          <button key={color} type="button" onClick={() => updateClip(selectedClip.id, {
+                            chromaKey: {
+                              enabled: selectedClip.chromaKey?.enabled ?? true,
+                              color,
+                              tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                              softness: selectedClip.chromaKey?.softness ?? 55,
+                              spill: selectedClip.chromaKey?.spill ?? 0.35,
+                            },
+                          }, `Set ${label.toLowerCase()} screen key`, `chroma-${selectedClip.id}`)} className="rounded-md border border-white/10 px-2 py-1 text-[9px] text-white/65 hover:bg-white/10">{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {([
+                    ['tolerance', 'Tolerance', 0, 220, 1, 70],
+                    ['softness', 'Edge softness', 1, 180, 1, 55],
+                    ['spill', 'Spill suppression', 0, 1, 0.01, 0.35],
+                  ] as const).map(([key, label, min, max, step, fallback]) => {
+                    const current = selectedClip.chromaKey?.[key] ?? fallback;
+                    return (
+                      <label key={key} className="mt-3 block">
+                        <span className="mb-1 flex items-center justify-between text-[10px] text-white/65">
+                          <span>{label}</span>
+                          <span className="tabular-nums text-white/45">{key === 'spill' ? Math.round(current * 100) + '%' : current}</span>
+                        </span>
+                        <input
+                          type="range"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={current}
+                          onChange={(event) => updateClip(selectedClip.id, {
+                            chromaKey: {
+                              enabled: selectedClip.chromaKey?.enabled ?? true,
+                              color: selectedClip.chromaKey?.color || '#00ff00',
+                              tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                              softness: selectedClip.chromaKey?.softness ?? 55,
+                              spill: selectedClip.chromaKey?.spill ?? 0.35,
+                              [key]: Number(event.target.value),
+                            },
+                          }, `Adjust chroma key ${key}`, `chroma-${selectedClip.id}`)}
+                          className="w-full accent-[#E5798F]"
+                          aria-label={label}
+                        />
+                      </label>
+                    );
+                  })}
+                  <p className="mt-2 text-[9px] leading-4 text-white/35">Tip: sample the exact background color, then raise tolerance to remove uneven lighting. Higher edge softness gives a gentler matte.</p>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                   <div className="mb-2 flex items-center justify-between">
@@ -10283,6 +10640,12 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, aspectRa
     { label: '4:3', value: 4 / 3 },
     { label: '3:2', value: 3 / 2 },
   ];
+  const visibleW = Math.max(0.001, 1 - (crop?.left ?? 0) - (crop?.right ?? 0));
+  const visibleH = Math.max(0.001, 1 - (crop?.top ?? 0) - (crop?.bottom ?? 0));
+  const currentAspect = sourceAspect * visibleW / visibleH;
+  const ratioLabel = Number.isFinite(currentAspect) && currentAspect > 0
+    ? currentAspect.toFixed(2) + ':1'
+    : 'Original';
 
   const setRot = (value: number) => {
     const next = normalizeCropAngle(value);
@@ -10291,73 +10654,123 @@ function CropWorkspace({ crop, sourceAspect, rotation: initialRotation, aspectRa
   };
 
   return (
-    <div
-      className="relative z-[56] mx-auto w-full max-w-[720px] border-t border-white/10 bg-[#0b0b0b] px-2 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 text-white shadow-[0_-12px_36px_rgba(0,0,0,.35)] sm:rounded-2xl sm:border sm:border-white/10 sm:px-3 sm:pb-3"
-      style={{ touchAction: 'pan-y' }}
-      aria-label="Crop controls"
+    <section
+      className="relative z-[56] mx-auto w-full max-w-[720px] border-t border-white/10 bg-[#111111] px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-3 text-white shadow-[0_-12px_36px_rgba(0,0,0,.35)] sm:rounded-2xl sm:border sm:border-white/10 sm:px-4 sm:pb-4"
+      aria-label="Crop and straighten controls"
     >
-      <div className="flex items-center gap-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/[0.07] text-[#FFB6C1]">
-            <Crop className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs font-bold">Crop</p>
-            <p className="hidden text-[9px] text-white/40 sm:block">Drag the frame · pinch to zoom · choose a ratio</p>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] text-white">
+          <Crop className="h-4 w-4" />
         </div>
-        <button type="button" onClick={onCancel} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.06] text-white/70" aria-label="Cancel crop">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold tracking-tight">Crop</p>
+          <p className="mt-0.5 text-[10px] text-white/45">Adjust the frame, straighten, or flip your video</p>
+        </div>
+        <div className="rounded-md bg-white/[0.07] px-2 py-1 text-[10px] font-medium tabular-nums text-white/70">
+          {ratioLabel}
+        </div>
+        <button type="button" onClick={onCancel} className="flex h-8 w-8 items-center justify-center rounded-lg text-white/55 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70" aria-label="Cancel crop" title="Cancel">
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto pb-0.5">
-        {aspectPresets.map((preset) => {
-          const active = preset.value == null
-            ? aspectRatio == null && crop == null
-            : aspectRatio != null && Math.abs(aspectRatio - preset.value) < 0.001;
-          return (
-            <button
-              key={preset.label}
-              type="button"
-              onClick={() => onAspect(preset.value)}
-              aria-pressed={active}
-              className={'flex h-10 min-w-[58px] shrink-0 items-center justify-center rounded-xl border px-3 text-[10px] font-bold transition ' + (
-                active
-                  ? 'border-[#FFB6C1] bg-[#E5798F] text-white'
-                  : 'border-white/10 bg-white/[0.045] text-white/65 active:bg-white/[0.1]'
-              )}
-            >
-              {preset.label}
-            </button>
-          );
-        })}
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold text-white/80">Aspect ratio</p>
+          <button type="button" onClick={() => onAspect(null)} className="text-[10px] font-medium text-white/50 underline-offset-2 hover:text-white hover:underline">
+            Original
+          </button>
+        </div>
+        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+          {aspectPresets.map((preset) => {
+            const active = preset.value == null
+              ? aspectRatio == null && crop == null
+              : aspectRatio != null && Math.abs(aspectRatio - preset.value) < 0.001;
+            return (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => onAspect(preset.value)}
+                aria-pressed={active}
+                className={'flex h-[54px] min-w-[62px] shrink-0 flex-col items-center justify-center gap-1 rounded-lg border text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 ' + (
+                  active
+                    ? 'border-white bg-white/[0.12] text-white'
+                    : 'border-white/10 bg-white/[0.035] text-white/55 hover:border-white/30 hover:text-white/85'
+                )}
+              >
+                <span className="flex h-5 w-7 items-center justify-center">
+                  {preset.value == null ? (
+                    <span className="h-4 w-6 rounded-[2px] border border-current" />
+                  ) : (
+                    <span
+                      className="block max-h-5 max-w-7 rounded-[2px] border border-current"
+                      style={{
+                        width: preset.value >= 1 ? 25 : Math.max(8, 25 * preset.value),
+                        height: preset.value >= 1 ? Math.max(8, 18 / preset.value) : 18,
+                      }}
+                    />
+                  )}
+                </span>
+                {preset.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      <div className="mt-2 flex items-center gap-1.5">
-        <button type="button" onClick={() => setRot(rotation - 90)} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          <RotateCcw className="h-4 w-4" /> 90°
+      <div className="mt-4 border-t border-white/10 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-semibold text-white/80">Straighten</p>
+          <div className="flex items-center gap-2">
+            <span className="min-w-10 rounded-md bg-white/[0.07] px-2 py-1 text-center text-[10px] tabular-nums text-white/75">{Math.round(rotation)}°</span>
+            <button type="button" onClick={() => setRot(0)} className="text-[10px] font-medium text-white/50 hover:text-white">Reset</button>
+          </div>
+        </div>
+        <input
+          type="range"
+          min={-180}
+          max={180}
+          step={1}
+          value={rotation}
+          onChange={(event) => setRot(Number(event.target.value))}
+          aria-label="Straighten rotation"
+          className="h-5 w-full cursor-pointer accent-white"
+        />
+        <div className="mt-1 flex justify-between text-[9px] tabular-nums text-white/35">
+          <span>-180°</span><span>-90°</span><span>0°</span><span>90°</span><span>180°</span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 border-t border-white/10 pt-3">
+        <button type="button" onClick={() => setRot(rotation - 90)} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <RotateCcw className="h-3.5 w-3.5" /> Rotate left
         </button>
-        <button type="button" onClick={() => setRot(rotation + 90)} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          <RotateCw className="h-4 w-4" /> 90°
+        <button type="button" onClick={() => setRot(rotation + 90)} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <RotateCw className="h-3.5 w-3.5" /> Rotate right
         </button>
-        <button type="button" onClick={() => onFlip('horizontal')} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          <FlipHorizontal className="h-4 w-4" /> Flip
+        <button type="button" onClick={() => onReset()} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <RotateCcw className="h-3.5 w-3.5" /> Reset crop
         </button>
-        <button type="button" onClick={onReset} className={EDITOR_ACTION_PILL + ' flex-1 justify-center'}>
-          Reset
+        <button type="button" onClick={() => onFlip('horizontal')} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <FlipHorizontal className="h-3.5 w-3.5" /> Flip horizontal
+        </button>
+        <button type="button" onClick={() => onFlip('vertical')} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <FlipVertical className="h-3.5 w-3.5" /> Flip vertical
+        </button>
+        <button type="button" onClick={() => onAspect(null)} className="flex h-9 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-semibold text-white/75 transition hover:bg-white/10 hover:text-white">
+          <Maximize2 className="h-3.5 w-3.5" /> Original frame
         </button>
       </div>
 
-      <div className="mt-2 flex gap-1.5 border-t border-white/10 pt-2">
-        <button type="button" onClick={onCancel} className="h-10 flex-1 rounded-xl bg-white/[0.07] text-xs font-bold text-white/75">
+      <div className="mt-4 flex gap-2 border-t border-white/10 pt-3">
+        <button type="button" onClick={onCancel} className="h-10 flex-1 rounded-lg border border-white/15 bg-transparent text-xs font-semibold text-white/70 transition hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
           Cancel
         </button>
-        <button type="button" onClick={onApply} className="h-10 flex-[1.35] rounded-xl bg-[#E5798F] text-xs font-black text-white shadow-lg shadow-[#E5798F]/20">
-          Done
+        <button type="button" onClick={onApply} className="h-10 flex-[1.35] rounded-lg bg-white text-xs font-bold text-black transition hover:bg-white/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70">
+          Apply crop
         </button>
       </div>
-    </div>
+    </section>
   );
 }
 

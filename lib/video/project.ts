@@ -145,11 +145,21 @@ export interface VideoClip {
   motion_preset?: ClipMotionPreset;
   motion_amount?: number;
   effect_intensity?: number;
+  /** Real-time chroma key; processed in the shared preview/export compositor. */
+  chromaKey?: {
+    enabled: boolean;
+    color: string;
+    tolerance: number;
+    softness: number;
+    spill: number;
+  };
   /** Multiple composable effects. Legacy `effect` remains as the first layer when this is absent. */
   effects?: VideoEffectLayer[];
   /** Template media slot metadata. `template_duration` controls the initial fill length, then normal editing can change it. */
   template_slot?: number;
   template_duration?: number;
+  /** Optional non-destructive freeze hold inserted at a clip-local timeline position. */
+  freezeFrame?: { at: number; sourceTime: number; duration: number };
   /** transition INTO this clip (plays over the previous clip's tail) */
   transitionIn: { type: TransitionType; duration: number };
   /** Optional transform/audio keyframes for professional motion control. */
@@ -565,6 +575,16 @@ export interface CanvasBackground {
   color: string;
   color2?: string;
   angle?: number;
+  /** Optional image layer rendered behind all timeline clips and overlays. */
+  imageSrc?: string;
+  /** Optional looping video layer, composited above the background image but behind timeline media. */
+  videoSrc?: string;
+  /** cover fills the canvas (cropping edges); contain keeps the full image visible. */
+  imageFit?: 'cover' | 'contain';
+  /** Scale and normalized position for manually framing the background media. */
+  mediaScale?: number;
+  mediaOffsetX?: number;
+  mediaOffsetY?: number;
 }
 
 export interface VideoProject {
@@ -697,6 +717,12 @@ export function normalizeProject(input: unknown): VideoProject {
     color: typeof backgroundRaw.color === 'string' && backgroundRaw.color ? backgroundRaw.color : '#000000',
     ...(typeof backgroundRaw.color2 === 'string' && backgroundRaw.color2 ? { color2: backgroundRaw.color2 } : {}),
     ...(Number.isFinite(Number(backgroundRaw.angle)) ? { angle: Number(backgroundRaw.angle) } : {}),
+    ...(typeof backgroundRaw.imageSrc === 'string' && /^https?:\/\//i.test(backgroundRaw.imageSrc) ? { imageSrc: backgroundRaw.imageSrc.slice(0, 4096) } : {}),
+    ...(typeof backgroundRaw.videoSrc === 'string' && /^https?:\/\//i.test(backgroundRaw.videoSrc) ? { videoSrc: backgroundRaw.videoSrc.slice(0, 4096) } : {}),
+    imageFit: backgroundRaw.imageFit === 'contain' ? 'contain' : 'cover',
+    mediaScale: clamp(Number(backgroundRaw.mediaScale) || 1, 0.25, 4),
+    mediaOffsetX: clamp(Number(backgroundRaw.mediaOffsetX) || 0, -1, 1),
+    mediaOffsetY: clamp(Number(backgroundRaw.mediaOffsetY) || 0, -1, 1),
   };
 
   const clips: VideoClip[] = Array.isArray(raw.clips) ? raw.clips.map((c) => {
@@ -726,6 +752,19 @@ export function normalizeProject(input: unknown): VideoProject {
       media_type: clip.media_type === 'image' ? 'image' : 'video',
       volume: Math.max(0, Math.min(1, clip.volume == null ? 1 : Number(clip.volume))), muted: Boolean(clip.muted),
       reverse: Boolean(clip.reverse), audioProcessing, track_id: clip.track_id ? String(clip.track_id) : undefined, transform, adjustments, filter: String(clip.filter || 'none'),
+      ...(clip.chromaKey && typeof clip.chromaKey === 'object' ? {
+        chromaKey: (() => {
+          const key = clip.chromaKey as NonNullable<VideoClip['chromaKey']>;
+          const color = typeof key.color === 'string' && /^#?[0-9a-f]{6}$/i.test(key.color) ? (key.color.startsWith('#') ? key.color : '#' + key.color) : '#00ff00';
+          return {
+            enabled: Boolean(key.enabled),
+            color,
+            tolerance: clamp(Number(key.tolerance) || 0, 0, 255),
+            softness: clamp(Number(key.softness) || 1, 1, 255),
+            spill: clamp(Number(key.spill) || 0, 0, 1),
+          };
+        })(),
+      } : {}),
       effect: (clip.effect || 'none') as EffectType,
       motion_preset: (['none', 'zoom-in', 'zoom-out', 'spin', 'float', 'pop', 'shake'] as ClipMotionPreset[]).includes(clip.motion_preset as ClipMotionPreset) ? clip.motion_preset as ClipMotionPreset : 'none',
       motion_amount: clamp(Number(clip.motion_amount) || 1, 0, 2),
@@ -1030,7 +1069,25 @@ export function emptyProject(aspect: AspectRatio = 'original'): VideoProject {
 /** Effective on-timeline duration of a clip (trim × speed). */
 export function clipDuration(clip: VideoClip): number {
   const trimmed = Math.max(0.1, clip.trimEnd - clip.trimStart);
-  return trimmed / Math.max(clip.speed, 0.05);
+  const base = trimmed / Math.max(clip.speed, 0.05);
+  const freeze = clip.freezeFrame;
+  return base + (freeze && Number.isFinite(freeze.duration) ? Math.max(0, freeze.duration) : 0);
+}
+
+/** Resolve source time while accounting for an inserted freeze hold. */
+export function clipSourceTimeAtLocal(clip: VideoClip, localTime: number): number {
+  const local = Math.max(0, localTime);
+  const freeze = clip.freezeFrame;
+  let sourceOffset = local;
+  if (freeze && Number.isFinite(freeze.at) && Number.isFinite(freeze.duration) && freeze.duration > 0) {
+    const at = Math.max(0, freeze.at);
+    const end = at + freeze.duration;
+    if (local >= at && local < end) return Math.max(clip.trimStart, Math.min(clip.trimEnd, freeze.sourceTime));
+    if (local >= end) sourceOffset = local - freeze.duration;
+  }
+  const speed = Math.max(clip.speed, 0.05);
+  const sourceTime = clip.reverse ? clip.trimEnd - sourceOffset * speed : clip.trimStart + sourceOffset * speed;
+  return Math.max(clip.trimStart, Math.min(clip.trimEnd, sourceTime));
 }
 
 export function projectDuration(project: VideoProject): number {
@@ -1061,7 +1118,7 @@ export function resolveTime(project: VideoProject, t: number): { clip: VideoClip
     const d = clipDuration(clip);
     if (t < acc + d) {
       const local = t - acc;
-      return { clip, sourceTime: clip.trimStart + local * clip.speed };
+      return { clip, sourceTime: clipSourceTimeAtLocal(clip, local) };
     }
     acc += d;
   }

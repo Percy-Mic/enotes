@@ -28,7 +28,7 @@ import { drawAdvancedEffectStack } from '@/lib/video/advanced-effects';
    ============================================================ */
 
 import {
-  clipDuration, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder, isAudioPlaceholder,
+  clipDuration, clipSourceTimeAtLocal, FILTER_PRESETS, resolveTime, resolveClipValues, resolveClipAdjustments, projectDuration, normalizeProject, isPlaceholder, isAudioPlaceholder,
   containFit, croppedAspect, resolveElementValues,
   type VideoProject, type TimelineElement, type VideoClip, type CropRect, type ClipAdjustments, type EffectType,
 } from '@/lib/video/project';
@@ -780,6 +780,51 @@ function clipMotionTransform(clip: VideoClip, timeIn: number, dur: number) {
   }
 }
 
+function applyChromaKeyPixels(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  settings: NonNullable<VideoClip['chromaKey']>,
+) {
+  if (!settings.enabled || width < 1 || height < 1) return;
+  const match = /^#?([0-9a-f]{6})$/i.exec(settings.color || '#00ff00');
+  if (!match) return;
+  const hex = match[1];
+  const kr = parseInt(hex.slice(0, 2), 16);
+  const kg = parseInt(hex.slice(2, 4), 16);
+  const kb = parseInt(hex.slice(4, 6), 16);
+  const tolerance = Math.max(0, Math.min(255, Number(settings.tolerance) || 0));
+  const softness = Math.max(0.001, Math.min(255, Number(settings.softness) || 1));
+  const spill = Math.max(0, Math.min(1, Number(settings.spill) || 0));
+  const pixels = ctx.getImageData(0, 0, width, height);
+  const data = pixels.data;
+  const inner = tolerance;
+  const outer = tolerance + softness;
+  const keyIsGreen = kg >= kr && kg >= kb;
+  const keyIsRed = kr >= kg && kr >= kb;
+  const keyIsBlue = kb >= kr && kb >= kg;
+  for (let p = 0; p < data.length; p += 4) {
+    const dr = data[p] - kr;
+    const dg = data[p + 1] - kg;
+    const db = data[p + 2] - kb;
+    const distance = Math.sqrt(dr * dr + dg * dg + db * db);
+    if (distance <= inner) {
+      data[p + 3] = 0;
+      continue;
+    }
+    if (distance < outer) {
+      const edge = (distance - inner) / (outer - inner);
+      data[p + 3] = Math.round(data[p + 3] * edge);
+      if (spill > 0 && edge < 1) {
+        if (keyIsGreen) data[p + 1] = Math.min(data[p + 1], Math.round(Math.max(data[p], data[p + 2]) + (data[p + 1] - Math.max(data[p], data[p + 2])) * (1 - spill * (1 - edge))));
+        else if (keyIsRed) data[p] = Math.min(data[p], Math.round(Math.max(data[p + 1], data[p + 2]) + (data[p] - Math.max(data[p + 1], data[p + 2])) * (1 - spill * (1 - edge))));
+        else if (keyIsBlue) data[p + 2] = Math.min(data[p + 2], Math.round(Math.max(data[p], data[p + 1]) + (data[p + 2] - Math.max(data[p], data[p + 1])) * (1 - spill * (1 - edge))));
+      }
+    }
+  }
+  ctx.putImageData(pixels, 0, 0);
+}
+
 function effectFilterCss(clip: VideoClip, timeIn: number): string {
   const parts: string[] = [];
   for (const layer of effectLayers(clip)) {
@@ -1456,6 +1501,29 @@ export interface TransitionResult {
   incoming?: { scale?: number; dx?: number; dy?: number; rotate?: number; blurPx?: number };
 }
 
+const transitionScratchCanvases = new WeakMap<HTMLCanvasElement, Map<string, HTMLCanvasElement>>();
+
+function getTransitionScratchCanvas(
+  owner: HTMLCanvasElement,
+  slot: string,
+  width: number,
+  height: number,
+): HTMLCanvasElement {
+  let slots = transitionScratchCanvases.get(owner);
+  if (!slots) {
+    slots = new Map<string, HTMLCanvasElement>();
+    transitionScratchCanvases.set(owner, slots);
+  }
+  let scratch = slots.get(slot);
+  if (!scratch) {
+    scratch = document.createElement('canvas');
+    slots.set(slot, scratch);
+  }
+  if (scratch.width !== width) scratch.width = width;
+  if (scratch.height !== height) scratch.height = height;
+  return scratch;
+}
+
 function applyTransitionFrame(
   ctx: CanvasRenderingContext2D,
   hint: NonNullable<TransitionResult['incoming']>,
@@ -1467,10 +1535,11 @@ function applyTransitionFrame(
   /* Snapshot first. Drawing ctx.canvas onto itself can yield undefined
      feedback on some GPU/browser combinations and is a common source of
      transition flashes and black preview frames. */
-  const source = document.createElement('canvas');
-  source.width = canvasW; source.height = canvasH;
+  const source = getTransitionScratchCanvas(ctx.canvas, 'incoming-transform', canvasW, canvasH);
   const sourceCtx = source.getContext('2d');
   if (!sourceCtx) return;
+  sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sourceCtx.clearRect(0, 0, canvasW, canvasH);
   sourceCtx.drawImage(ctx.canvas, 0, 0, canvasW, canvasH);
 
   ctx.save();
@@ -1494,8 +1563,11 @@ function applyTransition(
   canvasW: number,
   canvasH: number
 ): TransitionResult {
-  if (!type || type === 'none' || duration <= 0) return { overlayAlpha: 0 };
-  const progress = Math.min(1, timeIn / duration);
+  // A transition is an intro to this clip, not a per-frame effect for its entire lifetime.
+  // Returning immediately after its duration avoids snapshotting and compositing a full-size
+  // canvas on every subsequent playback frame (which can starve both preview and audio).
+  if (!type || type === 'none' || duration <= 0 || timeIn >= duration) return { overlayAlpha: 0 };
+  const progress = Math.max(0, Math.min(1, timeIn / duration));
   const eased = easeOut(progress);
   const W = canvasW;
   const H = canvasH;
@@ -1504,10 +1576,14 @@ function applyTransition(
   let source: HTMLCanvasElement | null = null;
   const needsSource = type === 'crossfade' || type === 'slide' || type === 'zoom-blur' || type === 'whip-pan' || type === 'glitch-cut' || type === 'blur';
   if (needsSource) {
-    source = document.createElement('canvas');
-    source.width = W; source.height = H;
+    source = getTransitionScratchCanvas(ctx.canvas, 'transition-snapshot', W, H);
     const sourceCtx = source.getContext('2d');
     if (!sourceCtx) return { overlayAlpha: 0 };
+    sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sourceCtx.globalAlpha = 1;
+    sourceCtx.globalCompositeOperation = 'source-over';
+    sourceCtx.filter = 'none';
+    sourceCtx.clearRect(0, 0, W, H);
     sourceCtx.drawImage(ctx.canvas, 0, 0, W, H);
   }
 
@@ -1681,6 +1757,27 @@ function applyTransition(
 
 /* ---------- original clip audio + basic voice cleanup ---------- */
 
+/**
+ * Audio envelope for the incoming clip transition. This is shared by the
+ * real-time preview and export so transitions do not look faded while their
+ * soundtrack starts abruptly. Time is local to the clip's timeline duration.
+ */
+export function clipTransitionAudioGain(
+  clip: VideoClip,
+  localTime: number,
+  timelineDuration: number,
+): number {
+  const transition = clip.transitionIn;
+  if (!transition || !transition.type || transition.type === 'none') return 1;
+  const duration = Math.min(
+    Math.max(0, timelineDuration),
+    Math.max(0, Number(transition.duration) || 0),
+  );
+  if (duration <= 0) return 1;
+  return Math.max(0, Math.min(1, localTime / duration));
+}
+
+
 function reverseAudioSegment(ctx: AudioContext, buffer: AudioBuffer, start: number, end: number): AudioBuffer {
   const sr = buffer.sampleRate;
   const from = Math.max(0, Math.floor(start * sr));
@@ -1750,6 +1847,9 @@ export class VideoRenderer {
   /** Set when the most recent drawFrame hit an undecodable/unreachable clip
       source; cleared on the next successful draw. The editor surfaces this. */
   lastSourceError: string | null = null;
+
+  /** Non-fatal rendering issues that affect an effect but should not blank the frame. */
+  lastRenderWarning: string | null = null;
 
   /** Set while an export is running — the editor guards double-exports. */
   isExporting = false;
@@ -2045,6 +2145,7 @@ export class VideoRenderer {
     }
     const token = (this.renderTokens.get(canvas) || 0) + 1;
     this.renderTokens.set(canvas, token);
+    this.lastRenderWarning = null;
     const isCurrent = () => this.renderTokens.get(canvas) === token;
     project = normalizeProject(project);
     this.ctx = ctx;
@@ -2059,6 +2160,42 @@ export class VideoRenderer {
        caused mobile decoders to expose a black canvas during transient stalls.
        Commit a new background only when this render has a drawable frame. */
     const background = project.background;
+    let backgroundImage: HTMLImageElement | null = null;
+    let backgroundVideo: HTMLVideoElement | null = null;
+    if (background?.imageSrc) {
+      try {
+        backgroundImage = await loadImage(background.imageSrc);
+      } catch {
+        backgroundImage = null;
+        this.lastRenderWarning = 'The canvas background image could not be loaded. Check that the file still exists and its URL is accessible, then re-upload it if needed.';
+      }
+    }
+    if (background?.videoSrc) {
+      try {
+        /* The background owns a dedicated decoder. Reusing the timeline's
+           URL-keyed videoCache lets a source used both as a background and as
+           a clip fight over currentTime, causing one layer to flash or show
+           the wrong frame. Use this renderer's isolated decoder in both
+           preview and export; its clock is independent from timeline clips. */
+        backgroundVideo = await this.loadIsolatedVideo(background.videoSrc);
+        const duration = Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0
+          ? backgroundVideo.duration
+          : 1;
+        const target = ((Math.max(0, time) % duration) + duration) % duration;
+        await this.syncIsolatedVideo(
+          backgroundVideo,
+          background.videoSrc,
+          target,
+          !!opts.playing,
+          false,
+          1,
+          false,
+        );
+      } catch {
+        backgroundVideo = null;
+        this.lastRenderWarning ||= 'The canvas background video could not be loaded or decoded. Check the source URL and browser video format support, then re-upload it if needed.';
+      }
+    }
     let backgroundPainted = false;
     const paintBackground = () => {
       if (background?.type === 'gradient') {
@@ -2076,6 +2213,25 @@ export class VideoRenderer {
         ctx.fillStyle = background?.color || '#000000';
       }
       ctx.fillRect(0, 0, W, H);
+      const movingBackground = backgroundVideo && backgroundVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+        && backgroundVideo.videoWidth > 0 && backgroundVideo.videoHeight > 0
+        ? backgroundVideo
+        : null;
+      const stillBackground = backgroundImage && backgroundImage.naturalWidth > 0 && backgroundImage.naturalHeight > 0
+        ? backgroundImage
+        : null;
+      const source = movingBackground || stillBackground;
+      if (source) {
+        const iw = movingBackground ? movingBackground.videoWidth : (source as HTMLImageElement).naturalWidth;
+        const ih = movingBackground ? movingBackground.videoHeight : (source as HTMLImageElement).naturalHeight;
+        const fitScale = background?.imageFit === 'contain' ? Math.min(W / iw, H / ih) : Math.max(W / iw, H / ih);
+        const scale = fitScale * Math.max(0.25, Math.min(4, Number(background?.mediaScale) || 1));
+        const dw = iw * scale;
+        const dh = ih * scale;
+        const dx = (W - dw) / 2 + (Number(background?.mediaOffsetX) || 0) * W;
+        const dy = (H - dh) / 2 + (Number(background?.mediaOffsetY) || 0) * H;
+        ctx.drawImage(source, dx, dy, dw, dh);
+      }
       backgroundPainted = true;
     };
 
@@ -2091,10 +2247,9 @@ export class VideoRenderer {
         acc += clipDuration(c);
       }
       const local = Math.max(0, time - acc);
-      const trimmed = Math.max(0.1, clip.trimEnd - clip.trimStart);
-      const sourceTime = clip.reverse
-        ? Math.max(clip.trimStart, clip.trimEnd - local * clip.speed)
-        : Math.min(clip.trimEnd, clip.trimStart + local * clip.speed);
+      const sourceTime = clipSourceTimeAtLocal(clip, local);
+      const freeze = clip.freezeFrame;
+      const isFreezeHold = !!freeze && freeze.duration > 0 && local >= freeze.at && local < freeze.at + freeze.duration;
       const timeIn = Math.max(0, time - acc);
       const dur = clipDuration(clip);
       const eff = effectTransform(clip, timeIn, dur);
@@ -2183,9 +2338,9 @@ export class VideoRenderer {
            if (!paintedFromCache) {
              if (video) {
                if (opts.isolatedPreview) {
-                await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+                await this.syncIsolatedVideo(video, clip.src, target, !!opts.playing && !isFreezeHold, !opts.previewing, clip.speed, !!clip.reverse);
               } else {
-                await syncPlaybackVideo(video, clip.src, target, !!opts.playing, !opts.previewing, clip.speed, !!clip.reverse);
+                await syncPlaybackVideo(video, clip.src, target, !!opts.playing && !isFreezeHold, !opts.previewing, clip.speed, !!clip.reverse);
               }
               if (!image && (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0)) {
                 return;
@@ -2203,6 +2358,20 @@ export class VideoRenderer {
                sctx.drawImage(video!, t.sx, t.sy, t.sw, t.sh, 0, 0, surface.width, surface.height);
              }
              if (maskSaved) sctx.restore();
+             /* Chroma key runs on the same raster surface used by live preview
+                and export, before motion and visual effects are composited. */
+             if (clip.chromaKey?.enabled) {
+               try {
+                 applyChromaKeyPixels(sctx, surface.width, surface.height, clip.chromaKey);
+               } catch (keyError) {
+                 /* Preserve the unkeyed frame, but surface why the key could not
+                    be applied instead of silently pretending the effect worked. */
+                 const detail = keyError instanceof DOMException && keyError.name === 'SecurityError'
+                   ? 'the browser blocked pixel access (often due to media CORS)'
+                   : 'the source frame could not be processed';
+                 this.lastRenderWarning = `Chroma key was skipped for "${clip.name || 'this clip'}" because ${detail}. Try a same-origin upload or a CORS-enabled media URL.`;
+               }
+             }
              sctx.filter = 'none';
              sctx.restore();
 
@@ -2383,6 +2552,9 @@ export class VideoRenderer {
     }
 
     const activeSources = new Set<string>();
+    // Background video is a first-class active layer. Without registering it
+    // here, pauseInactiveVideos would pause it at the end of every playing frame.
+    if (background?.videoSrc) activeSources.add(background.videoSrc);
     if (resolved?.clip.src) activeSources.add(resolved.clip.src);
     for (const el of overlays) {
       if (el.src && (el.kind === 'video' || el.media_type === 'video')) activeSources.add(el.src);
@@ -2675,7 +2847,7 @@ export class VideoRenderer {
       //
       // The fallback is deliberately kept per-clip. One problematic clip must
       // not remove audio from every other clip in the project.
-      const exportMediaAudio: Array<{ media: HTMLAudioElement; timer: number | null }> = [];
+      const exportMediaAudio: Array<{ media: HTMLAudioElement; timer: number | null; stopTimer: number | null }> = [];
       const scheduleMediaClipAudio = async (
         clip: VideoClip,
         clipStart: number,
@@ -2692,6 +2864,9 @@ export class VideoRenderer {
         media.muted = false;
         media.defaultMuted = false;
         media.src = clip.src;
+        // Match AudioBufferSourceNode playback: linked source audio changes pitch
+        // naturally with speed rather than using the browser's pitch correction.
+        media.preservesPitch = false;
 
         const waitForMetadata = new Promise<void>((resolve, reject) => {
           if (media.readyState >= HTMLMediaElement.HAVE_METADATA) {
@@ -2722,7 +2897,7 @@ export class VideoRenderer {
 
         for (let i = 0; i <= audioSteps; i++) {
           const u = i / audioSteps;
-          const value = resolveClipValues(clip, u * clipDurationSec).volume;
+          const value = resolveClipValues(clip, u * clipDurationSec).volume * clipTransitionAudioGain(clip, u * clipDurationSec, clipDurationSec);
           const at = audioStart + u * clipDurationSec;
           if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
           else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), at);
@@ -2753,8 +2928,14 @@ export class VideoRenderer {
             });
           } catch {}
         }, startDelayMs);
+        // A media-element fallback must stop at the retimed clip boundary;
+        // otherwise its audio can bleed underneath every later clip.
+        const stopTimer = window.setTimeout(() => {
+          media.pause();
+          media.muted = true;
+        }, startDelayMs + Math.max(0, clipDurationSec) * 1000);
 
-        exportMediaAudio.push({ media, timer });
+        exportMediaAudio.push({ media, timer, stopTimer });
         void media.play().catch(() => {});
       };
 
@@ -2786,7 +2967,7 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const value = resolveClipValues(clip, u * clipDurationSec).volume * clipTransitionAudioGain(clip, u * clipDurationSec, clipDurationSec);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }
@@ -2806,7 +2987,7 @@ export class VideoRenderer {
                   const audioSteps = Math.max(2, Math.ceil(clipDurationSec * 20));
                   for (let i = 0; i <= audioSteps; i++) {
                     const u = i / audioSteps;
-                    const value = resolveClipValues(clip, u * clipDurationSec).volume;
+                    const value = resolveClipValues(clip, u * clipDurationSec).volume * clipTransitionAudioGain(clip, u * clipDurationSec, clipDurationSec);
                     if (i === 0) volumeGain.gain.setValueAtTime(Math.max(0.0001, value), audioStart);
                     else volumeGain.gain.linearRampToValueAtTime(Math.max(0.0001, value), audioStart + u * clipDurationSec);
                   }
@@ -3061,8 +3242,9 @@ export class VideoRenderer {
 
       recorder.stop();
       const blob = await done;
-      exportMediaAudio.forEach(({ media, timer }) => {
+      exportMediaAudio.forEach(({ media, timer, stopTimer }) => {
         if (timer !== null) window.clearTimeout(timer);
+        if (stopTimer !== null) window.clearTimeout(stopTimer);
         media.pause();
         media.removeAttribute('src');
         try { media.load(); } catch {}
