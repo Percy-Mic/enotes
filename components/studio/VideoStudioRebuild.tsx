@@ -104,7 +104,7 @@ function Button({
       disabled={disabled}
       onClick={onClick}
       className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition
-        ${active ? 'border-[#ffb6c1] bg-[#ffb6c1] text-black' : 'border-white/10 bg-white/[0.055] text-white/80 hover:bg-white/[0.1]'}
+        ${active ? 'border-[#6ea8fe] bg-[#ffb6c1] text-black' : 'border-white/10 bg-white/[0.055] text-white/80 hover:bg-white/[0.1]'}
         ${disabled ? 'cursor-not-allowed opacity-40' : ''}`}
     >
       {children}
@@ -167,6 +167,18 @@ export default function VideoStudioRebuild() {
   const [future, setFuture] = useState<VideoProject[]>([]);
   const [localSources, setLocalSources] = useState<Record<string, string>>({});
   const [selectedTrack, setSelectedTrack] = useState<'main' | 'overlay' | 'audio'>('main');
+  const [setupStep, setSetupStep] = useState<'project' | 'practice' | 'editing'>(isNew ? 'project' : 'editing');
+  const [practiceBrief, setPracticeBrief] = useState<{ id: string; title: string; client: string; goal: string; audience: string; deliverable: string; shots: string[] } | null>(null);
+  const [selectedBriefId, setSelectedBriefId] = useState('travel-reel');
+
+  const practiceBriefs = [
+    { id: 'travel-reel', title: 'A hidden weekend escape', client: 'Northstar Travel Co.', goal: 'Make a 30-second vertical reel that makes a nearby destination feel irresistible.', audience: 'Young adults planning a quick weekend trip.', deliverable: '9:16 social reel · 20–30 seconds · energetic, warm, natural sound', shots: ['Establishing shot of the place', 'Movement: walking, riding, or arriving', 'Two close-up details', 'A human moment or point of view', 'A memorable final reveal'] },
+    { id: 'product-promo', title: 'Make the everyday feel premium', client: 'Form & Field Studio', goal: 'Create a polished product promo that makes one everyday object look useful and desirable.', audience: 'Design-conscious shoppers discovering the product for the first time.', deliverable: '16:9 or 9:16 promo · 15–25 seconds · clean cuts and detail shots', shots: ['Hero shot of the product', 'Close-up of texture or controls', 'Show it being used', 'A benefit in action', 'A clean closing shot with room for a title'] },
+    { id: 'food-story', title: 'The one dish worth the trip', client: 'Kusina Local', goal: 'Tell a short food story that makes viewers want to try a dish, not just look at it.', audience: 'Local food explorers and first-time visitors.', deliverable: '9:16 food reel · 20–30 seconds · tactile, appetizing, quick-paced', shots: ['Restaurant or stall establishing shot', 'Ingredients or preparation', 'Cooking action', 'Close-up of the finished dish', 'First bite or reaction'] },
+    { id: 'cinematic', title: 'A quiet moment before the storm', client: 'Framehouse Pictures', goal: 'Build a tiny cinematic story with a clear mood, a visual change, and an ending.', audience: 'Viewers who enjoy atmospheric short films.', deliverable: '16:9 cinematic short · 20–40 seconds · deliberate pacing and sound', shots: ['Wide establishing shot', 'A detail that hints at a story', 'A character or point-of-view shot', 'A visual change or reveal', 'A final image that leaves a question'] },
+    { id: 'creator-intro', title: 'Meet the creator', client: 'Your future audience', goal: 'Introduce a creator through visuals, personality, and one clear reason to follow.', audience: 'People who have never seen your content before.', deliverable: '9:16 creator intro · 15–25 seconds · personal and direct', shots: ['A strong opening moment', 'Who you are or what you make', 'A behind-the-scenes detail', 'Your signature skill or interest', 'A clear closing invitation'] },
+    { id: 'explainer', title: 'Explain one thing clearly', client: 'Brightside Learning', goal: 'Teach one small useful idea using a visual example and a simple beginning-middle-end.', audience: 'Beginners who need the idea explained without jargon.', deliverable: '16:9 or 9:16 explainer · 30–45 seconds · clear captions and voice/audio', shots: ['A visual hook or question', 'The problem or idea', 'A demonstration or example', 'The result', 'A short takeaway'] },
+  ];
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<VideoRenderer | null>(null);
@@ -431,6 +443,7 @@ export default function VideoStudioRebuild() {
       }
       commit(nextProject);
       setPanel(null);
+      if (setupStep !== 'editing') setSetupStep('editing');
       setMessage(`${list.length} media item${list.length === 1 ? '' : 's'} added`);
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Media import failed.');
@@ -687,6 +700,19 @@ export default function VideoStudioRebuild() {
         ? ['audio', 'delete'] as const
         : ['media', 'text', 'audio', 'effects', 'export'] as const;
 
+  const beginPractice = () => {
+    const brief = practiceBriefs.find((item) => item.id === selectedBriefId) || practiceBriefs[0];
+    setPracticeBrief(brief);
+    const aspect: AspectRatio = brief.id === 'product-promo' || brief.id === 'cinematic' || brief.id === 'explainer' ? '16:9' : '9:16';
+    const canvas = aspect === '9:16' ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
+    replaceWithoutHistory({ ...emptyProject(), aspect, canvas });
+    setTitle(brief.title);
+    setSelection(null);
+    setPanel('media');
+    setSetupStep('editing');
+    setMessage(`Practice brief loaded: ${brief.client}`);
+  };
+
   const openContext = (action: typeof contextual[number]) => {
     if (action === 'split') return splitSelected();
     if (action === 'duplicate') return duplicateSelection();
@@ -722,9 +748,94 @@ export default function VideoStudioRebuild() {
   };
 
   return (
-    <main className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#0d0d0d] text-white" data-no-theme-scope>
+    <main className="flex h-[100dvh] min-h-0 flex-col overflow-hidden bg-[#0b0f16] text-white" data-no-theme-scope>
       <input ref={fileInputRef} className="hidden" type="file" multiple accept="video/*,image/*" onChange={(e) => e.target.files && void addMedia(e.target.files)} />
       <input ref={audioInputRef} className="hidden" type="file" accept="audio/*" onChange={(e) => e.target.files?.[0] && void addMedia([e.target.files[0]])} />
+
+      {setupStep !== 'editing' && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-[#070b12]/95 p-4 backdrop-blur-sm">
+          <div className="my-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-white/10 bg-[#111824] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+              <div>
+                <div className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.22em] text-[#6ea8fe]"><Film className="h-4 w-4" /> enotes / edit studio</div>
+                <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{setupStep === 'project' ? 'Set up your project' : 'Choose your practice brief'}</h1>
+                <p className="mt-1 text-sm text-slate-400">{setupStep === 'project' ? 'Name it first, then choose how you want to start.' : 'A client has a goal. Your job is to tell the story with relevant footage.'}</p>
+              </div>
+              <button type="button" onClick={() => router.push('/studio')} className="grid h-9 w-9 place-items-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white" aria-label="Close project setup"><X className="h-5 w-5" /></button>
+            </div>
+
+            {setupStep === 'project' ? (
+              <div className="grid gap-6 p-5 sm:p-7 lg:grid-cols-[1fr_1.2fr]">
+                <div className="space-y-4">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">Project title <span className="text-[#6ea8fe]">*</span>
+                    <input autoFocus value={title === 'Untitled project' ? '' : title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Summer in Manila" className="mt-2 w-full rounded-xl border border-white/10 bg-[#0b111b] px-4 py-3 text-base font-medium text-white outline-none transition placeholder:text-slate-600 focus:border-[#6ea8fe] focus:ring-2 focus:ring-[#6ea8fe]/15" />
+                  </label>
+                  <p className="text-xs leading-5 text-slate-500">A clear title makes your project easy to find later. You can rename it anytime.</p>
+                  <div className="rounded-xl border border-white/8 bg-[#0b111b] p-4">
+                    <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-white"><Keyboard className="h-4 w-4 text-[#6ea8fe]" /> Editing workflow</div>
+                    <ol className="space-y-2 text-xs leading-5 text-slate-400">
+                      <li><span className="mr-2 text-[#6ea8fe]">01</span> Name the project</li>
+                      <li><span className="mr-2 text-[#6ea8fe]">02</span> Import and review your clips</li>
+                      <li><span className="mr-2 text-[#6ea8fe]">03</span> Arrange, trim, and split on the timeline</li>
+                      <li><span className="mr-2 text-[#6ea8fe]">04</span> Add sound, titles, transitions, and color</li>
+                      <li><span className="mr-2 text-[#6ea8fe]">05</span> Preview the edit and export</li>
+                    </ol>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button type="button" disabled={!title.trim()} onClick={() => fileInputRef.current?.click()} className="group flex min-h-44 flex-col items-start rounded-xl border border-[#6ea8fe]/40 bg-[#6ea8fe]/[0.07] p-5 text-left transition hover:border-[#6ea8fe] hover:bg-[#6ea8fe]/[0.12] disabled:cursor-not-allowed disabled:opacity-40">
+                    <span className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-[#6ea8fe]/15 text-[#6ea8fe]"><Upload className="h-5 w-5" /></span>
+                    <strong className="text-base text-white">Start with media</strong>
+                    <span className="mt-1 text-xs leading-5 text-slate-400">Choose videos or photos. The first visual clip sets your starting canvas orientation.</span>
+                    <span className="mt-auto pt-4 text-xs font-bold text-[#6ea8fe]">Choose clips →</span>
+                  </button>
+                  <button type="button" disabled={!title.trim()} onClick={() => { setSetupStep('practice'); }} className="group flex min-h-44 flex-col items-start rounded-xl border border-white/10 bg-[#0b111b] p-5 text-left transition hover:border-white/25 hover:bg-white/[0.035] disabled:cursor-not-allowed disabled:opacity-40">
+                    <span className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-white/8 text-slate-200"><Sparkles className="h-5 w-5" /></span>
+                    <strong className="text-base text-white">Practice mode</strong>
+                    <span className="mt-1 text-xs leading-5 text-slate-400">Get a client-style brief, a target audience, a deliverable, and a shot list to guide your edit.</span>
+                    <span className="mt-auto pt-4 text-xs font-bold text-slate-200">Choose a brief →</span>
+                  </button>
+                  <p className="sm:col-span-2 text-[11px] leading-5 text-slate-500">You can still import more media, record a voice-over, add music, and create overlays after entering the editor.</p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 sm:p-7">
+                <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {practiceBriefs.map((brief) => (
+                    <button key={brief.id} type="button" onClick={() => setSelectedBriefId(brief.id)} className={`rounded-xl border p-4 text-left transition ${selectedBriefId === brief.id ? 'border-[#6ea8fe] bg-[#6ea8fe]/[0.09] ring-1 ring-[#6ea8fe]/30' : 'border-white/10 bg-[#0b111b] hover:border-white/20'}`}>
+                      <span className="mb-3 block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">{brief.client}</span>
+                      <strong className="block text-sm text-white">{brief.title}</strong>
+                      <span className="mt-2 block text-xs leading-5 text-slate-400">{brief.goal}</span>
+                    </button>
+                  ))}
+                </div>
+                {(() => { const brief = practiceBriefs.find((item) => item.id === selectedBriefId) || practiceBriefs[0]; return (
+                  <div className="grid gap-5 rounded-xl border border-white/10 bg-[#0b111b] p-5 md:grid-cols-[1fr_1fr]">
+                    <div>
+                      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#6ea8fe]">Client brief</div>
+                      <h2 className="text-lg font-bold text-white">“{brief.title}”</h2>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{brief.goal}</p>
+                      <dl className="mt-4 space-y-3 text-xs">
+                        <div><dt className="text-slate-500">Target audience</dt><dd className="mt-1 text-slate-200">{brief.audience}</dd></div>
+                        <div><dt className="text-slate-500">Deliverable</dt><dd className="mt-1 text-slate-200">{brief.deliverable}</dd></div>
+                      </dl>
+                    </div>
+                    <div>
+                      <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[#6ea8fe]">Suggested shot list</div>
+                      <ol className="space-y-2">{brief.shots.map((shot, index) => <li key={shot} className="flex gap-3 text-xs leading-5 text-slate-300"><span className="font-mono text-[#6ea8fe]">{String(index + 1).padStart(2,'0')}</span>{shot}</li>)}</ol>
+                      <p className="mt-4 rounded-lg bg-white/[0.035] p-3 text-[11px] leading-5 text-slate-500">Practice rule: every clip should support this client’s goal. If a shot does not fit the brief, leave it out or replace it with a more relevant one.</p>
+                    </div>
+                  </div>
+                ); })()}
+                <div className="mt-5 flex flex-wrap justify-between gap-3">
+                  <Button onClick={() => setSetupStep('project')}><ArrowLeft className="h-4 w-4" /> Back</Button>
+                  <Button disabled={!title.trim()} onClick={beginPractice}><Sparkles className="h-4 w-4" /> Start practice project</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-white/8 bg-[#101010] px-3">
         <button type="button" onClick={() => router.push('/studio')} className="grid h-9 w-9 place-items-center rounded-lg hover:bg-white/8"><ArrowLeft className="h-4 w-4" /></button>
@@ -789,6 +900,11 @@ export default function VideoStudioRebuild() {
                 </div>
               </div>
 
+              {practiceBrief && <div className="flex shrink-0 items-center gap-3 border-b border-[#6ea8fe]/20 bg-[#111b2a] px-3 py-2">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[#6ea8fe]/15 text-[#6ea8fe]"><Sparkles className="h-4 w-4" /></span>
+                <div className="min-w-0 flex-1"><div className="text-[9px] font-bold uppercase tracking-[0.15em] text-[#6ea8fe]">Practice brief · {practiceBrief.client}</div><div className="truncate text-xs font-semibold text-white">{practiceBrief.title}</div></div>
+                <button type="button" onClick={() => setSetupStep('practice')} className="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-[10px] font-semibold text-slate-300 hover:bg-white/5">View brief</button>
+              </div>}
               <div className="shrink-0 border-y border-white/8 bg-[#111]">
                 <div className="flex items-center gap-2 overflow-x-auto px-3 py-2">
                   <Button onClick={() => setPlaying((v) => !v)}>{playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</Button>
@@ -811,7 +927,7 @@ export default function VideoStudioRebuild() {
                     </div>
 
                     {[
-                      { kind: 'video' as const, label: 'VIDEO', items: project.clips, color: 'bg-[#e5798f]' },
+                      { kind: 'video' as const, label: 'VIDEO', items: project.clips, color: 'bg-[#4f8feF]' },
                       { kind: 'overlay' as const, label: 'OVERLAY', items: project.elements, color: 'bg-[#7e8cff]' },
                       { kind: 'audio' as const, label: 'AUDIO', items: project.audio, color: 'bg-[#55c7a6]' },
                     ].map((lane) => (
