@@ -11271,7 +11271,7 @@ function VideoProjectStart() {
 }
 function StudioVideoRoute() {
   const search = useSearchParams();
-  if (search.get('new') === '1') return <VideoProjectStart />;
+  if (search.get('new') === '1' || (!search.get('project') && !search.get('template') && !search.get('sound') && !search.get('title') && !search.get('practiceTopic'))) return <VideoProjectStart />;
   return <VideoEditor />;
 }
 export default function StudioVideoPage() {
