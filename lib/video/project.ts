@@ -575,6 +575,10 @@ export interface CanvasBackground {
   color: string;
   color2?: string;
   angle?: number;
+  /** Optional image layer rendered behind all timeline clips and overlays. */
+  imageSrc?: string;
+  /** cover fills the canvas (cropping edges); contain keeps the full image visible. */
+  imageFit?: 'cover' | 'contain';
 }
 
 export interface VideoProject {
@@ -707,6 +711,8 @@ export function normalizeProject(input: unknown): VideoProject {
     color: typeof backgroundRaw.color === 'string' && backgroundRaw.color ? backgroundRaw.color : '#000000',
     ...(typeof backgroundRaw.color2 === 'string' && backgroundRaw.color2 ? { color2: backgroundRaw.color2 } : {}),
     ...(Number.isFinite(Number(backgroundRaw.angle)) ? { angle: Number(backgroundRaw.angle) } : {}),
+    ...(typeof backgroundRaw.imageSrc === 'string' && /^https?:\/\//i.test(backgroundRaw.imageSrc) ? { imageSrc: backgroundRaw.imageSrc.slice(0, 4096) } : {}),
+    imageFit: backgroundRaw.imageFit === 'contain' ? 'contain' : 'cover',
   };
 
   const clips: VideoClip[] = Array.isArray(raw.clips) ? raw.clips.map((c) => {
