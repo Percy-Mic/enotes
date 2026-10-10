@@ -1475,6 +1475,25 @@ export interface TransitionResult {
   incoming?: { scale?: number; dx?: number; dy?: number; rotate?: number; blurPx?: number };
 }
 
+const transitionFrameSnapshots = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+const transitionEffectSnapshots = new WeakMap<HTMLCanvasElement, HTMLCanvasElement>();
+
+function reusableTransitionSnapshot(
+  sourceMap: WeakMap<HTMLCanvasElement, HTMLCanvasElement>,
+  sourceCanvas: HTMLCanvasElement,
+  width: number,
+  height: number
+): HTMLCanvasElement | null {
+  let snapshot = sourceMap.get(sourceCanvas);
+  if (!snapshot) {
+    snapshot = document.createElement('canvas');
+    sourceMap.set(sourceCanvas, snapshot);
+  }
+  if (snapshot.width !== width) snapshot.width = width;
+  if (snapshot.height !== height) snapshot.height = height;
+  return snapshot;
+}
+
 function applyTransitionFrame(
   ctx: CanvasRenderingContext2D,
   hint: NonNullable<TransitionResult['incoming']>,
@@ -1486,11 +1505,17 @@ function applyTransitionFrame(
   /* Snapshot first. Drawing ctx.canvas onto itself can yield undefined
      feedback on some GPU/browser combinations and is a common source of
      transition flashes and black preview frames. */
-  const source = document.createElement('canvas');
-  source.width = canvasW; source.height = canvasH;
+  const source = reusableTransitionSnapshot(transitionFrameSnapshots, ctx.canvas, canvasW, canvasH);
+  if (!source) return;
   const sourceCtx = source.getContext('2d');
   if (!sourceCtx) return;
+  sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+  sourceCtx.globalAlpha = 1;
+  sourceCtx.globalCompositeOperation = 'copy';
+  sourceCtx.filter = 'none';
+  sourceCtx.clearRect(0, 0, canvasW, canvasH);
   sourceCtx.drawImage(ctx.canvas, 0, 0, canvasW, canvasH);
+  sourceCtx.globalCompositeOperation = 'source-over';
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1523,11 +1548,17 @@ function applyTransition(
   let source: HTMLCanvasElement | null = null;
   const needsSource = type === 'crossfade' || type === 'slide' || type === 'zoom-blur' || type === 'whip-pan' || type === 'glitch-cut' || type === 'blur';
   if (needsSource) {
-    source = document.createElement('canvas');
-    source.width = W; source.height = H;
+    source = reusableTransitionSnapshot(transitionEffectSnapshots, ctx.canvas, W, H);
+    if (!source) return { overlayAlpha: 0 };
     const sourceCtx = source.getContext('2d');
     if (!sourceCtx) return { overlayAlpha: 0 };
+    sourceCtx.setTransform(1, 0, 0, 1, 0, 0);
+    sourceCtx.globalAlpha = 1;
+    sourceCtx.globalCompositeOperation = 'copy';
+    sourceCtx.filter = 'none';
+    sourceCtx.clearRect(0, 0, W, H);
     sourceCtx.drawImage(ctx.canvas, 0, 0, W, H);
+    sourceCtx.globalCompositeOperation = 'source-over';
   }
 
   switch (type) {
