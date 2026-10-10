@@ -2457,6 +2457,10 @@ export class VideoRenderer {
     this.isExporting = true;
     this.exportCancelled = false;
 
+    // Keep fallback media elements in function scope so every exit path (including
+    // cancellation, decoder errors, and recorder failures) releases them.
+    const exportMediaAudio: Array<{ media: HTMLAudioElement; timer: number | null; stopTimer: number | null }> = [];
+
     try {
       onProgress?.({ phase: 'preparing', percent: 0, message: 'Loading media…' });
 
@@ -2675,7 +2679,6 @@ export class VideoRenderer {
       //
       // The fallback is deliberately kept per-clip. One problematic clip must
       // not remove audio from every other clip in the project.
-      const exportMediaAudio: Array<{ media: HTMLAudioElement; timer: number | null }> = [];
       const scheduleMediaClipAudio = async (
         clip: VideoClip,
         clipStart: number,
@@ -2691,6 +2694,10 @@ export class VideoRenderer {
         media.volume = 1;
         media.muted = false;
         media.defaultMuted = false;
+        // Match the source clip's rate while keeping pitch natural in browsers
+        // that support native pitch correction. The clip's speed remains the
+        // single authority for both the video clock and its embedded audio.
+        media.preservesPitch = true;
         media.src = clip.src;
 
         const waitForMetadata = new Promise<void>((resolve, reject) => {
@@ -2745,16 +2752,22 @@ export class VideoRenderer {
         const timer = window.setTimeout(() => {
           try {
             media.currentTime = Math.max(0, clip.trimStart);
-            media.muted = false;
             media.playbackRate = Math.max(0.0625, Math.min(16, clip.speed || 1));
+            media.muted = false;
             void media.play().catch(() => {
               /* The caller verifies the destination track; keep the media
                  object alive long enough for the browser to retry playback. */
             });
           } catch {}
         }, startDelayMs);
+        // HTMLMediaElement playback can continue past trimEnd unless explicitly
+        // stopped. Bound it to the exact retimed timeline duration so a clip's
+        // soundtrack cannot bleed into the next clip or across a transition.
+        const stopTimer = window.setTimeout(() => {
+          media.pause();
+        }, startDelayMs + Math.max(0.05, clipDurationSec) * 1000);
 
-        exportMediaAudio.push({ media, timer });
+        exportMediaAudio.push({ media, timer, stopTimer });
         void media.play().catch(() => {});
       };
 
@@ -3061,12 +3074,6 @@ export class VideoRenderer {
 
       recorder.stop();
       const blob = await done;
-      exportMediaAudio.forEach(({ media, timer }) => {
-        if (timer !== null) window.clearTimeout(timer);
-        media.pause();
-        media.removeAttribute('src');
-        try { media.load(); } catch {}
-      });
       destination.stream.getTracks().forEach((t) => t.stop());
       canvasStream.getTracks().forEach((t) => t.stop());
       void audioCtx.close();
@@ -3087,6 +3094,14 @@ export class VideoRenderer {
         format: 'mp4',
       };
     } finally {
+      // Cleanup must run for success, cancellation, and every thrown error.
+      exportMediaAudio.forEach(({ media, timer, stopTimer }) => {
+        if (timer !== null) window.clearTimeout(timer);
+        if (stopTimer !== null) window.clearTimeout(stopTimer);
+        media.pause();
+        media.removeAttribute('src');
+        try { media.load(); } catch {}
+      });
       this.isExporting = false;
       this.exportCancelled = false;
     }

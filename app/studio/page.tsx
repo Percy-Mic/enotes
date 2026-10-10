@@ -173,7 +173,7 @@ export default function StudioPage() {
             <div className="rounded-2xl border border-dashed border-[#E8E2E4] bg-white/60 px-6 py-10 text-center">
               <p className="text-sm text-[#6B6B6B]">No projects yet. Start from a template or blank canvas.</p>
               <div className="mt-4 flex justify-center gap-2">
-                <Link href="/studio/video" className="rounded-xl bg-black px-4 py-2 text-xs font-bold text-[#FFB6C1]">Blank project</Link>
+                <Link href="/studio/video?new=1" className="rounded-xl bg-black px-4 py-2 text-xs font-bold text-[#FFB6C1]">Blank project</Link>
                 <Link href="/studio/templates" className="rounded-xl border border-[#E8E2E4] bg-white px-4 py-2 text-xs font-bold">Templates</Link>
               </div>
             </div>
