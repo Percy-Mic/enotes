@@ -9442,6 +9442,107 @@ function VideoEditor() {
                   </div>
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/20 p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold">Chroma key</p>
+                      <p className="mt-1 text-[10px] leading-4 text-white/45">Remove a solid-color backdrop so another layer or the project background shows through. This setting is shared by preview and export.</p>
+                    </div>
+                    <label className="flex shrink-0 items-center gap-2 text-[10px] text-white/70">
+                      <input
+                        type="checkbox"
+                        checked={!!selectedClip.chromaKey?.enabled}
+                        onChange={(event) => updateClip(selectedClip.id, {
+                          chromaKey: {
+                            enabled: event.target.checked,
+                            color: selectedClip.chromaKey?.color || '#00ff00',
+                            tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                            softness: selectedClip.chromaKey?.softness ?? 55,
+                            spill: selectedClip.chromaKey?.spill ?? 0.35,
+                          },
+                        }, event.target.checked ? 'Enable chroma key' : 'Disable chroma key', `chroma-${selectedClip.id}`)}
+                      />
+                      Enable
+                    </label>
+                  </div>
+                  <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
+                    <label className="flex min-w-0 items-center gap-2 rounded-lg border border-white/10 bg-white/[0.035] p-2">
+                      <input
+                        aria-label="Chroma key color"
+                        type="color"
+                        value={selectedClip.chromaKey?.color || '#00ff00'}
+                        onChange={(event) => updateClip(selectedClip.id, {
+                          chromaKey: {
+                            enabled: selectedClip.chromaKey?.enabled ?? true,
+                            color: event.target.value,
+                            tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                            softness: selectedClip.chromaKey?.softness ?? 55,
+                            spill: selectedClip.chromaKey?.spill ?? 0.35,
+                          },
+                        }, 'Change chroma key color', `chroma-color-${selectedClip.id}`)}
+                        className="h-8 w-9 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-[10px] font-semibold text-white/80">Key color</span>
+                        <span className="block text-[9px] text-white/40">{selectedClip.chromaKey?.color || '#00ff00'}</span>
+                      </span>
+                    </label>
+                    <div className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.035] p-2">
+                      <span className="text-[10px] text-white/70">Quick key</span>
+                      <div className="flex gap-1">
+                        {([
+                          ['#00ff00', 'Green'],
+                          ['#00aaff', 'Blue'],
+                        ] as const).map(([color, label]) => (
+                          <button key={color} type="button" onClick={() => updateClip(selectedClip.id, {
+                            chromaKey: {
+                              enabled: selectedClip.chromaKey?.enabled ?? true,
+                              color,
+                              tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                              softness: selectedClip.chromaKey?.softness ?? 55,
+                              spill: selectedClip.chromaKey?.spill ?? 0.35,
+                            },
+                          }, `Set ${label.toLowerCase()} screen key`, `chroma-${selectedClip.id}`)} className="rounded-md border border-white/10 px-2 py-1 text-[9px] text-white/65 hover:bg-white/10">{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {([
+                    ['tolerance', 'Tolerance', 0, 220, 1, 70],
+                    ['softness', 'Edge softness', 1, 180, 1, 55],
+                    ['spill', 'Spill suppression', 0, 1, 0.01, 0.35],
+                  ] as const).map(([key, label, min, max, step, fallback]) => {
+                    const current = selectedClip.chromaKey?.[key] ?? fallback;
+                    return (
+                      <label key={key} className="mt-3 block">
+                        <span className="mb-1 flex items-center justify-between text-[10px] text-white/65">
+                          <span>{label}</span>
+                          <span className="tabular-nums text-white/45">{key === 'spill' ? Math.round(current * 100) + '%' : current}</span>
+                        </span>
+                        <input
+                          type="range"
+                          min={min}
+                          max={max}
+                          step={step}
+                          value={current}
+                          onChange={(event) => updateClip(selectedClip.id, {
+                            chromaKey: {
+                              enabled: selectedClip.chromaKey?.enabled ?? true,
+                              color: selectedClip.chromaKey?.color || '#00ff00',
+                              tolerance: selectedClip.chromaKey?.tolerance ?? 70,
+                              softness: selectedClip.chromaKey?.softness ?? 55,
+                              spill: selectedClip.chromaKey?.spill ?? 0.35,
+                              [key]: Number(event.target.value),
+                            },
+                          }, `Adjust chroma key ${key}`, `chroma-${selectedClip.id}`)}
+                          className="w-full accent-[#E5798F]"
+                          aria-label={label}
+                        />
+                      </label>
+                    );
+                  })}
+                  <p className="mt-2 text-[9px] leading-4 text-white/35">Tip: sample the exact background color, then raise tolerance to remove uneven lighting. Higher edge softness gives a gentler matte.</p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                   <div className="mb-2 flex items-center justify-between">
                     <div>
                       <p className="text-xs font-semibold">Animation presets</p>
