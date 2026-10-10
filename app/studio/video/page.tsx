@@ -7133,7 +7133,7 @@ function VideoEditor() {
           short (landscape phones, small laptops, many timeline lanes) —
           nothing is clipped away, and the page itself never scrolls. */}
       <div
-        className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(58px+env(safe-area-inset-bottom))] md:pl-[74px] md:pb-0"
+        className={`relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[calc(58px+env(safe-area-inset-bottom))] md:pl-[74px] md:pb-0 ${toolDrawerOpen ? "md:pr-[min(430px,42vw)]" : ""}`}
         onDragEnter={(e) => {
           if (Array.from(e.dataTransfer.types).includes('Files')) {
             e.preventDefault();
@@ -8085,7 +8085,7 @@ function VideoEditor() {
             className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px] md:hidden"
           />
           <section
-            className={`fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515] shadow-2xl md:bottom-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,92vw)] md:left-[74px] md:right-auto md:max-h-none md:rounded-none md:border-b-0 md:border-r-0 md:border-t-0`}
+            className={`fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-2 right-2 z-50 flex h-[min(58svh,560px)] max-h-[calc(100svh-72px-env(safe-area-inset-bottom))] min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151515] shadow-2xl md:bottom-0 md:top-[57px] md:h-[calc(100dvh-57px)] md:w-[min(430px,42vw)] md:left-auto md:right-0 md:max-h-none md:rounded-none md:border-b-0 md:border-l-0 md:border-r-0 md:border-t-0`}
             style={{ contain: 'layout paint' }}
             onPointerDown={() => {
               if (contextDrawerTimerRef.current !== null) {
