@@ -145,6 +145,14 @@ export interface VideoClip {
   motion_preset?: ClipMotionPreset;
   motion_amount?: number;
   effect_intensity?: number;
+  /** Real-time chroma key; processed in the shared preview/export compositor. */
+  chromaKey?: {
+    enabled: boolean;
+    color: string;
+    tolerance: number;
+    softness: number;
+    spill: number;
+  };
   /** Multiple composable effects. Legacy `effect` remains as the first layer when this is absent. */
   effects?: VideoEffectLayer[];
   /** Template media slot metadata. `template_duration` controls the initial fill length, then normal editing can change it. */
