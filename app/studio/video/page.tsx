@@ -8283,6 +8283,7 @@ function VideoEditor() {
                             background: {
                               ...(p.background || { type: 'color', color: '#000000' }),
                               videoSrc: uploaded.url,
+                              imageSrc: undefined,
                             },
                           }), 'Set canvas background video');
                           notify('Background video added. It will loop behind your main clips.');
@@ -8347,6 +8348,7 @@ function VideoEditor() {
                             background: {
                               ...(p.background || { type: 'color', color: '#000000' }),
                               imageSrc: uploaded.url,
+                              videoSrc: undefined,
                               imageFit: p.background?.imageFit || 'cover',
                             },
                           }), 'Set canvas background image');
