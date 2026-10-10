@@ -71,7 +71,7 @@ interface EditorDoc {
    Cache API stores the local File under its durable remote URL, so a later
    preview can reopen the media even when the connection is poor/offline. */
 
-const TOOLS = ['media', 'text', 'overlays', 'audio', 'motion', 'look', 'captions', 'ai', 'export'] as const;
+const TOOLS = ['media', 'text', 'overlays', 'audio', 'transitions', 'adjust', 'motion', 'look', 'captions', 'ai', 'export'] as const;
 type Tool = (typeof TOOLS)[number];
 
 const TOOL_LABELS: Record<Tool, string> = {
@@ -79,6 +79,8 @@ const TOOL_LABELS: Record<Tool, string> = {
   text: 'Text',
   overlays: 'Overlays',
   audio: 'Audio',
+  transitions: 'Transitions',
+  adjust: 'Adjust',
   motion: 'Motion',
   look: 'Effects',
   captions: 'Captions',
@@ -2615,6 +2617,108 @@ function VideoEditor() {
     updateProject((pp) => ({ ...pp, clips: pp.clips.flatMap((c) => (c.id === clip.id ? [a, b] : [c])) }), 'Split clip');
     setSelectedClipId(b.id);
   }, [notify, updateProject]);
+
+  const freezeFrameAtPlayhead = useCallback(async () => {
+    const current = docRef.current.project;
+    const clip = current.clips.find((item) => item.id === selectedClipId);
+    const t = playheadRef.current;
+    if (!clip) return notify('Select a video clip before creating a freeze frame.');
+    if (clip.media_type === 'image') return notify('This clip is already a still image.');
+    if (clip.reverse) return notify('Freeze frame on reversed clips is not supported yet. Reverse the clip first.');
+    if (!meId) return notify('Sign in to save a freeze frame into this project.');
+
+    let start = 0;
+    const index = current.clips.findIndex((item) => item.id === clip.id);
+    for (let i = 0; i < index; i++) start += clipDuration(current.clips[i]);
+    const local = t - start;
+    if (local < 0.08 || local > clipDuration(clip) - 0.08) {
+      return notify('Move the playhead inside the selected clip to freeze a frame.');
+    }
+
+    setBusy(true);
+    setPlaying(false);
+    try {
+      const sourceCanvas = document.createElement('canvas');
+      const scale = Math.min(1, 1280 / Math.max(current.canvas.width, current.canvas.height));
+      sourceCanvas.width = Math.max(1, Math.round(current.canvas.width * scale));
+      sourceCanvas.height = Math.max(1, Math.round(current.canvas.height * scale));
+      const scaledClip: VideoClip = {
+        ...clip,
+        transitionIn: { type: 'none', duration: 0 },
+        transform: {
+          ...clip.transform,
+          offset_x: clip.transform.offset_x * scale,
+          offset_y: clip.transform.offset_y * scale,
+        },
+        keyframes: clip.keyframes ? {
+          ...clip.keyframes,
+          pos_x_kf: clip.keyframes.pos_x_kf?.map((kf) => ({ ...kf, value: kf.value * scale })),
+          pos_y_kf: clip.keyframes.pos_y_kf?.map((kf) => ({ ...kf, value: kf.value * scale })),
+        } : undefined,
+      };
+      const frameProject: VideoProject = {
+        ...current,
+        canvas: { width: sourceCanvas.width, height: sourceCanvas.height },
+        clips: [scaledClip],
+        elements: [],
+        audio: [],
+        tracks: [],
+      };
+      if (!rendererRef.current) rendererRef.current = new VideoRenderer();
+      await rendererRef.current.drawFrame(sourceCanvas, frameProject, local, { previewing: true, playing: false });
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        sourceCanvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not capture the freeze frame.')), 'image/png');
+      });
+      const file = new File([blob], `freeze-frame-${Math.round(t * 1000)}.png`, { type: 'image/png' });
+      const uploaded = await uploadFile(file, 'studio-media', meId);
+      const holdDuration = 2;
+      const freeze: VideoClip = {
+        id: makeVideoId('freeze'),
+        src: uploaded.url,
+        storage_path: uploaded.path,
+        name: `Freeze frame · ${clip.name}`,
+        sourceDuration: holdDuration,
+        trimStart: 0,
+        trimEnd: holdDuration,
+        speed: 1,
+        volume: 0,
+        muted: true,
+        media_type: 'image',
+        source_width: sourceCanvas.width,
+        source_height: sourceCanvas.height,
+        transform: { ...DEFAULT_TRANSFORM },
+        adjustments: { ...clip.adjustments },
+        filter: clip.filter,
+        effect: clip.effect,
+        effects: clip.effects,
+        effect_intensity: clip.effect_intensity,
+        transitionIn: { type: 'none', duration: 0 },
+        audioProcessing: { ...DEFAULT_AUDIO_PROCESSING },
+        track_id: clip.track_id || 'track-main',
+      };
+      const splitSource = clip.trimStart + local * clip.speed;
+      const first: VideoClip = { ...clip, trimEnd: splitSource };
+      const second: VideoClip = {
+        ...clip,
+        id: makeVideoId('clip'),
+        trimStart: splitSource,
+        transitionIn: { type: 'none', duration: 0.5 },
+      };
+      updateProject((projectNow) => ({
+        ...projectNow,
+        clips: projectNow.clips.flatMap((item) => item.id === clip.id ? [first, freeze, second] : [item]),
+      }), 'Insert freeze frame');
+      setSelectedClipId(freeze.id);
+      setSelectedElementId(null);
+      setSelectedAudioId(null);
+      setSelectedIds([freeze.id]);
+      notify('Freeze frame inserted for 2 seconds. Original clip audio continues on its own timeline.');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Could not create the freeze frame.');
+    } finally {
+      setBusy(false);
+    }
+  }, [meId, notify, selectedClipId, updateProject]);
 
   const deleteClip = (id: string) => {
     if (cropMode?.type === 'clip' && cropMode.id === id) setCropMode(null);
@@ -7971,6 +8075,9 @@ function VideoEditor() {
                     <button onClick={() => openTool('look')} className={EDITOR_ACTION_PILL} aria-label="Mask">◯ Mask</button>
                     <button onClick={() => openTool('text')} className={EDITOR_ACTION_PILL} aria-label="Add text"><Type className="h-4 w-4" />Text</button>
                     <button onClick={splitAtPlayhead} className={EDITOR_ACTION_PILL} aria-label="Split clip"><Scissors className="h-4 w-4" />Split</button>
+                    <button onClick={() => void freezeFrameAtPlayhead()} disabled={busy} className={EDITOR_ACTION_PILL} aria-label="Freeze frame"><Copy className="h-4 w-4" />Freeze</button>
+                    <button onClick={() => openTool('transitions')} className={EDITOR_ACTION_PILL} aria-label="Edit transitions"><Film className="h-4 w-4" />Transitions</button>
+                    <button onClick={() => openTool('adjust')} className={EDITOR_ACTION_PILL} aria-label="Adjust clip"><SlidersHorizontal className="h-4 w-4" />Adjust</button>
                     <button onClick={startClipCrop} className={EDITOR_ACTION_PILL} aria-label="Crop clip"><Crop className="h-4 w-4" />Crop</button>
                     <button onClick={() => setClipSpeedMenuOpen((v) => !v)} className={EDITOR_ACTION_PILL} aria-label="Change clip speed"><SkipForward className="h-4 w-4" />Speed</button>
                     <button onClick={() => updateClip(selectedClip.id, { muted: !selectedClip.muted }, 'Toggle clip audio')} className={EDITOR_ACTION_PILL} aria-label="Toggle clip audio">{selectedClip.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}{selectedClip.muted ? 'Unmute' : 'Volume'}</button>
@@ -9497,6 +9604,87 @@ function VideoEditor() {
           </div>
         )}
 
+        {tool === 'transitions' && (
+          <div className="space-y-3">
+            {selectedClip ? (
+              <>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <p className="text-xs font-bold text-white">Transition into this clip</p>
+                  <p className="mt-1 text-[10px] leading-4 text-white/45">Choose how the previous clip gives way to this one. The first clip has no incoming boundary.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['none','Cut','No transition'],
+                    ['fade','Fade','Fade up from black'],
+                    ['crossfade','Dissolve','Blend the outgoing shot'],
+                    ['dip-black','Dip to black','Brief black midpoint'],
+                    ['wipe','Wipe','Reveal from the left'],
+                    ['slide','Slide','Move the incoming shot'],
+                    ['push','Push','Push the outgoing shot away'],
+                    ['zoom','Zoom','Scale into the shot'],
+                    ['zoom-blur','Zoom blur','Punch-in with blur'],
+                    ['whip-pan','Whip pan','Fast camera sweep'],
+                    ['spin','Spin','Rotate into the shot'],
+                    ['film-burn','Film burn','Warm light leak'],
+                    ['glitch-cut','Glitch','Digital cut'],
+                  ] as const).map(([type,label,hint]) => (
+                    <button key={type} type="button" onClick={() => updateClip(selectedClip.id, { transitionIn: { ...selectedClip.transitionIn, type } }, 'Change transition')}
+                      aria-pressed={selectedClip.transitionIn.type === type}
+                      className={`rounded-xl border p-3 text-left transition ${selectedClip.transitionIn.type === type ? 'border-[#53C8F0] bg-[#53C8F0]/10' : 'border-white/10 bg-white/[0.035] hover:border-white/25'}`}>
+                      <span className="mb-2 flex h-9 items-center justify-center rounded-lg bg-gradient-to-r from-[#53C8F0]/20 via-white/10 to-[#7BE7D4]/20"><Film className="h-4 w-4 text-[#7BE7D4]" /></span>
+                      <span className="block text-xs font-semibold">{label}</span>
+                      <span className="mt-1 block text-[10px] leading-4 text-white/40">{hint}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="rounded-2xl border border-white/10 p-3">
+                  <Slider label="Transition duration" min={0.05} max={Math.max(0.1, Math.min(3, clipDuration(selectedClip)))} step={0.05}
+                    value={Math.min(selectedClip.transitionIn.duration, Math.max(0.1, Math.min(3, clipDuration(selectedClip))))}
+                    onChange={(v) => updateClip(selectedClip.id, { transitionIn: { ...selectedClip.transitionIn, duration: v } }, 'Change transition duration', `transition-${selectedClip.id}`)} />
+                  <p className="mt-2 text-[10px] leading-4 text-white/40">Transitions are stored in the project and rendered by the shared preview/export compositor. Dissolve uses the outgoing clip's tail when one exists.</p>
+                </div>
+              </>
+            ) : (
+              <div className="rounded-xl bg-white/5 p-5 text-center text-xs text-white/45">Select a clip to edit the transition at its incoming boundary.</div>
+            )}
+          </div>
+        )}
+
+        {tool === 'adjust' && (
+          <div className="space-y-3">
+            {selectedClip ? (
+              <>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-3">
+                  <p className="text-xs font-bold">Clip adjustments</p>
+                  <p className="mt-1 text-[10px] text-white/45">Non-destructive adjustments affect preview and export.</p>
+                  <Slider label="Opacity" min={0} max={1} step={0.01} value={selectedClip.opacity ?? 1} onChange={(v) => updateClip(selectedClip.id, { opacity: v }, 'Change clip opacity', `opacity-${selectedClip.id}`)} />
+                </div>
+                <div className="space-y-4 rounded-2xl border border-white/10 p-3">
+                  {([
+                    ['brightness','Brightness',0,200,100],['contrast','Contrast',0,200,100],['saturate','Saturation',0,200,100],
+                    ['hue','Hue',-180,180,0],['blur','Blur',0,30,0],['sepia','Sepia',0,100,0],['grayscale','Grayscale',0,100,0],
+                    ['exposure','Exposure',0,200,100],['temperature','Temperature',-100,100,0],['tint','Tint',-100,100,0],
+                    ['vibrance','Vibrance',0,200,100],['vignette','Vignette',0,100,0],['grain','Grain',0,100,0],['sharpen','Sharpen',0,100,0],
+                  ] as const).map(([key,label,min,max,fallback]) => (
+                    <Slider key={key} label={label} min={min} max={max} step={1}
+                      value={Number((selectedClip.adjustments as any)[key] ?? fallback)}
+                      onChange={(v) => updateClip(selectedClip.id, { adjustments: { ...selectedClip.adjustments, [key]: v } }, `Adjust ${label.toLowerCase()}`, `adjust-${selectedClip.id}-${key}`)} />
+                  ))}
+                  <button type="button" onClick={() => updateClip(selectedClip.id, { opacity: 1, adjustments: { ...DEFAULT_ADJUSTMENTS } }, 'Reset adjustments')}
+                    className="w-full rounded-xl border border-white/10 py-2.5 text-xs font-semibold text-white/75">Reset adjustments</button>
+                </div>
+              </>
+            ) : selectedElement ? (
+              <div className="rounded-2xl border border-white/10 p-3">
+                <p className="mb-3 text-xs font-bold">Overlay adjustments</p>
+                <Slider label="Opacity" min={0} max={1} step={0.01} value={selectedElement.opacity} onChange={(v) => updateElement(selectedElement.id, { opacity: v }, 'Change overlay opacity', `opacity-${selectedElement.id}`)} />
+              </div>
+            ) : (
+              <div className="rounded-xl bg-white/5 p-5 text-center text-xs text-white/45">Select a clip or overlay to adjust opacity and image appearance.</div>
+            )}
+          </div>
+        )}
+
         {tool === 'look' && (
           <div className="space-y-4">
             {selectedClip ? (
@@ -10082,6 +10270,9 @@ function VideoEditor() {
           <>
             <button type="button" onClick={clearSelection} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border border-[#7BE7D4]/30 bg-[#7BE7D4]/10 px-2 py-1.5 text-[9px] font-bold text-[#7BE7D4] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]" aria-label="Deselect and show all editor tools" title="Deselect · Esc"><X className="h-5 w-5" />Done</button>
             <button type="button" onClick={() => openTool('audio')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Music className="h-5 w-5" />Audio</button>
+            <button type="button" onClick={() => openTool('transitions')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Film className="h-5 w-5" />Transitions</button>
+            <button type="button" onClick={() => openTool('adjust')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><SlidersHorizontal className="h-5 w-5" />Adjust</button>
+            <button type="button" onClick={() => void freezeFrameAtPlayhead()} disabled={busy} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-[#7BE7D4] disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Copy className="h-5 w-5" />Freeze</button>
             <button type="button" onClick={() => openTool('look')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Sparkles className="h-5 w-5" />Effects</button>
             <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Move className="h-5 w-5" />Motion</button>
             <button type="button" onClick={() => openTool('motion')} className="flex min-h-[52px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1.5 text-[9px] font-semibold text-white/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#7BE7D4]"><Gauge className="h-5 w-5" />Opacity</button>
