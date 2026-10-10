@@ -8294,6 +8294,20 @@ function VideoEditor() {
                   </label>
                 </div>
                 {project.background?.videoSrc && (
+                  <>
+                  <div className="mb-2 flex gap-1.5">
+                    {(['cover', 'contain'] as const).map((fit) => (
+                      <button
+                        key={fit}
+                        type="button"
+                        onClick={() => updateProject((p) => ({
+                          ...p,
+                          background: { ...(p.background || { type: 'color', color: '#000000' }), imageFit: fit },
+                        }), fit === 'cover' ? 'Fill background video' : 'Fit background video')}
+                        className={`flex-1 rounded-lg border px-2 py-2 text-[10px] font-semibold ${(project.background?.imageFit || 'cover') === fit ? 'border-[#E5798F] bg-[#E5798F]/15 text-white' : 'border-white/10 bg-white/[0.03] text-white/55'}`}
+                      >{fit === 'cover' ? 'Fill canvas' : 'Fit video'}</button>
+                    ))}
+                  </div>
                   <div className="flex items-center justify-between gap-2">
                     <p className="min-w-0 truncate text-[10px] text-white/50">Video layer active · loops with the project</p>
                     <button
@@ -8306,6 +8320,7 @@ function VideoEditor() {
                       className="shrink-0 rounded-md border border-white/10 px-2 py-1.5 text-[10px] font-semibold text-white/65 hover:bg-white/5"
                     >Remove</button>
                   </div>
+                  </>
                 )}
               </div>
               <div className="mt-3 rounded-lg border border-white/10 bg-black/20 p-2.5">
