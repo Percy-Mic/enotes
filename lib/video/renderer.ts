@@ -347,7 +347,10 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
     // CORS MUST be set before a remote src. Cached/local blob sources do not
     // depend on the network and remain canvas-safe for the current origin.
     video.crossOrigin = 'anonymous';
-    video.preload = 'auto';
+    // Metadata-first avoids Chromium allocating large buffers for every stock clip
+    // when the playhead is rapidly moved between sources. The active decoder will
+    // still load decoded frames on demand via onloadeddata/seekAndWait.
+    video.preload = 'metadata';
     video.muted = true;
     video.playsInline = true;
     video.setAttribute('playsinline', '');
