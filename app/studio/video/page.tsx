@@ -2549,7 +2549,9 @@ function VideoEditor() {
           list.findIndex((candidate: any) => candidate?.url === item?.url) === index
         );
 
-      const clips = uniqueResults.map((item: any) => {
+      // Keep practice projects to a small, predictable decoder working set. More footage
+      // can be added manually from Media after the first sequence renders correctly.
+      const clips = uniqueResults.slice(0, 3).map((item: any) => {
         const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
         return {
           id: makeVideoId('clip'), src: stockPlaybackUrl(String(item.url)), name: `${practiceTopic} · ${item.photographer || 'Stock footage'}`,
@@ -2565,7 +2567,7 @@ function VideoEditor() {
       const sourceWidth = Number(firstPractice?.source_width || 0);
       const sourceHeight = Number(firstPractice?.source_height || 0);
       const practiceCanvasScale = sourceWidth > 0 && sourceHeight > 0
-        ? Math.min(1, 1280 / Math.max(sourceWidth, sourceHeight))
+        ? Math.min(1, 960 / Math.max(sourceWidth, sourceHeight))
         : 1;
       const practiceCanvas = sourceWidth > 0 && sourceHeight > 0
         ? {
