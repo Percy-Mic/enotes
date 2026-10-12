@@ -2549,9 +2549,10 @@ function VideoEditor() {
           list.findIndex((candidate: any) => candidate?.url === item?.url) === index
         );
 
-      // Keep practice projects to a small, predictable decoder working set. More footage
-      // can be added manually from Media after the first sequence renders correctly.
-      const clips = uniqueResults.slice(0, 3).map((item: any) => {
+      // Start with one stock clip on mobile. Practice mode used to initialize several
+      // remote decoders together, which can exhaust Android media/GPU memory before
+      // the editor canvas gets its first frame. Additional clips can be added from Media.
+      const clips = uniqueResults.slice(0, 1).map((item: any) => {
         const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
         return {
           id: makeVideoId('clip'), src: stockPlaybackUrl(String(item.url)), name: `${practiceTopic} · ${item.photographer || 'Stock footage'}`,
@@ -2561,13 +2562,13 @@ function VideoEditor() {
           audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
         } as VideoClip;
       });
-      if (clips.length < 3) throw new Error('Not enough stock footage was returned. Try again.');
+      if (clips.length < 1) throw new Error('No compatible stock footage was returned. Try another topic or try again.');
       const firstPractice = clips[0] as VideoClip | undefined;
       const practiceBase = emptyProject('original');
       const sourceWidth = Number(firstPractice?.source_width || 0);
       const sourceHeight = Number(firstPractice?.source_height || 0);
       const practiceCanvasScale = sourceWidth > 0 && sourceHeight > 0
-        ? Math.min(1, 960 / Math.max(sourceWidth, sourceHeight))
+        ? Math.min(1, 640 / Math.max(sourceWidth, sourceHeight))
         : 1;
       const practiceCanvas = sourceWidth > 0 && sourceHeight > 0
         ? {
