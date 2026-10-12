@@ -2595,7 +2595,11 @@ function VideoEditor() {
   }, [meId, search, startPracticeProject]);
 
   useEffect(() => {
-    if (tool === 'media' && stockVideos.length === 0) void searchStockVideos(true);
+    // Practice launch already requests its single starter clip. Do not launch the
+    // Media-library stock search at the same time on constrained mobile devices.
+    if (!search.get('practiceTopic') && tool === 'media' && stockVideos.length === 0) {
+      void searchStockVideos(true);
+    }
     // Professional editor: no GIF/emoji/sticker browser in the video workflow.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tool]);
