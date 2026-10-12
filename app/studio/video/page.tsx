@@ -2545,7 +2545,7 @@ function VideoEditor() {
         const sourceDuration = Math.max(0.2, Number(item.duration) || 5);
         return {
           id: makeVideoId('clip'), src: stockPlaybackUrl(String(item.url)), name: `${practiceTopic} · ${item.photographer || 'Stock footage'}`,
-          sourceDuration, trimStart: 0, trimEnd: Math.min(sourceDuration, 6), speed: 1, volume: 1, muted: false,
+          sourceDuration, trimStart: 0, trimEnd: Math.min(sourceDuration, 4), speed: 1, volume: 1, muted: false,
           source_width: Number(item.width) || undefined, source_height: Number(item.height) || undefined,
           transform: { ...DEFAULT_TRANSFORM }, adjustments: { ...DEFAULT_ADJUSTMENTS }, filter: 'none', effect: 'none', reverse: false,
           audioProcessing: { ...DEFAULT_AUDIO_PROCESSING }, transitionIn: { type: 'none', duration: 0.5 },
@@ -2557,7 +2557,7 @@ function VideoEditor() {
       const sourceWidth = Number(firstPractice?.source_width || 0);
       const sourceHeight = Number(firstPractice?.source_height || 0);
       const practiceCanvasScale = sourceWidth > 0 && sourceHeight > 0
-        ? Math.min(1, 640 / Math.max(sourceWidth, sourceHeight))
+        ? Math.min(1, 480 / Math.max(sourceWidth, sourceHeight))
         : 1;
       const practiceCanvas = sourceWidth > 0 && sourceHeight > 0
         ? {
