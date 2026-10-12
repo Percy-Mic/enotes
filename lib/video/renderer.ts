@@ -251,7 +251,7 @@ function pauseInactiveVideos(activeSources: Set<string>) {
   // Keep only a small working set of decoded video elements. Mobile browsers
   // retain decoder/GPU buffers even after pause(), so old timeline clips must
   // release their media source once they are no longer active.
-  const MAX_CACHED_VIDEOS = 3;
+  const MAX_CACHED_VIDEOS = 2;
   while (videoCache.size > MAX_CACHED_VIDEOS) {
     const candidate = Array.from(videoCache.entries()).find(([src]) => !activeSources.has(src));
     if (!candidate) break; // Multiple simultaneously visible video overlays are active.
