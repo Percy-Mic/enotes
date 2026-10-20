@@ -6,7 +6,7 @@ This repository's Cloudflare work is intentionally isolated on `cloudflare-deplo
 
 - Next.js is packaged for Cloudflare Workers using the OpenNext Cloudflare adapter (`open-next.config.ts`).
 - `wrangler.jsonc` names a separate Worker, `enotes-cloudflare-preview`, so the migration does not target the current production Worker.
-- The deployment workflow is manual-only and refuses to run from any branch except `cloudflare-deployment-prep`.
+- The deployment workflow runs on pushes to `cloudflare-deployment-prep` and can also be started manually; it refuses to deploy from any other branch. The Next.js dependency is pinned to `15.5.28` to satisfy the current OpenNext Cloudflare adapter's supported version range.
 
 ## One-time Cloudflare/GitHub setup
 
@@ -18,9 +18,8 @@ This repository's Cloudflare work is intentionally isolated on `cloudflare-deplo
 
 ## Deploy the preview Worker
 
-1. Open **Actions → Cloudflare preview deployment**.
-2. Select **Run workflow** on branch `cloudflare-deployment-prep`.
-3. Inspect the build/deploy logs and open the Worker URL printed by Wrangler.
+1. Push a change to `cloudflare-deployment-prep` (this automatically starts the preview workflow), or open **Actions → Cloudflare preview deployment** and select **Run workflow** on that branch.
+2. Inspect the build/deploy logs and open the Worker URL printed by Wrangler.
 
 This workflow deploys only the Worker named `enotes-cloudflare-preview`; it does not deploy `main`, update the production Worker, or attach a production custom domain.
 
