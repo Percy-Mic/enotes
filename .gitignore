@@ -1,17 +1,22 @@
 # dependencies
 node_modules/
 
-# next.js build output
+# Next.js and OpenNext build output
 .next/
+.open-next/
 out/
 
-# environment & secrets â€” never commit
+# Wrangler local state and generated bindings
+.wrangler/
+cloudflare-env.d.ts
+
+# environment & secrets — never commit
 .env
 .env.*
 *.local
 !.env.example
 
-# vercel
+# Vercel
 .vercel/
 
 # logs & temp
@@ -19,12 +24,12 @@ out/
 *.err
 npm-debug.log*
 
-# typescript build info
+# TypeScript build info
 *.tsbuildinfo
 
 # tool state
 .freebuff/
 
-# os
+# OS
 .DS_Store
 Thumbs.db
