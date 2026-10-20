@@ -1,6 +1,9 @@
 name: Cloudflare preview deployment
 
 on:
+  push:
+    branches:
+      - cloudflare-deployment-prep
   workflow_dispatch:
 
 permissions:
