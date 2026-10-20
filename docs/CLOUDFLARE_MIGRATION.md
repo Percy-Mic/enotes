@@ -14,6 +14,9 @@ This repository's Cloudflare work is intentionally isolated on `cloudflare-deplo
 2. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add repository secrets:
    - `CLOUDFLARE_API_TOKEN`
    - `CLOUDFLARE_ACCOUNT_ID`
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (or `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` if that is the key configured for this app)
+   Also add the Actions variable `NEXT_PUBLIC_SITE_URL` if you want to set the preview's public site URL. The workflow passes these values into the build; Vercel environment variables are not automatically available to GitHub Actions.
 3. In Cloudflare, configure the preview Worker’s runtime variables/secrets. Copy the names and values from the currently working deployment as appropriate; do not commit values to Git. At minimum, review `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (or the existing anon-key fallback), and the server-side credentials used by the app (`SUPABASE_SERVICE_ROLE_KEY`, billing/provider keys, AI provider keys, and VAPID/PUSH settings where those features are enabled). Only add values that the app actually uses.
 
 ## Deploy the preview Worker
