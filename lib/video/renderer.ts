@@ -2116,6 +2116,21 @@ export class VideoRenderer {
             video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
             video.videoWidth > 0 &&
             video.videoHeight > 0;
+        // Temporary diagnostic: only log when a paused preview cannot yet draw decoded pixels.
+        if (!mediaReady && !opts.playing) {
+          console.warn('[eNotes preview diagnostic] paused frame not ready', {
+            clipName: clip.name,
+            mediaType: clip.media_type,
+            hasVideo: !!video,
+            readyState: video?.readyState ?? null,
+            videoWidth: video?.videoWidth ?? null,
+            videoHeight: video?.videoHeight ?? null,
+            currentTime: video?.currentTime ?? null,
+            targetTime: target,
+            networkState: video?.networkState ?? null,
+            mediaErrorCode: video?.error?.code ?? null,
+          });
+        }
         if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
