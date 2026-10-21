@@ -2116,21 +2116,11 @@ export class VideoRenderer {
             video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
             video.videoWidth > 0 &&
             video.videoHeight > 0;
-        // Temporary diagnostic: only log when a paused preview cannot yet draw decoded pixels.
-        if (!mediaReady && !opts.playing) {
-          console.warn('[eNotes preview diagnostic] paused frame not ready', {
-            clipName: clip.name,
-            mediaType: clip.media_type,
-            hasVideo: !!video,
-            readyState: video?.readyState ?? null,
-            videoWidth: video?.videoWidth ?? null,
-            videoHeight: video?.videoHeight ?? null,
-            currentTime: video?.currentTime ?? null,
-            targetTime: target,
-            networkState: video?.networkState ?? null,
-            mediaErrorCode: video?.error?.code ?? null,
-          });
-        }
+        // A video can briefly lose its drawable decoded frame while pausing or seeking.
+        // Do not fall through to the background/overlay pass in that case: doing so
+        // overwrites the last good preview with black and can accumulate overlays.
+        // The next preview tick will retry once the decoder has a usable frame.
+        if (!mediaReady) return;
         if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
