@@ -100,6 +100,35 @@ export class ExportCancelledError extends Error {
 const videoCache = new Map<string, HTMLVideoElement>();
 const videoLoading = new Map<string, Promise<HTMLVideoElement>>();
 
+/*
+ * Browsers have a finite decoder/network-resource budget. Keeping every source
+ * ever opened by an editing session alive eventually causes
+ * ERR_INSUFFICIENT_RESOURCES and black/stalled previews on projects with many
+ * clips. Keep a small LRU of decoded videos and release the oldest decoder
+ * when it is no longer among the most recently used sources.
+ */
+const MAX_CACHED_SOURCE_VIDEOS = 8;
+
+function releaseCachedVideo(src: string, video: HTMLVideoElement) {
+  video.pause();
+  playbackState.delete(video);
+  video.onloadeddata = null;
+  video.onerror = null;
+  video.removeAttribute('src');
+  video.load();
+  videoCache.delete(src);
+}
+
+function rememberCachedVideo(src: string, video: HTMLVideoElement) {
+  videoCache.delete(src);
+  videoCache.set(src, video);
+  while (videoCache.size > MAX_CACHED_SOURCE_VIDEOS) {
+    const oldest = videoCache.entries().next().value as [string, HTMLVideoElement] | undefined;
+    if (!oldest) break;
+    releaseCachedVideo(oldest[0], oldest[1]);
+  }
+}
+
 
 // Playback state is deliberately separate from the project clock. The browser
 // decoder owns the clock while playing; the editor only seeks when the active
@@ -319,7 +348,12 @@ export function normalizeVideoDuration(video: HTMLVideoElement): Promise<number>
 
 function loadVideo(src: string): Promise<HTMLVideoElement> {
   const cached = videoCache.get(src);
-  if (cached) return Promise.resolve(cached);
+  if (cached) {
+    // Refresh insertion order so active/recent sources survive LRU eviction.
+    videoCache.delete(src);
+    videoCache.set(src, cached);
+    return Promise.resolve(cached);
+  }
   const pending = videoLoading.get(src);
   if (pending) return pending;
 
@@ -328,23 +362,29 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
     // CORS MUST be set before a remote src. Cached/local blob sources do not
     // depend on the network and remain canvas-safe for the current origin.
     video.crossOrigin = 'anonymous';
-    video.preload = 'auto';
+    video.preload = 'metadata';
     video.muted = true;
     video.playsInline = true;
     video.setAttribute('playsinline', '');
 
-    const timeout = window.setTimeout(() => {
-      videoLoading.delete(src);
-      reject(new Error('Timed out loading video — the source may be unreachable or in a format this browser cannot decode.'));
-    }, 20000);
-
-    const fail = () => {
+    let settled = false;
+    const cleanupFailedLoad = (error: Error) => {
+      if (settled) return;
+      settled = true;
       window.clearTimeout(timeout);
       videoLoading.delete(src);
-      reject(new Error(`Could not load video: ${src.slice(0, 60)}…`));
+      video.onloadeddata = null;
+      video.onerror = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      reject(error);
     };
+    const timeout = window.setTimeout(() => {
+      cleanupFailedLoad(new Error('Timed out loading video — the source may be unreachable or in a format this browser cannot decode.'));
+    }, 20000);
 
-    video.onerror = fail;
+    video.onerror = () => cleanupFailedLoad(new Error(`Could not load video: ${src.slice(0, 60)}…`));
     /*
      * Do not put remote media URLs through the Cache API. Video/audio elements
      * use HTTP Range requests and third-party CDNs such as Pexels can reject
@@ -354,15 +394,19 @@ function loadVideo(src: string): Promise<HTMLVideoElement> {
     video.src = src;
 
     video.onloadeddata = async () => {
+      if (settled) return;
       try {
-        window.clearTimeout(timeout);
         await normalizeVideoDuration(video);
-        videoCache.set(src, video);
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeout);
+        video.onloadeddata = null;
+        video.onerror = null;
+        rememberCachedVideo(src, video);
         videoLoading.delete(src);
         resolve(video);
-      } catch (e) {
-        videoLoading.delete(src);
-        reject(e);
+      } catch (error) {
+        cleanupFailedLoad(error instanceof Error ? error : new Error('Video could not be prepared.'));
       }
     };
   });
@@ -2116,6 +2160,10 @@ export class VideoRenderer {
             video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
             video.videoWidth > 0 &&
             video.videoHeight > 0;
+        // Preserve the last good frame only on the visible interactive preview.
+        // Isolated rendering is also used by export; it must never silently reuse
+        // a previous frame when a source is not ready for the requested timestamp.
+        if (!mediaReady && opts.previewing && !opts.isolatedPreview) return;
         if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
