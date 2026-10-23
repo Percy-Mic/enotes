@@ -2160,6 +2160,10 @@ export class VideoRenderer {
             video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
             video.videoWidth > 0 &&
             video.videoHeight > 0;
+        // Preserve the last good frame only on the visible interactive preview.
+        // Isolated rendering is also used by export; it must never silently reuse
+        // a previous frame when a source is not ready for the requested timestamp.
+        if (!mediaReady && opts.previewing && !opts.isolatedPreview) return;
         if (mediaReady) {
           this.lastSourceError = null;
           const animated = resolveClipValues(clip, timeIn);
