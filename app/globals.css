@@ -746,3 +746,108 @@ body {
   from { transform: scaleX(1); }
   to { transform: scaleX(0); }
 }
+
+
+/* ============================================================
+   ENOTES SIGNATURE MOTION — quiet luxury, warm editorial polish
+   Global interactions are intentionally restrained and performant.
+   ============================================================ */
+:root {
+  --motion-fast: 160ms;
+  --motion-base: 240ms;
+  --motion-slow: 420ms;
+  --motion-ease: cubic-bezier(.2, .75, .25, 1);
+  --motion-luxe: cubic-bezier(.22, 1, .36, 1);
+}
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+*, *::before, *::after {
+  transition-timing-function: var(--motion-ease);
+}
+a, button, [role="button"], input, textarea, select,
+[tabindex]:not([tabindex="-1"]) {
+  transition:
+    color var(--motion-base) var(--motion-ease),
+    background-color var(--motion-base) var(--motion-ease),
+    border-color var(--motion-base) var(--motion-ease),
+    box-shadow var(--motion-base) var(--motion-ease),
+    opacity var(--motion-base) var(--motion-ease),
+    transform var(--motion-base) var(--motion-luxe),
+    filter var(--motion-base) var(--motion-ease);
+}
+button:not(:disabled):active, [role="button"]:active {
+  transform: scale(.985);
+}
+button:disabled, [aria-disabled="true"] {
+  cursor: not-allowed;
+}
+:where(button, a, input, textarea, select, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--auth-accent, #E5798F);
+  outline-offset: 3px;
+}
+::selection {
+  background: rgba(229, 121, 143, .24);
+}
+@keyframes enotes-fade-up {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes enotes-soft-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes enotes-rise-in {
+  from { opacity: 0; transform: translate3d(0, 18px, 0) scale(.99); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes enotes-sheen {
+  0% { background-position: 130% 0; }
+  100% { background-position: -130% 0; }
+}
+main {
+  animation: enotes-fade-up 420ms var(--motion-luxe) both;
+}
+main :where(h1, h2) {
+  text-wrap: balance;
+}
+main :where(article, [data-card], .rounded-2xl, .rounded-3xl) {
+  animation: enotes-rise-in 460ms var(--motion-luxe) both;
+}
+main :where(article, [data-card], .rounded-2xl, .rounded-3xl):hover {
+  border-color: color-mix(in srgb, var(--auth-accent, #E5798F) 24%, transparent);
+}
+main :where(img) {
+  transition: transform 500ms var(--motion-luxe), filter 300ms ease;
+}
+main :where(a img, button img):hover {
+  transform: scale(1.025);
+}
+:where(input, textarea, select):focus {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--auth-accent, #E5798F) 13%, transparent);
+}
+:where(.auth-surface, .auth-brand-panel) {
+  transition: background-color 300ms ease, color 300ms ease, border-color 300ms ease;
+}
+@media (prefers-reduced-motion: no-preference) {
+  main > *:nth-child(1) { animation-delay: 20ms; }
+  main > *:nth-child(2) { animation-delay: 55ms; }
+  main > *:nth-child(3) { animation-delay: 90ms; }
+  main > *:nth-child(4) { animation-delay: 125ms; }
+  main > *:nth-child(5) { animation-delay: 160ms; }
+  main > *:nth-child(6) { animation-delay: 195ms; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+  }
+}
